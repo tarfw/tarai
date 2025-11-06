@@ -5,4 +5,7 @@ import { z } from "zod";
 export { expenseApprovalWorkflow } from "./expense";
 
 // Export commerce workflows
-export { orderProcessingWorkflow, productRecommendationWorkflow } from "./commerce";
+export {
+	orderProcessingWorkflow,
+	productRecommendationWorkflow,
+} from "./commerce";

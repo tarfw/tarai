@@ -119,8 +119,7 @@ tarai/
 │   │   └── embeddings.ts # Embedding generation utilities
 │   ├── tools/            # Commerce tools
 │   │   ├── index.ts      # Tool exports
-│   │   ├── commerce.ts   # Product search, inventory, orders
-│   │   └── weather.ts    # Weather tool (utility)
+│   │   └── commerce.ts   # Product search, inventory, orders
 │   └── workflows/        # Workflow definitions
 │       ├── index.ts      # Workflow exports
 │       ├── commerce.ts   # Order processing, recommendations

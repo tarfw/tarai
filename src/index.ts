@@ -1,58 +1,57 @@
 import "dotenv/config";
-import { VoltAgent, VoltOpsClient, Agent, Memory } from "@voltagent/core";
+import { groq } from "@ai-sdk/groq";
+import { Agent, Memory, VoltAgent, VoltOpsClient } from "@voltagent/core";
 import { LibSQLMemoryAdapter } from "@voltagent/libsql";
 import { createPinoLogger } from "@voltagent/logger";
-import { groq } from "@ai-sdk/groq";
 import { honoServer } from "@voltagent/server-hono";
 import {
-expenseApprovalWorkflow,
-orderProcessingWorkflow,
-productRecommendationWorkflow
-} from "./workflows";
-import {
-weatherTool,
-searchProductsTool,
-semanticSearchTool,
-generateEmbeddingsTool,
-getProductDetailsTool,
-checkInventoryTool,
-createOrderTool,
-createProductTool,
-updateProductTool,
-updateInventoryTool,
-createProviderTool,
-bulkCreateProductsTool
+	bulkCreateProductsTool,
+	checkInventoryTool,
+	createOrderTool,
+	createProductTool,
+	createProviderTool,
+	generateEmbeddingsTool,
+	getProductDetailsTool,
+	searchProductsTool,
+	semanticSearchTool,
+	updateInventoryTool,
+	updateProductTool,
 } from "./tools";
+import {
+	expenseApprovalWorkflow,
+	orderProcessingWorkflow,
+	productRecommendationWorkflow,
+} from "./workflows";
 
 // Create a logger instance
 const logger = createPinoLogger({
-name: "tarai",
-level: "info",
+	name: "tarai",
+	level: "info",
 });
 
 // Initialize database schema before starting
 async function initializeApp() {
-try {
-logger.info("Initializing Universal Commerce AI System...");
+	try {
+		logger.info("Initializing Universal Commerce AI System...");
 
-  // Initialize commerce database
-    const { initializeDatabase } = await import("./db/schema");
-    const { commerceDb } = await import("./db");
-    await initializeDatabase(commerceDb);
-    logger.info("✅ Commerce database initialized");
+		// Initialize commerce database
+		const { initializeDatabase } = await import("./db/schema");
+		const { commerceDb } = await import("./db");
+		await initializeDatabase(commerceDb);
+		logger.info("✅ Commerce database initialized");
 
-    // Configure persistent memory (LibSQL / SQLite)
-    const memory = new Memory({
-      storage: new LibSQLMemoryAdapter({
-        url: "file:./.voltagent/memory.db",
-        logger: logger.child({ component: "libsql" }),
-      }),
-    });
+		// Configure persistent memory (LibSQL / SQLite)
+		const memory = new Memory({
+			storage: new LibSQLMemoryAdapter({
+				url: "file:./.voltagent/memory.db",
+				logger: logger.child({ component: "libsql" }),
+			}),
+		});
 
-    // Commerce AI Agent - Universal Commerce AI System
-    const commerceAgent = new Agent({
-      name: "commerce-assistant",
-      instructions: `You are an intelligent commerce assistant for the Universal Commerce AI System. You help customers discover products, check availability, and complete purchases while assisting providers with inventory management, product creation, and data management.
+		// Commerce AI Agent - Universal Commerce AI System
+		const commerceAgent = new Agent({
+			name: "commerce-assistant",
+			instructions: `You are an intelligent commerce assistant for the Universal Commerce AI System. You help customers discover products, check availability, and complete purchases while assisting providers with inventory management, product creation, and data management.
 
 CORE CAPABILITIES:
 - Product Discovery: Help customers find products across all providers using natural language search
@@ -98,50 +97,48 @@ AVAILABLE TOOLS:
 - createProvider: Create new provider accounts (provide: name, optional: description, contactEmail, contactPhone, address)
 - bulkCreateProducts: Import multiple products at once (provide: providerId and array of products)
 - generateEmbeddings: Generate vector embeddings for products (admin)`,
-      model: groq("openai/gpt-oss-20b"),
-      tools: [
-        searchProductsTool,
-        semanticSearchTool,
-        getProductDetailsTool,
-        checkInventoryTool,
-        createOrderTool,
-        createProductTool,
-        updateProductTool,
-        updateInventoryTool,
-        createProviderTool,
-        bulkCreateProductsTool,
-        generateEmbeddingsTool,
-        weatherTool // Keep weather tool for general utility
-      ],
-      memory,
-    });
+			model: groq("openai/gpt-oss-20b"),
+			tools: [
+				searchProductsTool,
+				semanticSearchTool,
+				getProductDetailsTool,
+				checkInventoryTool,
+				createOrderTool,
+				createProductTool,
+				updateProductTool,
+				updateInventoryTool,
+				createProviderTool,
+				bulkCreateProductsTool,
+				generateEmbeddingsTool,
+			],
+			memory,
+		});
 
-    // Create and start the VoltAgent
-    const voltAgent = new VoltAgent({
-      agents: {
-        commerce: commerceAgent,
-      },
-      workflows: {
-        expenseApproval: expenseApprovalWorkflow,
-        orderProcessing: orderProcessingWorkflow,
-        productRecommendation: productRecommendationWorkflow,
-      },
-      server: honoServer(),
-      logger,
-      voltOpsClient: new VoltOpsClient({
-        publicKey: process.env.VOLTAGENT_PUBLIC_KEY || "",
-        secretKey: process.env.VOLTAGENT_SECRET_KEY || "",
-      }),
-    });
+		// Create and start the VoltAgent
+		const voltAgent = new VoltAgent({
+			agents: {
+				commerce: commerceAgent,
+			},
+			workflows: {
+				expenseApproval: expenseApprovalWorkflow,
+				orderProcessing: orderProcessingWorkflow,
+				productRecommendation: productRecommendationWorkflow,
+			},
+			server: honoServer(),
+			logger,
+			voltOpsClient: new VoltOpsClient({
+				publicKey: process.env.VOLTAGENT_PUBLIC_KEY || "",
+				secretKey: process.env.VOLTAGENT_SECRET_KEY || "",
+			}),
+		});
 
-    logger.info("🎉 Universal Commerce AI System started successfully!");
-    logger.info("🌐 Server running on http://localhost:3141");
-    logger.info("🤖 Commerce agent ready to handle requests");
-
-  } catch (error) {
-    logger.error("❌ Failed to initialize application:", error);
-    process.exit(1);
-  }
+		logger.info("🎉 Universal Commerce AI System started successfully!");
+		logger.info("🌐 Server running on http://localhost:3141");
+		logger.info("🤖 Commerce agent ready to handle requests");
+	} catch (error) {
+		logger.error("❌ Failed to initialize application:", error as Error);
+		process.exit(1);
+	}
 }
 
 // Start the application

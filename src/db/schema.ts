@@ -144,11 +144,37 @@ CREATE INDEX IF NOT EXISTS idx_agentmemory_conversation ON agentmemory(conversat
 CREATE INDEX IF NOT EXISTS idx_conversations_user ON conversations(userid);
 `;
 
-// Initialize database with schema
+// Initialize database with schema (creates tables if they don't exist)
 export const initializeDatabase = async (db: any) => {
-  try {
-    // First, drop existing tables to ensure clean schema
-    const dropTablesSQL = `
+	try {
+		// Create tables if they don't exist (preserves existing data)
+		const createStatements = createTablesSQL
+			.split(";")
+			.map((stmt) => stmt.trim())
+			.filter((stmt) => stmt.length > 0);
+
+		for (const statement of createStatements) {
+			if (statement.trim()) {
+				await db.execute(statement);
+			}
+		}
+
+		console.log(
+			"Database schema initialized successfully (existing data preserved)",
+		);
+	} catch (error) {
+		console.error("Failed to initialize database schema:", error);
+		throw error;
+	}
+};
+
+// Reset database (drops all tables and recreates them - USE WITH CAUTION)
+export const resetDatabase = async (db: any) => {
+	try {
+		console.log("⚠️  RESETTING DATABASE - ALL DATA WILL BE LOST!");
+
+		// Drop existing tables
+		const dropTablesSQL = `
       DROP TABLE IF EXISTS embeddings;
       DROP TABLE IF EXISTS inventoryitems;
       DROP TABLE IF EXISTS products;
@@ -160,38 +186,39 @@ export const initializeDatabase = async (db: any) => {
       DROP TABLE IF EXISTS users;
     `;
 
-    // Drop tables
-    const dropStatements = dropTablesSQL
-      .split(';')
-      .map(stmt => stmt.trim())
-      .filter(stmt => stmt.length > 0);
+		const dropStatements = dropTablesSQL
+			.split(";")
+			.map((stmt) => stmt.trim())
+			.filter((stmt) => stmt.length > 0);
 
-    for (const statement of dropStatements) {
-      if (statement.trim()) {
-        try {
-          await db.execute(statement);
-        } catch (error) {
-          // Ignore errors for tables that don't exist
-          console.log(`Note: Could not drop table: ${statement.split(' ')[4] || 'unknown'}`);
-        }
-      }
-    }
+		for (const statement of dropStatements) {
+			if (statement.trim()) {
+				try {
+					await db.execute(statement);
+				} catch (error) {
+					// Ignore errors for tables that don't exist
+					console.log(
+						`Note: Could not drop table: ${statement.split(" ")[4] || "unknown"}`,
+					);
+				}
+			}
+		}
 
-    // Now create fresh tables
-    const createStatements = createTablesSQL
-      .split(';')
-      .map(stmt => stmt.trim())
-      .filter(stmt => stmt.length > 0);
+		// Recreate tables
+		const createStatements = createTablesSQL
+			.split(";")
+			.map((stmt) => stmt.trim())
+			.filter((stmt) => stmt.length > 0);
 
-    for (const statement of createStatements) {
-      if (statement.trim()) {
-        await db.execute(statement);
-      }
-    }
+		for (const statement of createStatements) {
+			if (statement.trim()) {
+				await db.execute(statement);
+			}
+		}
 
-    console.log('Database schema initialized successfully');
-  } catch (error) {
-    console.error('Failed to initialize database schema:', error);
-    throw error;
-  }
+		console.log("✅ Database reset complete - all tables recreated");
+	} catch (error) {
+		console.error("❌ Failed to reset database:", error);
+		throw error;
+	}
 };

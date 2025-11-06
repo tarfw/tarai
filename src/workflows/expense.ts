@@ -51,81 +51,81 @@ import { z } from "zod";
 // }
 // ==============================================================================
 export const expenseApprovalWorkflow = createWorkflowChain({
-  id: "expense-approval",
-  name: "Expense Approval Workflow",
-  purpose: "Process expense reports with manager approval for high amounts",
+	id: "expense-approval",
+	name: "Expense Approval Workflow",
+	purpose: "Process expense reports with manager approval for high amounts",
 
-  input: z.object({
-    employeeId: z.string(),
-    amount: z.number(),
-    category: z.string(),
-    description: z.string(),
-  }),
-  result: z.object({
-    status: z.enum(["approved", "rejected"]),
-    approvedBy: z.string(),
-    finalAmount: z.number(),
-  }),
+	input: z.object({
+		employeeId: z.string(),
+		amount: z.number(),
+		category: z.string(),
+		description: z.string(),
+	}),
+	result: z.object({
+		status: z.enum(["approved", "rejected"]),
+		approvedBy: z.string(),
+		finalAmount: z.number(),
+	}),
 })
-  // Step 1: Validate expense and check if approval needed
-  .andThen({
-    id: "check-approval-needed",
-    // Define what data we expect when resuming this step
-    resumeSchema: z.object({
-      approved: z.boolean(),
-      managerId: z.string(),
-      comments: z.string().optional(),
-      adjustedAmount: z.number().optional(),
-    }),
-    execute: async ({ data, suspend, resumeData }) => {
-      // If we're resuming with manager's decision
-      if (resumeData) {
-        console.log(`Manager ${resumeData.managerId} made decision`);
-        return {
-          ...data,
-          approved: resumeData.approved,
-          approvedBy: resumeData.managerId,
-          finalAmount: resumeData.adjustedAmount || data.amount,
-          managerComments: resumeData.comments,
-        };
-      }
+	// Step 1: Validate expense and check if approval needed
+	.andThen({
+		id: "check-approval-needed",
+		// Define what data we expect when resuming this step
+		resumeSchema: z.object({
+			approved: z.boolean(),
+			managerId: z.string(),
+			comments: z.string().optional(),
+			adjustedAmount: z.number().optional(),
+		}),
+		execute: async ({ data, suspend, resumeData }) => {
+			// If we're resuming with manager's decision
+			if (resumeData) {
+				console.log(`Manager ${resumeData.managerId} made decision`);
+				return {
+					...data,
+					approved: resumeData.approved,
+					approvedBy: resumeData.managerId,
+					finalAmount: resumeData.adjustedAmount || data.amount,
+					managerComments: resumeData.comments,
+				};
+			}
 
-      // Check if manager approval is needed (expenses over $500)
-      if (data.amount > 500) {
-        console.log(`Expense of $${data.amount} requires manager approval`);
+			// Check if manager approval is needed (expenses over $500)
+			if (data.amount > 500) {
+				console.log(`Expense of $${data.amount} requires manager approval`);
 
-        // Suspend workflow and wait for manager input
-        await suspend("Manager approval required", {
-          employeeId: data.employeeId,
-          requestedAmount: data.amount,
-          category: data.category,
-        });
-      }
+				// Suspend workflow and wait for manager input
+				await suspend("Manager approval required", {
+					employeeId: data.employeeId,
+					requestedAmount: data.amount,
+					category: data.category,
+				});
+			}
 
-      // Auto-approve small expenses
-      return {
-        ...data,
-        approved: true,
-        approvedBy: "system",
-        finalAmount: data.amount,
-      };
-    },
-  })
+			// Auto-approve small expenses
+			return {
+				...data,
+				approved: true,
+				approvedBy: "system",
+				finalAmount: data.amount,
+			};
+		},
+	})
 
-  // Step 2: Process the final decision
-  .andThen({
-    id: "process-decision",
-    execute: async ({ data }) => {
-      if (data.approved) {
-        console.log(`Expense approved for $${data.finalAmount}`);
-      } else {
-        console.log("Expense rejected");
-      }
+	// Step 2: Process the final decision
+	.andThen({
+		id: "process-decision",
+		execute: async ({ data }) => {
+			if (data.approved) {
+				console.log(`Expense approved for $${data.finalAmount}`);
+			} else {
+				console.log("Expense rejected");
+			}
 
-      return {
-        status: data.approved ? "approved" : "rejected",
-        approvedBy: data.approvedBy,
-        finalAmount: data.finalAmount,
-      };
-    },
-  });
+			return {
+				status: data.approved ? "approved" : "rejected",
+				approvedBy: data.approvedBy,
+				finalAmount: data.finalAmount,
+			};
+		},
+	});
