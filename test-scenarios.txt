@@ -1,0 +1,201 @@
+================================================================================
+UNIVERSAL COMMERCE AI SYSTEM - TEST SCENARIOS
+================================================================================
+
+Your commerce AI system is now fully operational! Use these test scenarios to
+validate all features. Start the agent with: npm run dev
+
+================================================================================
+STARTUP COMMANDS
+================================================================================
+
+1. Start the agent:
+   npm run dev
+
+2. Verify setup:
+   npm run verify
+
+3. Check database:
+   npm run check-tables
+
+================================================================================
+TEST SCENARIO 1: PROVIDER MANAGEMENT
+================================================================================
+
+Create a new provider:
+"Create a provider named 'Green Valley Organics' that specializes in organic produce. Contact email: info@greenvalley.com, phone: 555-0101, located at 123 Farm Road, Springfield"
+
+Expected: Agent creates the provider and confirms details.
+
+================================================================================
+TEST SCENARIO 2: PRODUCT CREATION
+================================================================================
+
+Create products for the new provider:
+"Create a product called 'Organic Kale' in the Vegetables category, priced at $4.99 with 50 units in stock. Add tags: organic, leafy-greens"
+
+Update product information:
+"Update the Organic Kale product to include a description: 'Fresh, organic kale grown without pesticides, perfect for salads and smoothies'"
+
+================================================================================
+TEST SCENARIO 3: SEARCH & DISCOVERY
+================================================================================
+
+Test semantic search:
+"Find me some healthy, leafy green vegetables for salads"
+
+Expected: Should find Organic Kale using vector similarity
+
+Test hybrid search:
+"Show me organic products under $10"
+
+Expected: Uses both text matching and semantic search
+
+================================================================================
+TEST SCENARIO 4: INVENTORY MANAGEMENT
+================================================================================
+
+Update stock levels:
+"Add 25 more units of Organic Kale to our inventory"
+
+Expected: Increases stock from 50 to 75
+
+Check stock:
+"How many units of Organic Kale do we have in stock?"
+
+Expected: Shows current inventory level
+
+================================================================================
+TEST SCENARIO 5: BULK OPERATIONS
+================================================================================
+
+Import multiple products:
+"Bulk create these 3 bakery products for provider 'Green Valley Organics':
+1. Whole Wheat Bread - price $3.99, 30 units, tags: whole-grain, healthy
+2. Blueberry Muffins - price $2.49 each, 40 units, tags: baked-goods, fruit
+3. Gluten-Free Cookies - price $4.99, 25 units, tags: gluten-free, dessert"
+
+================================================================================
+TEST SCENARIO 6: ORDER PROCESSING
+================================================================================
+
+Create a customer order:
+"Create an order for customer user123 with these items:
+- 2 units of Organic Kale
+- 1 unit of Whole Wheat Bread
+- 3 units of Blueberry Muffins
+
+Use provider 'Green Valley Organics' for fulfillment"
+
+================================================================================
+TEST SCENARIO 7: AI-POWERED FEATURES
+================================================================================
+
+Smart product recommendations:
+"Find products similar to our Organic Kale for customers who like healthy eating"
+
+Category-based search:
+"Show me all organic vegetables we carry"
+
+Price-based filtering:
+"Find affordable healthy snacks under $5"
+
+================================================================================
+TEST SCENARIO 8: DATA ANALYTICS
+================================================================================
+
+Provider performance:
+"How many products does Green Valley Organics have?"
+
+Inventory status:
+"Which products are low on stock (under 20 units)?"
+
+Sales tracking:
+"Show me all pending orders for Green Valley Organics"
+
+================================================================================
+TEST SCENARIO 9: ADVANCED TESTING
+================================================================================
+
+Multi-provider search:
+"Find coffee products from all providers in our system"
+
+Complex queries:
+"I'm looking for fresh, organic breakfast items that are good for health and cost less than $8"
+
+================================================================================
+EXPECTED AGENT BEHAVIORS
+================================================================================
+
+The agent should:
+✅ Understand natural language commands
+✅ Create data in TURSO database
+✅ Perform semantic search using embeddings
+✅ Manage inventory and orders
+✅ Provide detailed, helpful responses
+✅ Handle errors gracefully
+✅ Confirm actions before major changes
+
+================================================================================
+SYSTEM FEATURES VALIDATED
+================================================================================
+
+✅ TURSO Database Integration
+✅ Vector Embeddings (Google 768-dim)
+✅ Semantic Search
+✅ Hybrid Text + Vector Search
+✅ Provider Management
+✅ Product Catalog Management
+✅ Inventory Control
+✅ Order Processing
+✅ Bulk Data Operations
+✅ AI-Powered Recommendations
+✅ Real-time Database Operations
+
+================================================================================
+QUICK START TEST SEQUENCE
+================================================================================
+
+1. "Create a provider called 'Sunshine Bakery' with email bakery@sunshine.com"
+
+2. "Create a product called 'Sourdough Bread' in Bakery category, price $6.99, 40 units stock, tags: artisan, fresh"
+
+3. "Find me some fresh baked bread products"
+
+4. "Add 20 more units of Sourdough Bread to inventory"
+
+5. "Create an order for customer john-doe with 2 Sourdough Bread for Sunshine Bakery"
+
+================================================================================
+SAMPLE INPUTS FOR TESTING
+===============================================================================
+
+Copy-paste these inputs directly into the agent to test functionality:
+
+PROVIDER CREATION:
+"Create a provider named 'Green Valley Organics' that specializes in organic produce. Contact email: info@greenvalley.com, phone: 555-0101, located at 123 Farm Road, Springfield"
+
+PRODUCT CREATION:
+"Create a product called 'Organic Kale' in the Vegetables category, priced at $4.99 with 50 units in stock. Add tags: organic, leafy-greens"
+"Create a product called 'Whole Wheat Bread' in the Bakery category, priced at $3.99 with 30 units in stock. Add tags: whole-grain, healthy"
+"Create a product called 'Blueberry Muffins' in the Bakery category, priced at $2.49 each with 40 units in stock. Add tags: baked-goods, fruit"
+
+SEARCH & DISCOVERY:
+"Find me some healthy, leafy green vegetables for salads"
+"Show me organic products under $10"
+"Find affordable healthy snacks under $5"
+
+INVENTORY MANAGEMENT:
+"Add 25 more units of Organic Kale to our inventory"
+"How many units of Organic Kale do we have in stock?"
+"Which products are low on stock (under 20 units)?"
+
+BULK OPERATIONS:
+"Bulk create these 3 bakery products for provider 'Green Valley Organics': 1. Whole Wheat Bread - price $3.99, 30 units, tags: whole-grain, healthy 2. Blueberry Muffins - price $2.49 each, 40 units, tags: baked-goods, fruit 3. Gluten-Free Cookies - price $4.99, 25 units, tags: gluten-free, dessert"
+
+ORDER PROCESSING:
+"Create an order for customer user123 with these items: - 2 units of Organic Kale - 1 unit of Whole Wheat Bread - 3 units of Blueberry Muffins Use provider 'Green Valley Organics' for fulfillment"
+
+===============================================================================
+END OF TEST SCENARIOS
+================================================================================
