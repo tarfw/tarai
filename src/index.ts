@@ -32,13 +32,16 @@ const logger = createPinoLogger({
 // Initialize database schema before starting
 async function initializeApp() {
 	try {
-		logger.info("Initializing Universal Commerce AI System...");
+		logger.info("Initializing Universal Commerce AI System with InstantDB...");
 
-		// Initialize commerce database
+		// Initialize vector embeddings table in LibSQL
 		const { initializeDatabase } = await import("./db/schema");
 		const { commerceDb } = await import("./db");
 		await initializeDatabase(commerceDb);
-		logger.info("✅ Commerce database initialized");
+		logger.info(
+			"✅ LibSQL database initialized for vector embeddings (for semantic search)",
+		);
+		logger.info("✅ InstantDB initialized for CRUD operations (real-time sync)");
 
 		// Configure persistent memory (LibSQL / SQLite)
 		const memory = new Memory({
@@ -51,52 +54,27 @@ async function initializeApp() {
 		// Commerce AI Agent - Universal Commerce AI System
 		const commerceAgent = new Agent({
 			name: "commerce-assistant",
-			instructions: `You are an intelligent commerce assistant for the Universal Commerce AI System. You help customers discover products, check availability, and complete purchases while assisting providers with inventory management, product creation, and data management.
+			instructions: `You are a commerce assistant that helps manage products, inventory, orders, and providers.
 
-CORE CAPABILITIES:
-- Product Discovery: Help customers find products across all providers using natural language search
-- Inventory Management: Check stock levels, update inventory, and manage stock
-- Order Processing: Guide customers through the purchase process and create orders
-- Product Management: Create, update, and manage product catalogs
-- Provider Management: Create and manage provider accounts
-- Data Operations: Bulk import products and manage commerce data
+CRITICAL RULES FOR CREATING PRODUCTS:
+1. Products REQUIRE a valid provider UUID (format: 550e8400-e29b-41d4-a716-446655440000)
+2. If user doesn't provide a providerId, you MUST either:
+   - Ask them which provider to use
+   - Ask them to create a new provider first
+   - Use createProviderTool to create one if they give you provider details
+3. NEVER call createProduct without a valid providerId parameter
 
-MODES OF OPERATION:
-1. DISCOVERY MODE: When customers are browsing/searching for products across all providers
-2. POS MODE: When assisting providers with their specific product inventory and sales
-3. ADMIN MODE: When providers need to manage their products, inventory, and business data
-4. CUSTOMER SERVICE: General assistance with orders, returns, and inquiries
+WORKFLOW:
+1. For new products: Create provider first → Get provider ID → Create product with that ID
+2. For searches: Use searchProducts or semanticSearch
+3. For inventory: Check before orders, update after restocking
+4. For orders: Verify inventory, get all required IDs (userId, providerId, productId)
 
-BEHAVIOR GUIDELINES:
-- Always be helpful, accurate, and professional
-- Provide clear, concise responses with relevant product information
-- Check inventory before recommending or processing orders
-- Explain any limitations or requirements clearly
-- Use the available tools to provide real-time information
-- For complex data operations, confirm actions before proceeding
-- Generate meaningful IDs and ensure data consistency
-- CRITICAL: When creating products, ALWAYS extract the exact parameters from the user's request. Never use example or default values.
-
-PARAMETER EXTRACTION RULES:
-- When a user says "Create a product called 'X' in the Y category, priced at Z with W units in stock"
-- Extract: name='X', category='Y', price=Z, quantity=W
-- For tags, look for phrases like "Add tags: tag1, tag2"
-- For providerId: Use from conversation context if available, otherwise use 'default_provider'
-- If providerId is not specified and no context exists, use 'default_provider'
-- Never substitute with hardcoded values like "cappuccino", "coffee", etc.
-
-AVAILABLE TOOLS:
-- searchProducts: Find products using hybrid text/semantic search
-- semanticSearch: Pure semantic search using vector similarity
-- getProductDetails: Get comprehensive product information
-- checkInventory: Verify stock availability for specific quantities
-- createOrder: Process customer orders and update inventory
-- createProduct: Create new products with inventory (REQUIRED: providerId, name, category, price, quantity. OPTIONAL: description, tags, variantName)
-- updateProduct: Modify existing product information (provide: productId and fields to update)
-- updateInventory: Manage stock levels (provide: productId, operation[add/subtract/set], quantity)
-- createProvider: Create new provider accounts (provide: name, optional: description, contactEmail, contactPhone, address)
-- bulkCreateProducts: Import multiple products at once (provide: providerId and array of products)
-- generateEmbeddings: Generate vector embeddings for products (admin)`,
+PARAMETERS:
+- Always extract exact UUIDs from conversation context
+- productId, providerId, userId must be valid UUIDs
+- Price and quantity must be positive numbers
+- Ask for clarification if any required parameter is missing`,
 			model: groq("openai/gpt-oss-20b"),
 			tools: [
 				searchProductsTool,

@@ -1,139 +1,24 @@
-import { createClient } from "@libsql/client";
-import { initializeDatabase } from "./db/schema";
+/**
+ * Unified Database Interface
+ * - InstantDB: CRUD operations (products, inventory, orders, providers)
+ * - LibSQL/Turso: Vector embeddings and semantic search
+ */
 
-// Commerce database connection (Turso)
+import { createClient } from "@libsql/client";
+import { InstantCommerceDB } from "./db/instantdb-operations";
+
+// LibSQL client for vector embeddings only
 export const commerceDb = createClient({
 	url: process.env.TURSO_DATABASE_URL || "file:./.voltagent/commerce.db",
 	authToken: process.env.TURSO_AUTH_TOKEN,
 });
 
-// Database initialization will be handled by the application startup
+console.log("✅ LibSQL client initialized for vector embeddings");
 
-// Helper functions for commerce operations
-export class CommerceDB {
-	static async searchProducts(query: string, providerId?: string, limit = 20) {
-		// For discovery mode - cloud search
-		if (!providerId) {
-			const results = await commerceDb.execute({
-				sql: `
-          SELECT p.*, pr.name as provider_name, i.price, i.quantity, i.instock
-          FROM products p
-          JOIN providers pr ON pr.id = p.providerid
-          LEFT JOIN inventoryitems i ON i.productid = p.id
-          WHERE p.available = 1 AND p.name LIKE ?
-          ORDER BY p.name
-          LIMIT ?
-        `,
-				args: [`%${query}%`, limit],
-			});
-			return results.rows;
-		}
-
-		// For POS mode - local provider search
-		const results = await commerceDb.execute({
-			sql: `
-        SELECT p.*, i.price, i.quantity, i.instock
-        FROM products p
-        LEFT JOIN inventoryitems i ON i.productid = p.id
-        WHERE p.providerid = ? AND p.available = 1 AND p.name LIKE ?
-        ORDER BY p.name
-        LIMIT ?
-      `,
-			args: [providerId, `%${query}%`, limit],
-		});
-		return results.rows;
-	}
-
-	static async getProductDetails(productId: string) {
-		const result = await commerceDb.execute({
-			sql: `
-        SELECT p.*, pr.name as provider_name, i.price, i.quantity, i.instock
-        FROM products p
-        JOIN providers pr ON pr.id = p.providerid
-        LEFT JOIN inventoryitems i ON i.productid = p.id
-        WHERE p.id = ?
-      `,
-			args: [productId],
-		});
-		return result.rows[0];
-	}
-
-	static async checkInventory(productId: string, quantity: number) {
-		const result = await commerceDb.execute({
-			sql: `
-        SELECT quantity, instock FROM inventoryitems
-        WHERE productid = ? AND instock = 1
-      `,
-			args: [productId],
-		});
-
-		if (result.rows.length === 0) return false;
-
-		const available = result.rows[0].quantity as number;
-		return available >= quantity;
-	}
-
-	static async getInventory(productId: string) {
-		const result = await commerceDb.execute({
-			sql: `SELECT * FROM inventoryitems WHERE productid = ?`,
-			args: [productId],
-		});
-		return result.rows[0];
-	}
-
-	static async createOrder(orderData: {
-		ordernumber: string;
-		userid: string;
-		providerid: string;
-		items: any[];
-		total: number;
-	}) {
-		const { ordernumber, userid, providerid, items, total } = orderData;
-
-		const subtotal = items.reduce(
-			(sum, item) => sum + item.price * item.quantity,
-			0,
-		);
-		const tax = subtotal * 0.18; // 18% tax
-		const discount = 0;
-
-		await commerceDb.execute({
-			sql: `
-        INSERT INTO orders (
-          id, ordernumber, userid, providerid, items,
-          subtotal, tax, discount, total, paid, completed,
-          created, updated
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?)
-      `,
-			args: [
-				`${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-				ordernumber,
-				userid,
-				providerid,
-				JSON.stringify(items),
-				subtotal,
-				tax,
-				discount,
-				total,
-				Date.now(),
-				Date.now(),
-			],
-		});
-	}
-
-	static async updateInventory(productId: string, quantityChange: number) {
-		await commerceDb.execute({
-			sql: `
-        UPDATE inventoryitems
-        SET quantity = quantity + ?, updated = ?
-        WHERE productid = ?
-      `,
-			args: [quantityChange, Date.now(), productId],
-		});
-	}
-
-	// Vector Operations
-
+/**
+ * Vector Embeddings Operations (LibSQL/Turso only)
+ */
+export class VectorDB {
 	/**
 	 * Store embedding for a product
 	 */
@@ -167,8 +52,6 @@ export class CommerceDB {
 				Date.now(),
 			],
 		});
-
-		// Note: FTS table removed to avoid Turso web interface issues
 	}
 
 	/**
@@ -187,137 +70,147 @@ export class CommerceDB {
 
 		let sql = `
       SELECT
-        p.*,
-        pr.name as provider_name,
-        i.price,
-        i.quantity,
-        i.instock,
+        e.productid as id,
+        e.content,
         vector_distance_cos(e.embedding, ?) as similarity
-      FROM products p
-      JOIN providers pr ON pr.id = p.providerid
-      JOIN inventoryitems i ON i.productid = p.id
-      JOIN embeddings e ON e.productid = p.id
-      WHERE p.available = 1 AND e.content_type = 'product'
+      FROM embeddings e
+      WHERE e.content_type = 'product'
     `;
 
 		const args: (Buffer | string | number)[] = [embeddingBuffer];
 
-		if (providerId) {
-			sql += ` AND p.providerid = ?`;
-			args.push(providerId);
-		}
-
 		sql += `
-    ORDER BY similarity DESC
-    LIMIT ?
+      ORDER BY similarity DESC
+      LIMIT ?
     `;
 
-		args.push(limit);
+		args.push(limit * 2); // Get more results to filter
 
-		// Execute query and filter results in JavaScript
 		const results = await commerceDb.execute({
 			sql,
 			args,
 		});
 
-		// Filter by similarity threshold in JavaScript
+		// Filter by similarity threshold
 		const filteredRows = results.rows.filter((row: any) => {
 			const similarity = row.similarity;
 			return similarity !== null && similarity > similarityThreshold;
 		});
 
-		return filteredRows.map((row) => ({
-			id: row.id,
-			name: row.name,
-			description: row.description,
-			category: row.category,
-			providerId: row.providerid,
-			providerName: row.provider_name,
-			price: row.price,
-			quantity: row.quantity,
-			inStock: row.instock === 1,
-			similarity: row.similarity,
-		}));
+		// Get product IDs from vector search
+		const productIds = filteredRows.map((row) => row.id as string);
+		if (productIds.length === 0) return [];
+
+		// Fetch full product details from InstantDB
+		const products = await InstantCommerceDB.getProductsByIds(productIds);
+
+		// Apply provider filter if specified
+		const filteredProducts = providerId
+			? products.filter((p) => p.providerId === providerId)
+			: products;
+
+		// Add similarity scores and sort
+		return filteredProducts
+			.map((product) => {
+				const vectorRow = filteredRows.find((row) => row.id === product.id);
+				return {
+					...product,
+					similarity: vectorRow?.similarity || 0,
+				};
+			})
+			.sort((a, b) => b.similarity - a.similarity)
+			.slice(0, limit);
 	}
 
 	/**
 	 * Hybrid search combining text and vector similarity
-	 * Simplified version without FTS virtual table
 	 */
 	static async hybridSearchProducts(
 		query: string,
 		queryEmbedding: Float32Array,
 		providerId?: string,
 		limit = 20,
-		textWeight = 0.3,
-		vectorWeight = 0.7,
+		textWeight = 0.4,
+		vectorWeight = 0.6,
 	) {
-		const embeddingBuffer = Buffer.from(
-			queryEmbedding.buffer.slice(0, queryEmbedding.byteLength),
+		// Get vector search results
+		const vectorResults = await this.vectorSearchProducts(
+			queryEmbedding,
+			undefined,
+			limit * 2,
+			0.5, // Lower threshold for hybrid
 		);
 
-		let sql = `
-      SELECT
-        p.*,
-        pr.name as provider_name,
-        i.price,
-        i.quantity,
-        i.instock,
-        vector_distance_cos(e.embedding, ?) as vector_similarity,
-        CASE
-          WHEN LOWER(p.name) LIKE LOWER(?) THEN 0.8
-          WHEN LOWER(p.description) LIKE LOWER(?) THEN 0.6
-          WHEN LOWER(p.category) LIKE LOWER(?) THEN 0.4
-          ELSE 0.1
-        END as text_score
-      FROM products p
-      JOIN providers pr ON pr.id = p.providerid
-      JOIN inventoryitems i ON i.productid = p.id
-      JOIN embeddings e ON e.productid = p.id
-      WHERE p.available = 1 AND e.content_type = 'product'
-    `;
+		// Get text search results from InstantDB
+		const textResults = await InstantCommerceDB.searchProducts(
+			query,
+			providerId,
+			limit * 2,
+		);
 
-		const searchPattern = `%${query}%`;
-		const args: (Buffer | string | number)[] = [
-			embeddingBuffer,
-			searchPattern,
-			searchPattern,
-			searchPattern,
-		];
+		// Combine and score results
+		const productScores = new Map<
+			string,
+			{
+				product: any;
+				vectorScore: number;
+				textScore: number;
+			}
+		>();
 
-		if (providerId) {
-			sql += ` AND p.providerid = ?`;
-			args.push(providerId);
+		// Add vector results
+		for (const result of vectorResults) {
+			productScores.set(result.id, {
+				product: result,
+				vectorScore: result.similarity || 0,
+				textScore: 0,
+			});
 		}
 
-		sql += `
-      ORDER BY (? * (1 - vector_similarity) + ? * text_score) DESC
-      LIMIT ?
-    `;
+		// Add text results and calculate text scores
+		for (const result of textResults) {
+			const existing = productScores.get(result.id);
+			const nameLower = result.name.toLowerCase();
+			const queryLower = query.toLowerCase();
 
-		args.push(vectorWeight, textWeight, limit);
+			// Calculate text score based on match quality
+			let textScore = 0;
+			if (nameLower.includes(queryLower)) {
+				textScore = 0.8;
+			} else if (
+				result.description?.toLowerCase().includes(queryLower)
+			) {
+				textScore = 0.6;
+			} else if (result.category?.toLowerCase().includes(queryLower)) {
+				textScore = 0.4;
+			} else {
+				textScore = 0.2;
+			}
 
-		const results = await commerceDb.execute({
-			sql,
-			args,
-		});
+			if (existing) {
+				existing.textScore = textScore;
+			} else {
+				productScores.set(result.id, {
+					product: result,
+					vectorScore: 0,
+					textScore,
+				});
+			}
+		}
 
-		return results.rows.map((row) => ({
-			id: row.id,
-			name: row.name,
-			description: row.description,
-			category: row.category,
-			providerId: row.providerid,
-			providerName: row.provider_name,
-			price: row.price,
-			quantity: row.quantity,
-			inStock: row.instock === 1,
-			vectorSimilarity: row.vector_similarity,
-			textScore: row.text_score,
-			combinedScore:
-				vectorWeight * (1 - (row.vector_similarity as number)) +
-				textWeight * (row.text_score as number),
-		}));
+		// Calculate combined scores and sort
+		const scoredProducts = Array.from(productScores.values())
+			.map(({ product, vectorScore, textScore }) => ({
+				...product,
+				vectorSimilarity: vectorScore,
+				textScore,
+				combinedScore: vectorWeight * vectorScore + textWeight * textScore,
+			}))
+			.filter((p) => !providerId || p.providerId === providerId)
+			.sort((a, b) => b.combinedScore - a.combinedScore)
+			.slice(0, limit);
+
+		return scoredProducts;
 	}
 
 	/**
@@ -345,19 +238,25 @@ export class CommerceDB {
 	static async generateProductEmbeddings(
 		embedFunction: (text: string) => Promise<Float32Array>,
 	) {
-		const products = await commerceDb.execute(`
-      SELECT p.id, p.name, p.description, p.category
-      FROM products p
-      LEFT JOIN embeddings e ON e.productid = p.id AND e.content_type = 'product'
-      WHERE e.id IS NULL AND p.available = 1
-    `);
+		// Get all products from InstantDB
+		const products = await InstantCommerceDB.getAllProducts();
 
 		console.log(
-			`Generating embeddings for ${products.rows.length} products...`,
+			`Generating embeddings for ${products.length} products from InstantDB...`,
 		);
 
-		for (const product of products.rows) {
+		let generated = 0;
+		let skipped = 0;
+
+		for (const product of products) {
 			try {
+				// Check if embedding already exists
+				const existing = await this.getProductEmbeddings(product.id as string);
+				if (existing.length > 0) {
+					skipped++;
+					continue;
+				}
+
 				const content =
 					`${product.name} ${product.description || ""} ${product.category || ""}`.trim();
 				const embedding = await embedFunction(content);
@@ -369,6 +268,7 @@ export class CommerceDB {
 					"product",
 				);
 
+				generated++;
 				console.log(`✓ Generated embedding for product: ${product.name}`);
 			} catch (error) {
 				console.error(
@@ -378,109 +278,170 @@ export class CommerceDB {
 			}
 		}
 
-		console.log("Embedding generation complete");
-	}
-
-	/**
-	 * Create sample data for testing
-	 */
-	static async createSampleData() {
-		const sampleProducts = [
-			{
-				id: "prod-001",
-				providerId: "provider-001",
-				name: "Artisan Sourdough Bread",
-				description:
-					"Freshly baked sourdough bread made with organic flour and traditional methods",
-				category: "Bakery",
-				price: 8.99,
-				quantity: 25,
-			},
-			{
-				id: "prod-002",
-				providerId: "provider-001",
-				name: "Organic Free-Range Eggs",
-				description: "Farm fresh eggs from free-range chickens, organic feed",
-				category: "Dairy & Eggs",
-				price: 6.49,
-				quantity: 50,
-			},
-			{
-				id: "prod-003",
-				providerId: "provider-002",
-				name: "Cold Brew Coffee",
-				description:
-					"Smooth, rich cold brew coffee made from single-origin beans",
-				category: "Beverages",
-				price: 4.99,
-				quantity: 30,
-			},
-		];
-
-		// Insert sample provider
-		await commerceDb.execute({
-			sql: `
-        INSERT OR IGNORE INTO providers (id, name, description, created, updated)
-        VALUES (?, ?, ?, ?, ?)
-      `,
-			args: [
-				"provider-001",
-				"Local Bakery Co.",
-				"Artisan bakery specializing in sourdough",
-				Date.now(),
-				Date.now(),
-			],
-		});
-
-		await commerceDb.execute({
-			sql: `
-        INSERT OR IGNORE INTO providers (id, name, description, created, updated)
-        VALUES (?, ?, ?, ?, ?)
-      `,
-			args: [
-				"provider-002",
-				"Coffee Corner",
-				"Specialty coffee roaster",
-				Date.now(),
-				Date.now(),
-			],
-		});
-
-		// Insert sample products
-		for (const product of sampleProducts) {
-			await commerceDb.execute({
-				sql: `
-          INSERT OR IGNORE INTO products (id, providerid, name, description, category, available, created, updated)
-          VALUES (?, ?, ?, ?, ?, 1, ?, ?)
-        `,
-				args: [
-					product.id,
-					product.providerId,
-					product.name,
-					product.description,
-					product.category,
-					Date.now(),
-					Date.now(),
-				],
-			});
-
-			// Insert inventory
-			await commerceDb.execute({
-				sql: `
-          INSERT OR IGNORE INTO inventoryitems (id, productid, price, quantity, instock, created, updated)
-          VALUES (?, ?, ?, ?, 1, ?, ?)
-        `,
-				args: [
-					`inv-${product.id}`,
-					product.id,
-					product.price,
-					product.quantity,
-					Date.now(),
-					Date.now(),
-				],
-			});
-		}
-
-		console.log("Sample data created successfully");
+		console.log(
+			`Embedding generation complete: ${generated} generated, ${skipped} skipped`,
+		);
 	}
 }
+
+/**
+ * Unified CommerceDB interface
+ * Routes operations to appropriate database:
+ * - CRUD operations → InstantDB
+ * - Vector/Semantic search → LibSQL
+ */
+export class CommerceDB {
+	// === CRUD Operations (InstantDB) ===
+
+	static async createProvider(data: {
+		name: string;
+		description?: string;
+		contactEmail?: string;
+		contactPhone?: string;
+		address?: string;
+	}) {
+		return InstantCommerceDB.createProvider(data);
+	}
+
+	static async createProduct(data: {
+		providerId: string;
+		name: string;
+		description?: string;
+		category: string;
+		tags?: string[];
+		price: number;
+		quantity: number;
+		variantName?: string;
+	}) {
+		return InstantCommerceDB.createProduct(data);
+	}
+
+	static async searchProducts(query: string, providerId?: string, limit = 20) {
+		return InstantCommerceDB.searchProducts(query, providerId, limit);
+	}
+
+	static async getProductDetails(productId: string) {
+		return InstantCommerceDB.getProductDetails(productId);
+	}
+
+	static async updateProduct(
+		productId: string,
+		updates: {
+			name?: string;
+			description?: string;
+			category?: string;
+			tags?: string[];
+			available?: boolean;
+		},
+	) {
+		return InstantCommerceDB.updateProduct(productId, updates);
+	}
+
+	static async getInventory(productId: string) {
+		return InstantCommerceDB.getInventory(productId);
+	}
+
+	static async checkInventory(productId: string, quantity: number) {
+		return InstantCommerceDB.checkInventory(productId, quantity);
+	}
+
+	static async updateInventory(productId: string, quantityChange: number) {
+		return InstantCommerceDB.updateInventory(productId, quantityChange);
+	}
+
+	static async createOrder(orderData: {
+		ordernumber: string;
+		userid: string;
+		providerid: string;
+		items: any[];
+		total: number;
+	}) {
+		return InstantCommerceDB.createOrder(orderData);
+	}
+
+	static async getOrder(orderNumber: string) {
+		return InstantCommerceDB.getOrder(orderNumber);
+	}
+
+	static async getAllProducts(limit = 1000) {
+		return InstantCommerceDB.getAllProducts(limit);
+	}
+
+	static async bulkCreateProducts(
+		providerId: string,
+		products: Array<{
+			name: string;
+			description?: string;
+			category: string;
+			tags?: string[];
+			price: number;
+			quantity: number;
+			variantName?: string;
+		}>,
+	) {
+		return InstantCommerceDB.bulkCreateProducts(providerId, products);
+	}
+
+	// === Vector Operations (LibSQL) ===
+
+	static async storeEmbedding(
+		productId: string,
+		embedding: Float32Array,
+		content: string,
+		contentType: "product" | "category" | "tag" = "product",
+		model = "text-embedding-004",
+	) {
+		return VectorDB.storeEmbedding(
+			productId,
+			embedding,
+			content,
+			contentType,
+			model,
+		);
+	}
+
+	static async vectorSearchProducts(
+		queryEmbedding: Float32Array,
+		providerId?: string,
+		limit = 20,
+		similarityThreshold = 0.7,
+	) {
+		return VectorDB.vectorSearchProducts(
+			queryEmbedding,
+			providerId,
+			limit,
+			similarityThreshold,
+		);
+	}
+
+	static async hybridSearchProducts(
+		query: string,
+		queryEmbedding: Float32Array,
+		providerId?: string,
+		limit = 20,
+		textWeight = 0.4,
+		vectorWeight = 0.6,
+	) {
+		return VectorDB.hybridSearchProducts(
+			query,
+			queryEmbedding,
+			providerId,
+			limit,
+			textWeight,
+			vectorWeight,
+		);
+	}
+
+	static async getProductEmbeddings(productId: string) {
+		return VectorDB.getProductEmbeddings(productId);
+	}
+
+	static async generateProductEmbeddings(
+		embedFunction: (text: string) => Promise<Float32Array>,
+	) {
+		return VectorDB.generateProductEmbeddings(embedFunction);
+	}
+}
+
+// Export InstantCommerceDB (VectorDB and CommerceDB are already exported above)
+export { InstantCommerceDB };

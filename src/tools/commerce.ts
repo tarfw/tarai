@@ -1,6 +1,6 @@
 import { createTool } from "@voltagent/core";
 import { z } from "zod";
-import { CommerceDB, commerceDb } from "../db";
+import { CommerceDB } from "../db";
 import { generateEmbedding } from "../utils/embeddings";
 
 /**
@@ -309,87 +309,23 @@ export const createProductTool = createTool({
 		variantName,
 	}) => {
 		try {
-			// Check if provider exists, create default if not
-			try {
-				const providerCheck = await commerceDb.execute({
-					sql: "SELECT id FROM providers WHERE id = ?",
-					args: [providerId],
-				});
-
-				if (providerCheck.rows.length === 0) {
-					// Create a default provider for testing
-					console.log(
-						`Provider ${providerId} not found, creating default provider...`,
-					);
-					await commerceDb.execute({
-						sql: `
-              INSERT OR IGNORE INTO providers (id, name, description, active, created, updated)
-              VALUES (?, ?, ?, 1, ?, ?)
-            `,
-						args: [
-							providerId,
-							"Default Provider",
-							"Auto-created provider for testing",
-							Date.now(),
-							Date.now(),
-						],
-					});
-					console.log(`Created default provider: ${providerId}`);
-				}
-			} catch (error) {
-				console.error("Error checking/creating provider:", error);
-				return {
-					success: false,
-					message: "Failed to validate provider",
-					error: error instanceof Error ? error.message : "Unknown error",
-				};
-			}
-
-			// Note: Allowing duplicate product names for now to avoid blocking legitimate requests
-
-			// Generate product ID
-			const productId = `prod-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
-
-			await commerceDb.execute({
-				sql: `
-          INSERT INTO products (id, providerid, name, description, category, tags, available, created, updated)
-          VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
-        `,
-				args: [
-					productId,
-					providerId,
-					name,
-					description || "",
-					category,
-					tags ? JSON.stringify(tags) : null,
-					Date.now(),
-					Date.now(),
-				],
-			});
-
-			// Insert inventory
-			const inventoryId = `inv-${productId}`;
-			await commerceDb.execute({
-				sql: `
-          INSERT INTO inventoryitems (id, productid, variant_name, price, quantity, instock, created, updated)
-          VALUES (?, ?, ?, ?, ?, 1, ?, ?)
-        `,
-				args: [
-					inventoryId,
-					productId,
-					variantName || null,
-					price,
-					quantity,
-					Date.now(),
-					Date.now(),
-				],
+			// Create product using unified CommerceDB (InstantDB)
+			const result = await CommerceDB.createProduct({
+				providerId,
+				name,
+				description,
+				category,
+				tags,
+				price,
+				quantity,
+				variantName,
 			});
 
 			return {
 				success: true,
 				message: `Product "${name}" created successfully`,
 				product: {
-					id: productId,
+					id: result.productId,
 					providerId,
 					name,
 					description,
@@ -476,13 +412,12 @@ export const updateProductTool = createTool({
 				};
 			}
 
-			updates.push("updated = ?");
-			args.push(Date.now());
-			args.push(productId);
-
-			await commerceDb.execute({
-				sql: `UPDATE products SET ${updates.join(", ")} WHERE id = ?`,
-				args,
+			await CommerceDB.updateProduct(productId, {
+				name,
+				description,
+				category,
+				tags,
+				available,
 			});
 
 			return {
@@ -599,23 +534,12 @@ export const createProviderTool = createTool({
 		address,
 	}) => {
 		try {
-			const providerId = `prov-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
-
-			await commerceDb.execute({
-				sql: `
-          INSERT INTO providers (id, name, description, contact_email, contact_phone, address, active, created, updated)
-          VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
-        `,
-				args: [
-					providerId,
-					name,
-					description || null,
-					contactEmail || null,
-					contactPhone || null,
-					address || null,
-					Date.now(),
-					Date.now(),
-				],
+			const providerId = await CommerceDB.createProvider({
+				name,
+				description,
+				contactEmail,
+				contactPhone,
+				address,
 			});
 
 			return {
@@ -666,66 +590,13 @@ export const bulkCreateProductsTool = createTool({
 	}),
 	execute: async ({ providerId, products }) => {
 		try {
-			const results = [];
-			let successCount = 0;
-			let errorCount = 0;
+			const results = await CommerceDB.bulkCreateProducts(
+				providerId,
+				products,
+			);
 
-			for (const product of products) {
-				try {
-					// Generate product ID
-					const productId = `prod-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-
-					// Insert product
-					await commerceDb.execute({
-						sql: `
-              INSERT INTO products (id, providerid, name, description, category, tags, available, created, updated)
-              VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
-            `,
-						args: [
-							productId,
-							providerId,
-							product.name,
-							product.description || "",
-							product.category,
-							product.tags ? JSON.stringify(product.tags) : null,
-							Date.now(),
-							Date.now(),
-						],
-					});
-
-					// Insert inventory
-					const inventoryId = `inv-${productId}`;
-					await commerceDb.execute({
-						sql: `
-              INSERT INTO inventoryitems (id, productid, variant_name, price, quantity, instock, created, updated)
-              VALUES (?, ?, ?, ?, ?, 1, ?, ?)
-            `,
-						args: [
-							inventoryId,
-							productId,
-							product.variantName || null,
-							product.price,
-							product.quantity,
-							Date.now(),
-							Date.now(),
-						],
-					});
-
-					results.push({
-						success: true,
-						productId,
-						name: product.name,
-					});
-					successCount++;
-				} catch (error) {
-					results.push({
-						success: false,
-						name: product.name,
-						error: error instanceof Error ? error.message : "Unknown error",
-					});
-					errorCount++;
-				}
-			}
+			const successCount = results.filter((r) => r.success).length;
+			const errorCount = results.filter((r) => !r.success).length;
 
 			return {
 				success: true,
