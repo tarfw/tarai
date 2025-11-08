@@ -1,798 +1,2239 @@
 import { createTool } from "@voltagent/core";
 import { z } from "zod";
-import { CommerceDB } from "../db";
-import { generateEmbedding } from "../utils/embeddings";
+import { idb, id, tx } from "../db/instantdb-client";
 
 /**
- * Tool for searching products in the commerce system
- * Supports both POS mode (provider-specific) and Discovery mode (all providers)
+ * DOMAIN-CLUSTERED COMMERCE TOOLS
+ * Token-efficient tool organization with action-based routing
+ * Aligned with InstantDB schema (nodes, products, instances, etc.)
  */
-export const searchProductsTool = createTool({
-	name: "searchProducts",
+
+// ============================================
+// 1. PRODUCT TOOL (Product & Instance Management)
+// ============================================
+
+export const productTool = createTool({
+	name: "product",
 	description:
-		"Search for products in the commerce system. Use this to find products by name or category. For POS mode, specify providerId to search only that provider's products. Uses intelligent semantic search when available.",
-	parameters: z.object({
-		query: z
-			.string()
-			.describe("Search query (product name, category, or keywords)"),
-		providerId: z
-			.string()
-			.optional()
-			.describe(
-				"Provider ID for POS mode search. If not provided, searches across all providers.",
-			),
-		limit: z
-			.number()
-			.optional()
-			.default(20)
-			.describe("Maximum number of results to return"),
-		useSemantic: z
-			.boolean()
-			.optional()
-			.default(true)
-			.describe("Whether to use semantic/vector search for better results"),
-	}),
-	execute: async ({ query, providerId, limit = 20, useSemantic = true }) => {
+		"Manage products and instances (variants, inventory, unique items). Actions: search, create, update, getDetails, createInstance, updateInstance, getInstances, checkAvailability. For 'create' action, required: action, nodeid, name, category, price",
+	parameters: z
+		.object({
+			action: z.enum([
+				"search",
+				"create",
+				"update",
+				"getDetails",
+				"createInstance",
+				"updateInstance",
+				"getInstances",
+				"checkAvailability",
+			]),
+			// Product fields
+			productId: z.string().optional(),
+			nodeid: z.string().optional(),
+			name: z.string().optional(),
+			desc: z.string().optional(),
+			category: z.string().optional(),
+			price: z.number().optional(),
+			stock: z.number().optional(),
+			currency: z.string().optional(),
+			query: z.string().optional(),
+			limit: z.number().optional(),
+			// Instance fields
+			instanceId: z.string().optional(),
+			instanceName: z.string().optional(),
+			instanceType: z
+				.enum(["variant", "inventory", "capacity", "asset", "unique"])
+				.optional(),
+			qty: z.number().optional(),
+			attrs: z.record(z.any()).optional(),
+			priceadd: z.number().optional(),
+		})
+		.strict(),
+	execute: async ({ action, ...params }) => {
 		try {
-			let products: any[] = [];
+			switch (action) {
+				case "search": {
+					const { query, nodeid, limit = 20 } = params;
+					const whereClause: any = {};
 
-			// Try hybrid/vector search first if enabled
-			if (useSemantic) {
-				try {
-					const queryEmbedding = await generateEmbedding(query);
-					const vectorResults = await CommerceDB.hybridSearchProducts(
-						query,
-						queryEmbedding,
-						providerId,
-						limit,
-					);
+					if (query) {
+						whereClause.name = { $ilike: `%${query}%` };
+					}
+					if (nodeid) {
+						whereClause.nodeid = nodeid;
+					}
 
-					if (vectorResults.length > 0) {
-						products = vectorResults.map((row) => ({
-							id: row.id,
-							name: row.name,
-							description: row.description,
-							category: row.category,
-							providerId: row.providerId,
-							providerName: row.providerName,
-							price: row.price,
-							quantity: row.quantity,
-							inStock: row.inStock,
-							searchScore: row.combinedScore,
-							searchType: "semantic",
-						}));
+					const result = await idb.query({
+						products: {
+							$: { where: whereClause, limit },
+							node: {},
+							instances: {},
+						},
+					});
 
+					const products = (result.products || []).map((p: any) => ({
+						id: p.id,
+						name: p.name,
+						desc: p.desc,
+						category: p.category,
+						price: p.price,
+						stock: p.stock,
+						instock: p.instock,
+						nodeid: p.node?.id,
+						nodeName: p.node?.name,
+						instanceCount: p.instances?.length || 0,
+					}));
+
+					return {
+						success: true,
+						message: `Found ${products.length} products`,
+						products,
+					};
+				}
+
+				case "create": {
+					const {
+						nodeid,
+						name,
+						desc,
+						category,
+						price,
+						stock = 0,
+						currency = "INR",
+					} = params;
+
+					if (!nodeid || !name || !category || !price) {
 						return {
-							success: true,
-							message: `Found ${products.length} products using semantic search for "${query}"`,
-							products,
-							searchType: "semantic",
+							success: false,
+							message: "Missing required fields: nodeid, name, category, price",
 						};
 					}
-				} catch (error) {
-					console.warn(
-						"Semantic search failed, falling back to text search:",
-						error,
-					);
+
+					const productId = id();
+					await idb.transact([
+						tx.products[productId]
+							.update({
+								name,
+								desc: desc || "",
+								category,
+								price,
+								stock,
+								currency,
+								instock: stock > 0,
+								active: true,
+								featured: false,
+								createdat: Date.now(),
+								updatedat: Date.now(),
+							})
+							.link({ node: nodeid }),
+					]);
+
+					return {
+						success: true,
+						message: `Product "${name}" created successfully`,
+						productId,
+					};
 				}
+
+				case "update": {
+					const { productId, name, desc, category, price, stock } = params;
+
+					if (!productId) {
+						return { success: false, message: "productId is required" };
+					}
+
+					const updateData: any = { updatedat: Date.now() };
+					if (name !== undefined) updateData.name = name;
+					if (desc !== undefined) updateData.desc = desc;
+					if (category !== undefined) updateData.category = category;
+					if (price !== undefined) updateData.price = price;
+					if (stock !== undefined) {
+						updateData.stock = stock;
+						updateData.instock = stock > 0;
+					}
+
+					await idb.transact([tx.products[productId].update(updateData)]);
+
+					return {
+						success: true,
+						message: `Product "${productId}" updated successfully`,
+					};
+				}
+
+				case "getDetails": {
+					const { productId } = params;
+
+					if (!productId) {
+						return { success: false, message: "productId is required" };
+					}
+
+					const result = await idb.query({
+						products: {
+							$: { where: { id: productId } },
+							node: {},
+							instances: {},
+						},
+					});
+
+					const product = result.products?.[0];
+					if (!product) {
+						return {
+							success: false,
+							message: `Product "${productId}" not found`,
+						};
+					}
+
+					return {
+						success: true,
+						product: {
+							id: product.id,
+							name: product.name,
+							desc: product.desc,
+							category: product.category,
+							price: product.price,
+							stock: product.stock,
+							instock: product.instock,
+							currency: product.currency,
+							nodeid: product.node?.id,
+							nodeName: product.node?.name,
+							instances: product.instances || [],
+						},
+					};
+				}
+
+				case "createInstance": {
+					const {
+						productId,
+						nodeid,
+						instanceName,
+						instanceType,
+						qty = 0,
+						attrs,
+						priceadd = 0,
+					} = params;
+
+					if (!productId || !nodeid || !instanceName || !instanceType) {
+						return {
+							success: false,
+							message:
+								"Missing required fields: productId, nodeid, instanceName, instanceType",
+						};
+					}
+
+					const instanceId = id();
+					await idb.transact([
+						tx.instances[instanceId]
+							.update({
+								name: instanceName,
+								instancetype: instanceType,
+								qty,
+								available: qty,
+								reserved: 0,
+								attrs: attrs || {},
+								priceadd,
+								status: "available",
+								active: true,
+								createdat: Date.now(),
+								updatedat: Date.now(),
+							})
+							.link({ product: productId, node: nodeid }),
+					]);
+
+					return {
+						success: true,
+						message: `Instance "${instanceName}" created successfully`,
+						instanceId,
+					};
+				}
+
+				case "updateInstance": {
+					const { instanceId, qty, status, attrs } = params;
+
+					if (!instanceId) {
+						return { success: false, message: "instanceId is required" };
+					}
+
+					const updateData: any = { updatedat: Date.now() };
+					if (qty !== undefined) {
+						updateData.qty = qty;
+						updateData.available = qty;
+					}
+					if (status !== undefined) updateData.status = status;
+					if (attrs !== undefined) updateData.attrs = attrs;
+
+					await idb.transact([tx.instances[instanceId].update(updateData)]);
+
+					return {
+						success: true,
+						message: `Instance "${instanceId}" updated successfully`,
+					};
+				}
+
+				case "getInstances": {
+					const { productId } = params;
+
+					if (!productId) {
+						return { success: false, message: "productId is required" };
+					}
+
+					const result = await idb.query({
+						instances: {
+							$: { where: { "product.id": productId } },
+							product: {},
+							node: {},
+						},
+					});
+
+					return {
+						success: true,
+						instances: result.instances || [],
+					};
+				}
+
+				case "checkAvailability": {
+					const { instanceId, qty = 1 } = params;
+
+					if (!instanceId) {
+						return { success: false, message: "instanceId is required" };
+					}
+
+					const result = await idb.query({
+						instances: {
+							$: { where: { id: instanceId } },
+						},
+					});
+
+					const instance = result.instances?.[0];
+					if (!instance) {
+						return {
+							success: false,
+							message: `Instance "${instanceId}" not found`,
+						};
+					}
+
+					const available = instance.available >= qty;
+
+					return {
+						success: true,
+						available,
+						currentQty: instance.available,
+						requestedQty: qty,
+					};
+				}
+
+				default:
+					return { success: false, message: `Unknown action: ${action}` };
 			}
-
-			// Fallback to traditional text search
-			const results = await CommerceDB.searchProducts(query, providerId, limit);
-
-			if (results.length === 0) {
-				return {
-					success: false,
-					message: `No products found matching "${query}"`,
-					products: [],
-					searchType: "text",
-				};
-			}
-
-			products = results.map((row) => ({
-				id: row.id,
-				name: row.name,
-				description: row.description,
-				category: row.category,
-				providerId: row.providerid,
-				providerName: row.provider_name,
-				price: row.price,
-				quantity: row.quantity,
-				inStock: row.instock === 1,
-				searchType: "text",
-			}));
-
-			return {
-				success: true,
-				message: `Found ${products.length} products matching "${query}"`,
-				products,
-				searchType: "text",
-			};
 		} catch (error) {
-			console.error("Error searching products:", error);
+			console.error("Product tool error:", error);
 			return {
 				success: false,
-				message: "Failed to search products",
-				error: error instanceof Error ? error.message : "Unknown error",
-				searchType: "error",
-			};
-		}
-	},
-});
-
-/**
- * Tool for semantic/vector search of products
- */
-export const semanticSearchTool = createTool({
-	name: "semanticSearch",
-	description:
-		"Perform semantic search for products using natural language understanding. Better for finding products by description or concept rather than exact keywords.",
-	parameters: z.object({
-		query: z
-			.string()
-			.describe(
-				"Natural language description of what you're looking for (e.g., 'fresh baked bread', 'healthy breakfast items', 'coffee drinks')",
-			),
-		providerId: z
-			.string()
-			.optional()
-			.describe(
-				"Provider ID to limit search to specific provider. If not provided, searches all providers.",
-			),
-		limit: z
-			.number()
-			.optional()
-			.default(10)
-			.describe("Maximum number of results to return"),
-		similarityThreshold: z
-			.number()
-			.optional()
-			.default(0.7)
-			.describe(
-				"Minimum similarity threshold (0-1, higher = more similar results)",
-			),
-	}),
-	execute: async ({
-		query,
-		providerId,
-		limit = 10,
-		similarityThreshold = 0.7,
-	}) => {
-		try {
-			const queryEmbedding = await generateEmbedding(query);
-			const results = await CommerceDB.vectorSearchProducts(
-				queryEmbedding,
-				providerId,
-				limit,
-				similarityThreshold,
-			);
-
-			if (results.length === 0) {
-				return {
-					success: false,
-					message: `No products found semantically similar to "${query}"`,
-					products: [],
-					query,
-					similarityThreshold,
-				};
-			}
-
-			const products = results.map((row) => ({
-				id: row.id,
-				name: row.name,
-				description: row.description,
-				category: row.category,
-				providerId: row.providerId,
-				providerName: row.providerName,
-				price: row.price,
-				quantity: row.quantity,
-				inStock: row.inStock,
-				similarity: row.similarity,
-			}));
-
-			return {
-				success: true,
-				message: `Found ${products.length} products semantically similar to "${query}"`,
-				products,
-				query,
-				similarityThreshold,
-				searchType: "vector",
-			};
-		} catch (error) {
-			console.error("Error performing semantic search:", error);
-			return {
-				success: false,
-				message: "Failed to perform semantic search",
-				error: error instanceof Error ? error.message : "Unknown error",
-				query,
-				searchType: "error",
-			};
-		}
-	},
-});
-
-/**
- * Tool for generating embeddings for products (admin/setup tool)
- */
-export const generateEmbeddingsTool = createTool({
-	name: "generateProductEmbeddings",
-	description:
-		"Generate vector embeddings for products to enable semantic search. This is typically run during setup or when adding new products.",
-	parameters: z.object({
-		productIds: z
-			.array(z.string())
-			.optional()
-			.describe(
-				"Specific product IDs to generate embeddings for. If empty, generates for all products without embeddings.",
-			),
-		forceRegenerate: z
-			.boolean()
-			.optional()
-			.default(false)
-			.describe(
-				"Whether to regenerate embeddings for products that already have them",
-			),
-	}),
-	execute: async ({ productIds, forceRegenerate = false }) => {
-		try {
-			console.log(
-				`Starting embedding generation for ${productIds?.length || "all"} products...`,
-			);
-
-			// Actually generate embeddings by calling the database method
-			await CommerceDB.generateProductEmbeddings(async (text: string) => {
-				const { generateEmbedding } = await import("../utils/embeddings");
-				return generateEmbedding(text);
-			});
-
-			return {
-				success: true,
-				message: `Embedding generation completed for all products`,
-				productIds: productIds || [],
-				forceRegenerate,
-				status: "completed",
-			};
-		} catch (error) {
-			console.error("Error generating embeddings:", error);
-			return {
-				success: false,
-				message: "Failed to generate embeddings",
-				error: error instanceof Error ? error.message : "Unknown error",
-			};
-		}
-	},
-});
-
-/**
- * Tool for creating new products
- */
-export const createProductTool = createTool({
-	name: "createProduct",
-	description:
-		"Create a new product in the commerce database with the exact details provided. Extract name, category, price, quantity, and tags directly from the user's request. Never use placeholder or example values.",
-	parameters: z.object({
-		providerId: z.string().describe("ID of the provider who owns this product"),
-		name: z
-			.string()
-			.describe("Product name (e.g., 'Organic Kale', 'Whole Wheat Bread')"),
-		description: z
-			.string()
-			.optional()
-			.nullable()
-			.describe("Product description"),
-		category: z
-			.string()
-			.describe("Product category (e.g., Vegetables, Bakery, Beverages)"),
-		tags: z
-			.array(z.string())
-			.optional()
-			.nullable()
-			.describe("Tags as array (e.g., ['organic', 'leafy-greens'])"),
-		price: z.number().describe("Product price as number (e.g., 4.99)"),
-		quantity: z
-			.number()
-			.describe("Initial stock quantity as number (e.g., 50)"),
-		variantName: z
-			.string()
-			.optional()
-			.nullable()
-			.describe("Variant name (e.g., size, color)"),
-	}),
-	execute: async ({
-		providerId,
-		name,
-		description,
-		category,
-		tags,
-		price,
-		quantity,
-		variantName,
-	}) => {
-		try {
-			// Create product using unified CommerceDB (InstantDB)
-			const result = await CommerceDB.createProduct({
-				providerId,
-				name,
-				description,
-				category,
-				tags,
-				price,
-				quantity,
-				variantName,
-			});
-
-			return {
-				success: true,
-				message: `Product "${name}" created successfully`,
-				product: {
-					id: result.productId,
-					providerId,
-					name,
-					description,
-					category,
-					tags,
-					price,
-					quantity,
-					variantName,
-				},
-			};
-		} catch (error) {
-			console.error("Error creating product:", error);
-			return {
-				success: false,
-				message: "Failed to create product",
+				message: "Product operation failed",
 				error: error instanceof Error ? error.message : "Unknown error",
 			};
 		}
 	},
 });
 
-/**
- * Tool for updating product information
- */
-export const updateProductTool = createTool({
-	name: "updateProduct",
+// ============================================
+// 2. ORDER TOOL (Order Management)
+// ============================================
+
+export const orderTool = createTool({
+	name: "order",
 	description:
-		"Update existing product information. Only updates the fields you provide.",
+		"Manage orders and line items. Actions: create, update, getDetails, addItems, updateStatus, cancel, getByContributor, getByNode",
 	parameters: z.object({
-		productId: z.string().describe("ID of the product to update"),
-		name: z.string().optional().describe("New product name"),
-		description: z.string().optional().describe("New product description"),
-		category: z.string().optional().describe("New product category"),
-		tags: z.array(z.string()).optional().describe("New tags"),
-		available: z.boolean().optional().describe("Whether product is available"),
-	}),
-	execute: async ({
-		productId,
-		name,
-		description,
-		category,
-		tags,
-		available,
-	}) => {
-		try {
-			// Check if product exists
-			const existing = await CommerceDB.getProductDetails(productId);
-			if (!existing) {
-				return {
-					success: false,
-					message: `Product with ID "${productId}" not found`,
-				};
-			}
-
-			// Build update query dynamically
-			const updates: string[] = [];
-			const args: any[] = [];
-
-			if (name !== undefined) {
-				updates.push("name = ?");
-				args.push(name);
-			}
-			if (description !== undefined) {
-				updates.push("description = ?");
-				args.push(description);
-			}
-			if (category !== undefined) {
-				updates.push("category = ?");
-				args.push(category);
-			}
-			if (tags !== undefined) {
-				updates.push("tags = ?");
-				args.push(JSON.stringify(tags));
-			}
-			if (available !== undefined) {
-				updates.push("available = ?");
-				args.push(available ? 1 : 0);
-			}
-
-			if (updates.length === 0) {
-				return {
-					success: false,
-					message: "No fields provided to update",
-				};
-			}
-
-			await CommerceDB.updateProduct(productId, {
-				name,
-				description,
-				category,
-				tags,
-				available,
-			});
-
-			return {
-				success: true,
-				message: `Product "${productId}" updated successfully`,
-				updatedFields: Object.keys({
-					name,
-					description,
-					category,
-					tags,
-					available,
-				}).filter(
-					(key) =>
-						(({ name, description, category, tags, available }) as any)[key] !==
-						undefined,
-				),
-			};
-		} catch (error) {
-			console.error("Error updating product:", error);
-			return {
-				success: false,
-				message: "Failed to update product",
-				error: error instanceof Error ? error.message : "Unknown error",
-			};
-		}
-	},
-});
-
-/**
- * Tool for updating inventory levels
- */
-export const updateInventoryTool = createTool({
-	name: "updateInventory",
-	description:
-		"Update inventory levels for a product. Can add stock, reduce stock, or set absolute quantity.",
-	parameters: z.object({
-		productId: z.string().describe("ID of the product"),
-		operation: z
-			.enum(["add", "subtract", "set"])
-			.describe(
-				"Operation type: add (increase stock), subtract (decrease stock), set (set absolute quantity)",
-			),
-		quantity: z.number().describe("Quantity to add, subtract, or set"),
-	}),
-	execute: async ({ productId, operation, quantity }) => {
-		try {
-			// Get current inventory
-			const current = await CommerceDB.getInventory(productId);
-			if (!current) {
-				return {
-					success: false,
-					message: `No inventory found for product "${productId}"`,
-				};
-			}
-
-			const currentQuantity = Number(current.quantity) || 0;
-			let newQuantity: number;
-			switch (operation) {
-				case "add":
-					newQuantity = currentQuantity + quantity;
-					break;
-				case "subtract":
-					newQuantity = Math.max(0, currentQuantity - quantity);
-					break;
-				case "set":
-					newQuantity = Math.max(0, quantity);
-					break;
-			}
-
-			await CommerceDB.updateInventory(
-				productId,
-				newQuantity - currentQuantity,
-			);
-
-			return {
-				success: true,
-				message: `Inventory updated successfully`,
-				productId,
-				operation,
-				previousQuantity: currentQuantity,
-				newQuantity,
-				change: newQuantity - currentQuantity,
-			};
-		} catch (error) {
-			console.error("Error updating inventory:", error);
-			return {
-				success: false,
-				message: "Failed to update inventory",
-				error: error instanceof Error ? error.message : "Unknown error",
-			};
-		}
-	},
-});
-
-/**
- * Tool for creating new providers
- */
-export const createProviderTool = createTool({
-	name: "createProvider",
-	description:
-		"Create a new provider in the commerce system. Providers can own and manage products.",
-	parameters: z.object({
-		name: z.string().describe("Provider business name"),
-		description: z.string().optional().describe("Provider description"),
-		contactEmail: z.string().email().optional().describe("Contact email"),
-		contactPhone: z.string().optional().describe("Contact phone number"),
-		address: z.string().optional().describe("Business address"),
-	}),
-	execute: async ({
-		name,
-		description,
-		contactEmail,
-		contactPhone,
-		address,
-	}) => {
-		try {
-			const providerId = await CommerceDB.createProvider({
-				name,
-				description,
-				contactEmail,
-				contactPhone,
-				address,
-			});
-
-			return {
-				success: true,
-				message: `Provider "${name}" created successfully`,
-				provider: {
-					id: providerId,
-					name,
-					description,
-					contactEmail,
-					contactPhone,
-					address,
-				},
-			};
-		} catch (error) {
-			console.error("Error creating provider:", error);
-			return {
-				success: false,
-				message: "Failed to create provider",
-				error: error instanceof Error ? error.message : "Unknown error",
-			};
-		}
-	},
-});
-
-/**
- * Tool for bulk data operations
- */
-export const bulkCreateProductsTool = createTool({
-	name: "bulkCreateProducts",
-	description:
-		"Create multiple products at once. Useful for initial data setup or importing product catalogs.",
-	parameters: z.object({
-		providerId: z.string().describe("ID of the provider for all products"),
-		products: z
-			.array(
-				z.object({
-					name: z.string().describe("Product name"),
-					description: z.string().optional().describe("Product description"),
-					category: z.string().describe("Product category"),
-					tags: z.array(z.string()).optional().describe("Product tags"),
-					price: z.number().describe("Product price"),
-					quantity: z.number().describe("Initial stock quantity"),
-					variantName: z.string().optional().describe("Variant name"),
-				}),
-			)
-			.describe("Array of products to create"),
-	}),
-	execute: async ({ providerId, products }) => {
-		try {
-			const results = await CommerceDB.bulkCreateProducts(
-				providerId,
-				products,
-			);
-
-			const successCount = results.filter((r) => r.success).length;
-			const errorCount = results.filter((r) => !r.success).length;
-
-			return {
-				success: true,
-				message: `Bulk creation completed: ${successCount} successful, ${errorCount} failed`,
-				totalProducts: products.length,
-				successCount,
-				errorCount,
-				results,
-			};
-		} catch (error) {
-			console.error("Error in bulk product creation:", error);
-			return {
-				success: false,
-				message: "Failed to perform bulk product creation",
-				error: error instanceof Error ? error.message : "Unknown error",
-			};
-		}
-	},
-});
-
-/**
- * Tool for getting detailed product information
- */
-export const getProductDetailsTool = createTool({
-	name: "getProductDetails",
-	description:
-		"Get detailed information about a specific product including pricing, inventory status, and provider details.",
-	parameters: z.object({
-		productId: z
-			.string()
-			.describe("The unique ID of the product to get details for"),
-	}),
-	execute: async ({ productId }) => {
-		try {
-			const product = await CommerceDB.getProductDetails(productId);
-
-			if (!product) {
-				return {
-					success: false,
-					message: `Product with ID "${productId}" not found`,
-				};
-			}
-
-			return {
-				success: true,
-				product: {
-					id: product.id,
-					name: product.name,
-					description: product.description,
-					category: product.category,
-					providerId: product.providerid,
-					providerName: product.provider_name,
-					price: product.price,
-					quantity: product.quantity,
-					inStock: product.instock === 1,
-					created: product.created,
-					updated: product.updated,
-				},
-			};
-		} catch (error) {
-			console.error("Error getting product details:", error);
-			return {
-				success: false,
-				message: "Failed to get product details",
-				error: error instanceof Error ? error.message : "Unknown error",
-			};
-		}
-	},
-});
-
-/**
- * Tool for checking inventory availability
- */
-export const checkInventoryTool = createTool({
-	name: "checkInventory",
-	description:
-		"Check if a product has sufficient inventory for a given quantity.",
-	parameters: z.object({
-		productId: z.string().describe("The unique ID of the product to check"),
-		quantity: z.number().describe("The quantity to check availability for"),
-	}),
-	execute: async ({ productId, quantity }) => {
-		try {
-			const available = await CommerceDB.checkInventory(productId, quantity);
-
-			if (available) {
-				return {
-					success: true,
-					available: true,
-					message: `Product ${productId} has sufficient inventory for ${quantity} units`,
-				};
-			} else {
-				const inventory = await CommerceDB.getInventory(productId);
-				return {
-					success: true,
-					available: false,
-					message: `Product ${productId} only has ${inventory?.quantity || 0} units in stock`,
-					availableQuantity: inventory?.quantity || 0,
-				};
-			}
-		} catch (error) {
-			console.error("Error checking inventory:", error);
-			return {
-				success: false,
-				message: "Failed to check inventory",
-				error: error instanceof Error ? error.message : "Unknown error",
-			};
-		}
-	},
-});
-
-/**
- * Tool for creating orders
- */
-export const createOrderTool = createTool({
-	name: "createOrder",
-	description:
-		"Create a new order for a customer. This will reserve inventory and create an order record.",
-	parameters: z.object({
-		userId: z.string().describe("The ID of the user placing the order"),
-		providerId: z
-			.string()
-			.describe("The ID of the provider fulfilling the order"),
+		action: z.enum([
+			"create",
+			"update",
+			"getDetails",
+			"addItems",
+			"updateStatus",
+			"cancel",
+			"getByContributor",
+			"getByNode",
+		]),
+		orderId: z.string().optional(),
+		ordernum: z.string().optional(),
+		contributorid: z.string().optional(),
+		nodeid: z.string().optional(),
+		ordertype: z.enum(["store", "food", "delivery"]).optional(),
 		items: z
 			.array(
 				z.object({
-					productId: z.string().describe("Product ID"),
-					productName: z.string().describe("Product name"),
-					quantity: z.number().describe("Quantity ordered"),
-					price: z.number().describe("Price per unit"),
+					productId: z.string(),
+					instanceId: z.string().optional(),
+					name: z.string(),
+					qty: z.number(),
+					unitprice: z.number(),
 				}),
 			)
-			.describe("Array of items in the order"),
-		orderNumber: z
-			.string()
-			.optional()
-			.describe("Custom order number (auto-generated if not provided)"),
+			.optional(),
+		address: z.string().optional(),
+		phone: z.string().optional(),
+		status: z
+			.enum([
+				"pending",
+				"confirmed",
+				"preparing",
+				"outfordelivery",
+				"delivered",
+				"cancelled",
+			])
+			.optional(),
+		limit: z.number().optional(),
 	}),
-	execute: async ({ userId, providerId, items, orderNumber }) => {
+	execute: async ({ action, ...params }) => {
 		try {
-			// Validate inventory for all items
-			for (const item of items) {
-				const available = await CommerceDB.checkInventory(
-					item.productId,
-					item.quantity,
-				);
-				if (!available) {
+			switch (action) {
+				case "create": {
+					const { contributorid, nodeid, ordertype, items, address, phone } =
+						params;
+
+					if (!contributorid || !nodeid || !items || items.length === 0) {
+						return {
+							success: false,
+							message:
+								"Missing required fields: contributorid, nodeid, items",
+						};
+					}
+
+					const orderId = id();
+					const ordernum = `ORD-${Date.now()}`;
+
+					// Calculate totals
+					const subtotal = items.reduce(
+						(sum, item) => sum + item.unitprice * item.qty,
+						0,
+					);
+					const tax = subtotal * 0.18; // 18% tax
+					const deliveryfee = ordertype === "delivery" ? 50 : 0;
+					const discount = subtotal > 1000 ? subtotal * 0.05 : 0;
+					const total = subtotal + tax + deliveryfee - discount;
+
+					// Create order
+					await idb.transact([
+						tx.orders[orderId]
+							.update({
+								ordernum,
+								ordertype: ordertype || "store",
+								subtotal,
+								tax,
+								deliveryfee,
+								discount,
+								total,
+								currency: "INR",
+								address: address || "",
+								phone: phone || "",
+								status: "pending",
+								paystatus: "pending",
+								createdat: Date.now(),
+								updatedat: Date.now(),
+							})
+							.link({ contributor: contributorid, node: nodeid }),
+					]);
+
+					// Create line items
+					const lineitemTransactions = items.map((item) => {
+						const lineitemId = id();
+						return tx.lineitems[lineitemId]
+							.update({
+								name: item.name,
+								instancename: item.instanceId || "",
+								qty: item.qty,
+								unitprice: item.unitprice,
+								total: item.unitprice * item.qty,
+								createdat: Date.now(),
+							})
+							.link({
+								order: orderId,
+								product: item.productId,
+								...(item.instanceId && { instance: item.instanceId }),
+							});
+					});
+
+					await idb.transact(lineitemTransactions);
+
 					return {
-						success: false,
-						message: `Insufficient inventory for product ${item.productName} (${item.productId})`,
+						success: true,
+						message: `Order ${ordernum} created successfully`,
+						orderId,
+						ordernum,
+						total,
 					};
 				}
+
+				case "getDetails": {
+					const { orderId } = params;
+
+					if (!orderId) {
+						return { success: false, message: "orderId is required" };
+					}
+
+					const result = await idb.query({
+						orders: {
+							$: { where: { id: orderId } },
+							contributor: {},
+							node: {},
+							lineitems: {
+								product: {},
+							},
+							tasks: {},
+						},
+					});
+
+					const order = result.orders?.[0];
+					if (!order) {
+						return { success: false, message: `Order "${orderId}" not found` };
+					}
+
+					return {
+						success: true,
+						order,
+					};
+				}
+
+				case "updateStatus": {
+					const { orderId, status } = params;
+
+					if (!orderId || !status) {
+						return {
+							success: false,
+							message: "orderId and status are required",
+						};
+					}
+
+					const updateData: any = {
+						status,
+						updatedat: Date.now(),
+					};
+
+					if (status === "confirmed") {
+						updateData.confirmedat = Date.now();
+					} else if (status === "delivered") {
+						updateData.deliveredat = Date.now();
+					}
+
+					await idb.transact([tx.orders[orderId].update(updateData)]);
+
+					return {
+						success: true,
+						message: `Order status updated to "${status}"`,
+					};
+				}
+
+				case "cancel": {
+					const { orderId } = params;
+
+					if (!orderId) {
+						return { success: false, message: "orderId is required" };
+					}
+
+					await idb.transact([
+						tx.orders[orderId].update({
+							status: "cancelled",
+							updatedat: Date.now(),
+						}),
+					]);
+
+					return {
+						success: true,
+						message: "Order cancelled successfully",
+					};
+				}
+
+				case "getByContributor": {
+					const { contributorid, limit = 20 } = params;
+
+					if (!contributorid) {
+						return { success: false, message: "contributorid is required" };
+					}
+
+					const result = await idb.query({
+						orders: {
+							$: {
+								where: { "contributor.id": contributorid },
+								limit,
+							},
+							node: {},
+							lineitems: {},
+						},
+					});
+
+					return {
+						success: true,
+						orders: result.orders || [],
+					};
+				}
+
+				case "getByNode": {
+					const { nodeid, limit = 20 } = params;
+
+					if (!nodeid) {
+						return { success: false, message: "nodeid is required" };
+					}
+
+					const result = await idb.query({
+						orders: {
+							$: {
+								where: { "node.id": nodeid },
+								limit,
+							},
+							contributor: {},
+							lineitems: {},
+						},
+					});
+
+					return {
+						success: true,
+						orders: result.orders || [],
+					};
+				}
+
+				default:
+					return { success: false, message: `Unknown action: ${action}` };
 			}
-
-			// Calculate total
-			const total = items.reduce(
-				(sum, item) => sum + item.price * item.quantity,
-				0,
-			);
-
-			// Generate order number if not provided
-			const finalOrderNumber = orderNumber || `ORD-${Date.now()}`;
-
-			// Create order
-			await CommerceDB.createOrder({
-				ordernumber: finalOrderNumber,
-				userid: userId,
-				providerid: providerId,
-				items,
-				total,
-			});
-
-			// Update inventory (reduce quantities)
-			for (const item of items) {
-				await CommerceDB.updateInventory(item.productId, -item.quantity);
-			}
-
-			return {
-				success: true,
-				message: `Order ${finalOrderNumber} created successfully`,
-				order: {
-					orderNumber: finalOrderNumber,
-					userId,
-					providerId,
-					items,
-					total,
-					created: new Date().toISOString(),
-				},
-			};
 		} catch (error) {
-			console.error("Error creating order:", error);
+			console.error("Order tool error:", error);
 			return {
 				success: false,
-				message: "Failed to create order",
+				message: "Order operation failed",
 				error: error instanceof Error ? error.message : "Unknown error",
 			};
 		}
 	},
 });
+
+// ============================================
+// 3. SERVICE TOOL (Service & Booking Management)
+// ============================================
+
+export const serviceTool = createTool({
+	name: "service",
+	description:
+		"Manage services, slots, and bookings. Actions: createService, updateService, createSlots, getAvailableSlots, createBooking, updateBooking, cancelBooking, getBookingDetails",
+	parameters: z.object({
+		action: z.enum([
+			"createService",
+			"updateService",
+			"createSlots",
+			"getAvailableSlots",
+			"createBooking",
+			"updateBooking",
+			"cancelBooking",
+			"getBookingDetails",
+		]),
+		serviceId: z.string().optional(),
+		bookingId: z.string().optional(),
+		slotId: z.string().optional(),
+		nodeid: z.string().optional(),
+		contributorid: z.string().optional(),
+		name: z.string().optional(),
+		desc: z.string().optional(),
+		category: z.string().optional(),
+		price: z.number().optional(),
+		duration: z.number().optional(),
+		date: z.string().optional(),
+		start: z.string().optional(),
+		end: z.string().optional(),
+		customerName: z.string().optional(),
+		phone: z.string().optional(),
+		email: z.string().optional(),
+		notes: z.string().optional(),
+		status: z
+			.enum(["pending", "confirmed", "completed", "cancelled", "noshow"])
+			.optional(),
+	}),
+	execute: async ({ action, ...params }) => {
+		try {
+			switch (action) {
+				case "createService": {
+					const { nodeid, name, desc, category, price, duration } = params;
+
+					if (!nodeid || !name || !category || !price || !duration) {
+						return {
+							success: false,
+							message:
+								"Missing required fields: nodeid, name, category, price, duration",
+						};
+					}
+
+					const serviceId = id();
+					await idb.transact([
+						tx.services[serviceId]
+							.update({
+								name,
+								desc: desc || "",
+								category,
+								price,
+								currency: "INR",
+								pricetype: "fixed",
+								duration,
+								needapproval: false,
+								maxperslot: 1,
+								active: true,
+								createdat: Date.now(),
+								updatedat: Date.now(),
+							})
+							.link({ node: nodeid }),
+					]);
+
+					return {
+						success: true,
+						message: `Service "${name}" created successfully`,
+						serviceId,
+					};
+				}
+
+				case "createSlots": {
+					const { serviceId, nodeid, date, start, end } = params;
+
+					if (!serviceId || !nodeid || !date || !start || !end) {
+						return {
+							success: false,
+							message:
+								"Missing required fields: serviceId, nodeid, date, start, end",
+						};
+					}
+
+					const slotId = id();
+					await idb.transact([
+						tx.slots[slotId]
+							.update({
+								date,
+								start,
+								end,
+								status: "available",
+								capacity: 1,
+								booked: 0,
+								createdat: Date.now(),
+							})
+							.link({ service: serviceId, node: nodeid }),
+					]);
+
+					return {
+						success: true,
+						message: `Slot created for ${date} ${start}-${end}`,
+						slotId,
+					};
+				}
+
+				case "getAvailableSlots": {
+					const { serviceId, date } = params;
+
+					if (!serviceId || !date) {
+						return {
+							success: false,
+							message: "serviceId and date are required",
+						};
+					}
+
+					const result = await idb.query({
+						slots: {
+							$: {
+								where: {
+									"service.id": serviceId,
+									date,
+									status: "available",
+								},
+							},
+							service: {},
+						},
+					});
+
+					return {
+						success: true,
+						slots: result.slots || [],
+					};
+				}
+
+				case "createBooking": {
+					const {
+						contributorid,
+						serviceId,
+						nodeid,
+						slotId,
+						date,
+						start,
+						end,
+						duration,
+						price,
+						customerName,
+						phone,
+						email,
+						notes,
+					} = params;
+
+					if (
+						!contributorid ||
+						!serviceId ||
+						!nodeid ||
+						!slotId ||
+						!date ||
+						!start
+					) {
+						return {
+							success: false,
+							message:
+								"Missing required fields: contributorid, serviceId, nodeid, slotId, date, start",
+						};
+					}
+
+					const bookingId = id();
+					const bookingnum = `BKG-${Date.now()}`;
+
+					// Create booking
+					await idb.transact([
+						tx.bookings[bookingId]
+							.update({
+								bookingnum,
+								date,
+								start,
+								end: end || "",
+								duration: duration || 0,
+								price: price || 0,
+								name: customerName || "",
+								phone: phone || "",
+								email: email || "",
+								notes: notes || "",
+								status: "pending",
+								paystatus: "pending",
+								createdat: Date.now(),
+							})
+							.link({
+								contributor: contributorid,
+								service: serviceId,
+								node: nodeid,
+								slot: slotId,
+							}),
+
+						// Update slot
+						tx.slots[slotId].update({
+							status: "booked",
+							booked: 1,
+						}),
+					]);
+
+					return {
+						success: true,
+						message: `Booking ${bookingnum} created successfully`,
+						bookingId,
+						bookingnum,
+					};
+				}
+
+				case "updateBooking": {
+					const { bookingId, status } = params;
+
+					if (!bookingId || !status) {
+						return {
+							success: false,
+							message: "bookingId and status are required",
+						};
+					}
+
+					const updateData: any = {
+						status,
+					};
+
+					if (status === "confirmed") {
+						updateData.confirmedat = Date.now();
+					} else if (status === "completed") {
+						updateData.completedat = Date.now();
+					}
+
+					await idb.transact([tx.bookings[bookingId].update(updateData)]);
+
+					return {
+						success: true,
+						message: `Booking status updated to "${status}"`,
+					};
+				}
+
+				case "cancelBooking": {
+					const { bookingId, slotId } = params;
+
+					if (!bookingId || !slotId) {
+						return {
+							success: false,
+							message: "bookingId and slotId are required",
+						};
+					}
+
+					await idb.transact([
+						tx.bookings[bookingId].update({
+							status: "cancelled",
+						}),
+						tx.slots[slotId].update({
+							status: "available",
+							booked: 0,
+						}),
+					]);
+
+					return {
+						success: true,
+						message: "Booking cancelled successfully",
+					};
+				}
+
+				case "getBookingDetails": {
+					const { bookingId } = params;
+
+					if (!bookingId) {
+						return { success: false, message: "bookingId is required" };
+					}
+
+					const result = await idb.query({
+						bookings: {
+							$: { where: { id: bookingId } },
+							contributor: {},
+							service: {},
+							node: {},
+							slot: {},
+							tasks: {},
+						},
+					});
+
+					const booking = result.bookings?.[0];
+					if (!booking) {
+						return {
+							success: false,
+							message: `Booking "${bookingId}" not found`,
+						};
+					}
+
+					return {
+						success: true,
+						booking,
+					};
+				}
+
+				default:
+					return { success: false, message: `Unknown action: ${action}` };
+			}
+		} catch (error) {
+			console.error("Service tool error:", error);
+			return {
+				success: false,
+				message: "Service operation failed",
+				error: error instanceof Error ? error.message : "Unknown error",
+			};
+		}
+	},
+});
+
+// ============================================
+// 4. NODE TOOL (Node/Business Management)
+// ============================================
+
+export const nodeTool = createTool({
+	name: "node",
+	description:
+		"Manage business nodes. Actions: create, update, getDetails, getProducts, getServices, getOrders, search",
+	parameters: z.object({
+		action: z.enum([
+			"create",
+			"update",
+			"getDetails",
+			"getProducts",
+			"getServices",
+			"getOrders",
+			"search",
+		]),
+		nodeid: z.string().optional(),
+		name: z.string().optional(),
+		type: z
+			.enum(["store", "restaurant", "service", "doctor", "salon"])
+			.optional(),
+		address: z.string().optional(),
+		city: z.string().optional(),
+		lat: z.number().optional(),
+		lng: z.number().optional(),
+		phone: z.string().optional(),
+		email: z.string().optional(),
+		query: z.string().optional(),
+		limit: z.number().optional(),
+	}),
+	execute: async ({ action, ...params }) => {
+		try {
+			switch (action) {
+				case "create": {
+					const { name, type, address, city, lat, lng, phone, email } = params;
+
+					if (!name || !type || !address || !city || !phone) {
+						return {
+							success: false,
+							message:
+								"Missing required fields: name, type, address, city, phone",
+						};
+					}
+
+					const nodeid = id();
+					await idb.transact([
+						tx.nodes[nodeid].update({
+							name,
+							type,
+							address,
+							city,
+							lat: lat || 0,
+							lng: lng || 0,
+							phone,
+							email: email || "",
+							open: "09:00",
+							close: "18:00",
+							days: "Mon-Sat",
+							commission: 5,
+							isopen: true,
+							verified: false,
+							rating: 0,
+							createdat: Date.now(),
+							updatedat: Date.now(),
+						}),
+					]);
+
+					return {
+						success: true,
+						message: `Node "${name}" created successfully`,
+						nodeid,
+					};
+				}
+
+				case "update": {
+					const { nodeid, name, address, city, phone, email } = params;
+
+					if (!nodeid) {
+						return { success: false, message: "nodeid is required" };
+					}
+
+					const updateData: any = { updatedat: Date.now() };
+					if (name !== undefined) updateData.name = name;
+					if (address !== undefined) updateData.address = address;
+					if (city !== undefined) updateData.city = city;
+					if (phone !== undefined) updateData.phone = phone;
+					if (email !== undefined) updateData.email = email;
+
+					await idb.transact([tx.nodes[nodeid].update(updateData)]);
+
+					return {
+						success: true,
+						message: `Node "${nodeid}" updated successfully`,
+					};
+				}
+
+				case "getDetails": {
+					const { nodeid } = params;
+
+					if (!nodeid) {
+						return { success: false, message: "nodeid is required" };
+					}
+
+					const result = await idb.query({
+						nodes: {
+							$: { where: { id: nodeid } },
+							products: {},
+							services: {},
+							orders: {},
+						},
+					});
+
+					const node = result.nodes?.[0];
+					if (!node) {
+						return { success: false, message: `Node "${nodeid}" not found` };
+					}
+
+					return {
+						success: true,
+						node,
+					};
+				}
+
+				case "getProducts": {
+					const { nodeid, limit = 50 } = params;
+
+					if (!nodeid) {
+						return { success: false, message: "nodeid is required" };
+					}
+
+					const result = await idb.query({
+						products: {
+							$: {
+								where: { "node.id": nodeid },
+								limit,
+							},
+							instances: {},
+						},
+					});
+
+					return {
+						success: true,
+						products: result.products || [],
+					};
+				}
+
+				case "getServices": {
+					const { nodeid, limit = 50 } = params;
+
+					if (!nodeid) {
+						return { success: false, message: "nodeid is required" };
+					}
+
+					const result = await idb.query({
+						services: {
+							$: {
+								where: { "node.id": nodeid },
+								limit,
+							},
+							slots: {},
+						},
+					});
+
+					return {
+						success: true,
+						services: result.services || [],
+					};
+				}
+
+				case "search": {
+					const { query, type, city, limit = 20 } = params;
+
+					const whereClause: any = {};
+					if (query) whereClause.name = { $ilike: `%${query}%` };
+					if (type) whereClause.type = type;
+					if (city) whereClause.city = city;
+
+					const result = await idb.query({
+						nodes: {
+							$: { where: whereClause, limit },
+						},
+					});
+
+					return {
+						success: true,
+						nodes: result.nodes || [],
+					};
+				}
+
+				default:
+					return { success: false, message: `Unknown action: ${action}` };
+			}
+		} catch (error) {
+			console.error("Node tool error:", error);
+			return {
+				success: false,
+				message: "Node operation failed",
+				error: error instanceof Error ? error.message : "Unknown error",
+			};
+		}
+	},
+});
+
+// ============================================
+// 5. CONTRIBUTOR TOOL (Participant Management)
+// ============================================
+
+export const contributorTool = createTool({
+	name: "contributor",
+	description:
+		"Manage contributors (customers, staff, drivers). Actions: create, update, getDetails, getOrders, getBookings, getTasks",
+	parameters: z.object({
+		action: z.enum([
+			"create",
+			"update",
+			"getDetails",
+			"getOrders",
+			"getBookings",
+			"getTasks",
+		]),
+		contributorid: z.string().optional(),
+		name: z.string().optional(),
+		email: z.string().optional(),
+		phone: z.string().optional(),
+		role: z
+			.enum(["customer", "staff", "driver", "admin", "nodeowner"])
+			.optional(),
+		address: z.string().optional(),
+		city: z.string().optional(),
+		limit: z.number().optional(),
+	}),
+	execute: async ({ action, ...params }) => {
+		try {
+			switch (action) {
+				case "create": {
+					const { name, email, phone, role = "customer" } = params;
+
+					if (!name || !email) {
+						return {
+							success: false,
+							message: "Missing required fields: name, email",
+						};
+					}
+
+					const contributorid = id();
+					await idb.transact([
+						tx.contributors[contributorid].update({
+							name,
+							email,
+							phone: phone || "",
+							role,
+							active: true,
+							createdat: Date.now(),
+							updatedat: Date.now(),
+						}),
+					]);
+
+					return {
+						success: true,
+						message: `Contributor "${name}" created successfully`,
+						contributorid,
+					};
+				}
+
+				case "update": {
+					const { contributorid, name, phone, address, city } = params;
+
+					if (!contributorid) {
+						return { success: false, message: "contributorid is required" };
+					}
+
+					const updateData: any = { updatedat: Date.now() };
+					if (name !== undefined) updateData.name = name;
+					if (phone !== undefined) updateData.phone = phone;
+					if (address !== undefined) updateData.address = address;
+					if (city !== undefined) updateData.city = city;
+
+					await idb.transact([tx.contributors[contributorid].update(updateData)]);
+
+					return {
+						success: true,
+						message: `Contributor "${contributorid}" updated successfully`,
+					};
+				}
+
+				case "getDetails": {
+					const { contributorid } = params;
+
+					if (!contributorid) {
+						return { success: false, message: "contributorid is required" };
+					}
+
+					const result = await idb.query({
+						contributors: {
+							$: { where: { id: contributorid } },
+							orders: {},
+							bookings: {},
+							assignedtasks: {},
+						},
+					});
+
+					const contributor = result.contributors?.[0];
+					if (!contributor) {
+						return {
+							success: false,
+							message: `Contributor "${contributorid}" not found`,
+						};
+					}
+
+					return {
+						success: true,
+						contributor,
+					};
+				}
+
+				case "getOrders": {
+					const { contributorid, limit = 20 } = params;
+
+					if (!contributorid) {
+						return { success: false, message: "contributorid is required" };
+					}
+
+					const result = await idb.query({
+						orders: {
+							$: {
+								where: { "contributor.id": contributorid },
+								limit,
+							},
+							node: {},
+							lineitems: {},
+						},
+					});
+
+					return {
+						success: true,
+						orders: result.orders || [],
+					};
+				}
+
+				case "getBookings": {
+					const { contributorid, limit = 20 } = params;
+
+					if (!contributorid) {
+						return { success: false, message: "contributorid is required" };
+					}
+
+					const result = await idb.query({
+						bookings: {
+							$: {
+								where: { "contributor.id": contributorid },
+								limit,
+							},
+							service: {},
+							node: {},
+						},
+					});
+
+					return {
+						success: true,
+						bookings: result.bookings || [],
+					};
+				}
+
+				case "getTasks": {
+					const { contributorid, limit = 20 } = params;
+
+					if (!contributorid) {
+						return { success: false, message: "contributorid is required" };
+					}
+
+					const result = await idb.query({
+						tasks: {
+							$: {
+								where: { assignedto: contributorid },
+								limit,
+							},
+							order: {},
+							booking: {},
+						},
+					});
+
+					return {
+						success: true,
+						tasks: result.tasks || [],
+					};
+				}
+
+				default:
+					return { success: false, message: `Unknown action: ${action}` };
+			}
+		} catch (error) {
+			console.error("Contributor tool error:", error);
+			return {
+				success: false,
+				message: "Contributor operation failed",
+				error: error instanceof Error ? error.message : "Unknown error",
+			};
+		}
+	},
+});
+
+// ============================================
+// 6. TASK TOOL (Workflow Task Management)
+// ============================================
+
+export const taskTool = createTool({
+	name: "task",
+	description:
+		"Manage workflow tasks. Actions: create, assign, updateStatus, complete, updateLocation, verifyOTP, getByOrder, getByBooking",
+	parameters: z.object({
+		action: z.enum([
+			"create",
+			"assign",
+			"updateStatus",
+			"complete",
+			"updateLocation",
+			"verifyOTP",
+			"getByOrder",
+			"getByBooking",
+		]),
+		taskId: z.string().optional(),
+		reltype: z.enum(["order", "booking"]).optional(),
+		relid: z.string().optional(),
+		nodeid: z.string().optional(),
+		tasktype: z
+			.enum(["prepare", "deliver", "confirm", "complete"])
+			.optional(),
+		title: z.string().optional(),
+		assignedto: z.string().optional(),
+		status: z
+			.enum(["pending", "assigned", "inprogress", "completed", "failed"])
+			.optional(),
+		lat: z.number().optional(),
+		lng: z.number().optional(),
+		otp: z.string().optional(),
+		seq: z.number().optional(),
+		dependson: z.string().optional(),
+		limit: z.number().optional(),
+	}),
+	execute: async ({ action, ...params }) => {
+		try {
+			switch (action) {
+				case "create": {
+					const {
+						reltype,
+						relid,
+						nodeid,
+						tasktype,
+						title,
+						seq = 1,
+						dependson,
+					} = params;
+
+					if (!reltype || !relid || !nodeid || !tasktype || !title) {
+						return {
+							success: false,
+							message:
+								"Missing required fields: reltype, relid, nodeid, tasktype, title",
+						};
+					}
+
+					const taskId = id();
+					await idb.transact([
+						tx.tasks[taskId]
+							.update({
+								reltype,
+								relid,
+								tasktype,
+								title,
+								seq,
+								dependson: dependson || "",
+								status: "pending",
+								trackloc: tasktype === "deliver",
+								needotp: tasktype === "deliver",
+								createdat: Date.now(),
+								updatedat: Date.now(),
+							})
+							.link({ node: nodeid }),
+					]);
+
+					return {
+						success: true,
+						message: `Task "${title}" created successfully`,
+						taskId,
+					};
+				}
+
+				case "assign": {
+					const { taskId, assignedto } = params;
+
+					if (!taskId || !assignedto) {
+						return {
+							success: false,
+							message: "taskId and assignedto are required",
+						};
+					}
+
+					await idb.transact([
+						tx.tasks[taskId]
+							.update({
+								status: "assigned",
+								assignedat: Date.now(),
+								updatedat: Date.now(),
+							})
+							.link({ assignedcontributor: assignedto }),
+					]);
+
+					return {
+						success: true,
+						message: "Task assigned successfully",
+					};
+				}
+
+				case "updateStatus": {
+					const { taskId, status } = params;
+
+					if (!taskId || !status) {
+						return {
+							success: false,
+							message: "taskId and status are required",
+						};
+					}
+
+					const updateData: any = {
+						status,
+						updatedat: Date.now(),
+					};
+
+					if (status === "inprogress") {
+						updateData.startedat = Date.now();
+					} else if (status === "completed") {
+						updateData.completedat = Date.now();
+					}
+
+					await idb.transact([tx.tasks[taskId].update(updateData)]);
+
+					return {
+						success: true,
+						message: `Task status updated to "${status}"`,
+					};
+				}
+
+				case "complete": {
+					const { taskId } = params;
+
+					if (!taskId) {
+						return { success: false, message: "taskId is required" };
+					}
+
+					await idb.transact([
+						tx.tasks[taskId].update({
+							status: "completed",
+							completedat: Date.now(),
+							updatedat: Date.now(),
+						}),
+					]);
+
+					return {
+						success: true,
+						message: "Task completed successfully",
+					};
+				}
+
+				case "updateLocation": {
+					const { taskId, lat, lng } = params;
+
+					if (!taskId || lat === undefined || lng === undefined) {
+						return {
+							success: false,
+							message: "taskId, lat, and lng are required",
+						};
+					}
+
+					await idb.transact([
+						tx.tasks[taskId].update({
+							lat,
+							lng,
+							lastloc: Date.now(),
+							updatedat: Date.now(),
+						}),
+					]);
+
+					return {
+						success: true,
+						message: "Location updated successfully",
+					};
+				}
+
+				case "verifyOTP": {
+					const { taskId, otp } = params;
+
+					if (!taskId || !otp) {
+						return {
+							success: false,
+							message: "taskId and otp are required",
+						};
+					}
+
+					// In production, verify OTP against stored value
+					await idb.transact([
+						tx.tasks[taskId].update({
+							status: "completed",
+							verifiedat: Date.now(),
+							completedat: Date.now(),
+							updatedat: Date.now(),
+						}),
+					]);
+
+					return {
+						success: true,
+						message: "OTP verified and task completed",
+					};
+				}
+
+				case "getByOrder": {
+					const { relid, limit = 20 } = params;
+
+					if (!relid) {
+						return { success: false, message: "Order ID (relid) is required" };
+					}
+
+					const result = await idb.query({
+						tasks: {
+							$: {
+								where: { reltype: "order", relid },
+								limit,
+							},
+							node: {},
+							assignedcontributor: {},
+						},
+					});
+
+					return {
+						success: true,
+						tasks: result.tasks || [],
+					};
+				}
+
+				case "getByBooking": {
+					const { relid, limit = 20 } = params;
+
+					if (!relid) {
+						return {
+							success: false,
+							message: "Booking ID (relid) is required",
+						};
+					}
+
+					const result = await idb.query({
+						tasks: {
+							$: {
+								where: { reltype: "booking", relid },
+								limit,
+							},
+							node: {},
+							assignedcontributor: {},
+						},
+					});
+
+					return {
+						success: true,
+						tasks: result.tasks || [],
+					};
+				}
+
+				default:
+					return { success: false, message: `Unknown action: ${action}` };
+			}
+		} catch (error) {
+			console.error("Task tool error:", error);
+			return {
+				success: false,
+				message: "Task operation failed",
+				error: error instanceof Error ? error.message : "Unknown error",
+			};
+		}
+	},
+});
+
+// ============================================
+// 7. TRANSACTION TOOL (Payment Management)
+// ============================================
+
+export const transactionTool = createTool({
+	name: "transaction",
+	description:
+		"Manage payment transactions. Actions: create, refund, getHistory, getByContributor, getByNode",
+	parameters: z.object({
+		action: z.enum([
+			"create",
+			"refund",
+			"getHistory",
+			"getByContributor",
+			"getByNode",
+		]),
+		transactionId: z.string().optional(),
+		orderid: z.string().optional(),
+		bookingid: z.string().optional(),
+		contributorid: z.string().optional(),
+		nodeid: z.string().optional(),
+		amount: z.number().optional(),
+		currency: z.string().optional(),
+		paymethod: z.enum(["cash", "card", "upi", "wallet"]).optional(),
+		payref: z.string().optional(),
+		platformfee: z.number().optional(),
+		nodefee: z.number().optional(),
+		limit: z.number().optional(),
+	}),
+	execute: async ({ action, ...params }) => {
+		try {
+			switch (action) {
+				case "create": {
+					const {
+						orderid,
+						bookingid,
+						contributorid,
+						nodeid,
+						amount,
+						currency = "INR",
+						paymethod,
+						payref,
+					} = params;
+
+					if (!contributorid || !nodeid || !amount || !paymethod) {
+						return {
+							success: false,
+							message:
+								"Missing required fields: contributorid, nodeid, amount, paymethod",
+						};
+					}
+
+					// Calculate revenue split (5% platform fee)
+					const platformfee = amount * 0.05;
+					const nodefee = amount - platformfee;
+
+					const transactionId = id();
+					const transactionData: any = {
+						amount,
+						currency,
+						paymethod,
+						payref: payref || "",
+						platformfee,
+						nodefee,
+						status: "success",
+						createdat: Date.now(),
+					};
+
+					const links: any = {
+						contributor: contributorid,
+						node: nodeid,
+					};
+
+					if (orderid) links.order = orderid;
+					if (bookingid) links.booking = bookingid;
+
+					await idb.transact([
+						tx.transactions[transactionId]
+							.update(transactionData)
+							.link(links),
+					]);
+
+					return {
+						success: true,
+						message: "Transaction recorded successfully",
+						transactionId,
+						platformfee,
+						nodefee,
+					};
+				}
+
+				case "refund": {
+					const { transactionId, amount } = params;
+
+					if (!transactionId || !amount) {
+						return {
+							success: false,
+							message: "transactionId and amount are required",
+						};
+					}
+
+					await idb.transact([
+						tx.transactions[transactionId].update({
+							status: "refunded",
+							refundamount: amount,
+							refundedat: Date.now(),
+						}),
+					]);
+
+					return {
+						success: true,
+						message: "Refund processed successfully",
+					};
+				}
+
+				case "getHistory": {
+					const { limit = 50 } = params;
+
+					const result = await idb.query({
+						transactions: {
+							$: { limit },
+							contributor: {},
+							node: {},
+							order: {},
+							booking: {},
+						},
+					});
+
+					return {
+						success: true,
+						transactions: result.transactions || [],
+					};
+				}
+
+				case "getByContributor": {
+					const { contributorid, limit = 50 } = params;
+
+					if (!contributorid) {
+						return { success: false, message: "contributorid is required" };
+					}
+
+					const result = await idb.query({
+						transactions: {
+							$: {
+								where: { "contributor.id": contributorid },
+								limit,
+							},
+							node: {},
+							order: {},
+							booking: {},
+						},
+					});
+
+					return {
+						success: true,
+						transactions: result.transactions || [],
+					};
+				}
+
+				case "getByNode": {
+					const { nodeid, limit = 50 } = params;
+
+					if (!nodeid) {
+						return { success: false, message: "nodeid is required" };
+					}
+
+					const result = await idb.query({
+						transactions: {
+							$: {
+								where: { "node.id": nodeid },
+								limit,
+							},
+							contributor: {},
+							order: {},
+							booking: {},
+						},
+					});
+
+					return {
+						success: true,
+						transactions: result.transactions || [],
+					};
+				}
+
+				default:
+					return { success: false, message: `Unknown action: ${action}` };
+			}
+		} catch (error) {
+			console.error("Transaction tool error:", error);
+			return {
+				success: false,
+				message: "Transaction operation failed",
+				error: error instanceof Error ? error.message : "Unknown error",
+			};
+		}
+	},
+});
+
+// ============================================
+// 8. SEARCH TOOL (Advanced Search & Discovery)
+// ============================================
+
+export const searchTool = createTool({
+	name: "search",
+	description:
+		"Advanced search across products, services, nodes. Actions: products, services, nodes, nearMe, semantic",
+	parameters: z.object({
+		action: z.enum(["products", "services", "nodes", "nearMe", "semantic"]),
+		query: z.string().optional(),
+		category: z.string().optional(),
+		city: z.string().optional(),
+		type: z.string().optional(),
+		lat: z.number().optional(),
+		lng: z.number().optional(),
+		radius: z.number().optional(), // in km
+		limit: z.number().optional(),
+		minPrice: z.number().optional(),
+		maxPrice: z.number().optional(),
+	}),
+	execute: async ({ action, ...params }) => {
+		try {
+			switch (action) {
+				case "products": {
+					const { query, category, minPrice, maxPrice, limit = 20 } = params;
+
+					const whereClause: any = {};
+					if (query) whereClause.name = { $ilike: `%${query}%` };
+					if (category) whereClause.category = category;
+
+					const result = await idb.query({
+						products: {
+							$: { where: whereClause, limit },
+							node: {},
+							instances: {},
+						},
+					});
+
+					let products = result.products || [];
+
+					// Filter by price range if provided
+					if (minPrice !== undefined || maxPrice !== undefined) {
+						products = products.filter((p: any) => {
+							const price = p.price;
+							if (minPrice !== undefined && price < minPrice) return false;
+							if (maxPrice !== undefined && price > maxPrice) return false;
+							return true;
+						});
+					}
+
+					return {
+						success: true,
+						products,
+						totalFound: products.length,
+					};
+				}
+
+				case "services": {
+					const { query, category, city, limit = 20 } = params;
+
+					const whereClause: any = {};
+					if (query) whereClause.name = { $ilike: `%${query}%` };
+					if (category) whereClause.category = category;
+
+					const result = await idb.query({
+						services: {
+							$: { where: whereClause, limit },
+							node: {},
+							slots: {},
+						},
+					});
+
+					let services = result.services || [];
+
+					// Filter by city if node has city
+					if (city) {
+						services = services.filter(
+							(s: any) => s.node?.city?.toLowerCase() === city.toLowerCase(),
+						);
+					}
+
+					return {
+						success: true,
+						services,
+						totalFound: services.length,
+					};
+				}
+
+				case "nodes": {
+					const { query, type, city, limit = 20 } = params;
+
+					const whereClause: any = {};
+					if (query) whereClause.name = { $ilike: `%${query}%` };
+					if (type) whereClause.type = type;
+					if (city) whereClause.city = city;
+
+					const result = await idb.query({
+						nodes: {
+							$: { where: whereClause, limit },
+							products: {},
+							services: {},
+						},
+					});
+
+					return {
+						success: true,
+						nodes: result.nodes || [],
+						totalFound: result.nodes?.length || 0,
+					};
+				}
+
+				case "nearMe": {
+					const { lat, lng, radius = 5, type, limit = 20 } = params;
+
+					if (lat === undefined || lng === undefined) {
+						return {
+							success: false,
+							message: "lat and lng are required for nearMe search",
+						};
+					}
+
+					const whereClause: any = {};
+					if (type) whereClause.type = type;
+
+					const result = await idb.query({
+						nodes: {
+							$: { where: whereClause, limit: limit * 2 }, // Get more for filtering
+							products: {},
+							services: {},
+						},
+					});
+
+					// Calculate distance and filter by radius
+					const nodesWithDistance = (result.nodes || [])
+						.map((node: any) => {
+							const nodeLat = node.lat || 0;
+							const nodeLng = node.lng || 0;
+
+							// Haversine distance formula (approximate)
+							const R = 6371; // Earth's radius in km
+							const dLat = ((nodeLat - lat) * Math.PI) / 180;
+							const dLng = ((nodeLng - lng) * Math.PI) / 180;
+							const a =
+								Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+								Math.cos((lat * Math.PI) / 180) *
+									Math.cos((nodeLat * Math.PI) / 180) *
+									Math.sin(dLng / 2) *
+									Math.sin(dLng / 2);
+							const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+							const distance = R * c;
+
+							return {
+								...node,
+								distance: Math.round(distance * 10) / 10, // Round to 1 decimal
+							};
+						})
+						.filter((node: any) => node.distance <= radius)
+						.sort((a: any, b: any) => a.distance - b.distance)
+						.slice(0, limit);
+
+					return {
+						success: true,
+						nodes: nodesWithDistance,
+						totalFound: nodesWithDistance.length,
+						searchRadius: radius,
+					};
+				}
+
+				case "semantic": {
+					// Placeholder for semantic/vector search
+					// This would integrate with vector database or embedding service
+					const { query, limit = 10 } = params;
+
+					if (!query) {
+						return {
+							success: false,
+							message: "query is required for semantic search",
+						};
+					}
+
+					// For now, fall back to text search
+					const result = await idb.query({
+						products: {
+							$: {
+								where: { name: { $ilike: `%${query}%` } },
+								limit,
+							},
+							node: {},
+							instances: {},
+						},
+					});
+
+					return {
+						success: true,
+						products: result.products || [],
+						totalFound: result.products?.length || 0,
+						searchType: "semantic (fallback to text)",
+						message:
+							"Semantic search not yet implemented, using text search fallback",
+					};
+				}
+
+				default:
+					return { success: false, message: `Unknown action: ${action}` };
+			}
+		} catch (error) {
+			console.error("Search tool error:", error);
+			return {
+				success: false,
+				message: "Search operation failed",
+				error: error instanceof Error ? error.message : "Unknown error",
+			};
+		}
+	},
+});
+
+// ============================================
+// 9. REVIEW TOOL (Customer Reviews)
+// ============================================
+
+export const reviewTool = createTool({
+	name: "review",
+	description:
+		"Manage customer reviews. Actions: create, update, getByTarget, getByContributor, verify, delete",
+	parameters: z.object({
+		action: z.enum([
+			"create",
+			"update",
+			"getByTarget",
+			"getByContributor",
+			"verify",
+			"delete",
+		]),
+		reviewId: z.string().optional(),
+		contributorid: z.string().optional(),
+		targettype: z.enum(["product", "service", "node"]).optional(),
+		targetid: z.string().optional(),
+		rating: z.number().min(1).max(5).optional(),
+		comment: z.string().optional(),
+		images: z.array(z.string()).optional(),
+		verified: z.boolean().optional(),
+		limit: z.number().optional(),
+	}),
+	execute: async ({ action, ...params }) => {
+		try {
+			switch (action) {
+				case "create": {
+					const {
+						contributorid,
+						targettype,
+						targetid,
+						rating,
+						comment,
+						images,
+					} = params;
+
+					if (
+						!contributorid ||
+						!targettype ||
+						!targetid ||
+						rating === undefined
+					) {
+						return {
+							success: false,
+							message:
+								"Missing required fields: contributorid, targettype, targetid, rating",
+						};
+					}
+
+					const reviewId = id();
+					await idb.transact([
+						tx.reviews[reviewId]
+							.update({
+								targettype,
+								targetid,
+								rating,
+								comment: comment || "",
+								images: images || [],
+								verified: false,
+								createdat: Date.now(),
+							})
+							.link({ contributor: contributorid }),
+					]);
+
+					return {
+						success: true,
+						message: "Review created successfully",
+						reviewId,
+					};
+				}
+
+				case "update": {
+					const { reviewId, rating, comment, images } = params;
+
+					if (!reviewId) {
+						return { success: false, message: "reviewId is required" };
+					}
+
+					const updateData: any = {};
+					if (rating !== undefined) updateData.rating = rating;
+					if (comment !== undefined) updateData.comment = comment;
+					if (images !== undefined) updateData.images = images;
+
+					await idb.transact([tx.reviews[reviewId].update(updateData)]);
+
+					return {
+						success: true,
+						message: "Review updated successfully",
+					};
+				}
+
+				case "getByTarget": {
+					const { targettype, targetid, limit = 20 } = params;
+
+					if (!targettype || !targetid) {
+						return {
+							success: false,
+							message: "targettype and targetid are required",
+						};
+					}
+
+					const result = await idb.query({
+						reviews: {
+							$: {
+								where: { targettype, targetid },
+								limit,
+							},
+							contributor: {},
+						},
+					});
+
+					const reviews = result.reviews || [];
+
+					// Calculate average rating
+					const avgRating =
+						reviews.length > 0
+							? reviews.reduce((sum: number, r: any) => sum + r.rating, 0) /
+								reviews.length
+							: 0;
+
+					return {
+						success: true,
+						reviews,
+						totalReviews: reviews.length,
+						averageRating: Math.round(avgRating * 10) / 10,
+					};
+				}
+
+				case "getByContributor": {
+					const { contributorid, limit = 20 } = params;
+
+					if (!contributorid) {
+						return { success: false, message: "contributorid is required" };
+					}
+
+					const result = await idb.query({
+						reviews: {
+							$: {
+								where: { "contributor.id": contributorid },
+								limit,
+							},
+						},
+					});
+
+					return {
+						success: true,
+						reviews: result.reviews || [],
+					};
+				}
+
+				case "verify": {
+					const { reviewId } = params;
+
+					if (!reviewId) {
+						return { success: false, message: "reviewId is required" };
+					}
+
+					await idb.transact([
+						tx.reviews[reviewId].update({
+							verified: true,
+						}),
+					]);
+
+					return {
+						success: true,
+						message: "Review verified successfully",
+					};
+				}
+
+				case "delete": {
+					const { reviewId } = params;
+
+					if (!reviewId) {
+						return { success: false, message: "reviewId is required" };
+					}
+
+					await idb.transact([tx.reviews[reviewId].delete()]);
+
+					return {
+						success: true,
+						message: "Review deleted successfully",
+					};
+				}
+
+				default:
+					return { success: false, message: `Unknown action: ${action}` };
+			}
+		} catch (error) {
+			console.error("Review tool error:", error);
+			return {
+				success: false,
+				message: "Review operation failed",
+				error: error instanceof Error ? error.message : "Unknown error",
+			};
+		}
+	},
+});
+
+// ============================================
+// EXPORT ALL TOOLS
+// ============================================
+
+export const commerceTools = [
+	productTool,
+	orderTool,
+	serviceTool,
+	nodeTool,
+	contributorTool,
+	taskTool,
+	transactionTool,
+	searchTool,
+	reviewTool,
+];

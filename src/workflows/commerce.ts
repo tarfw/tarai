@@ -1,315 +1,710 @@
-import { Agent, createWorkflowChain } from "@voltagent/core";
+import { createWorkflowChain } from "@voltagent/core";
 import { z } from "zod";
-import { CommerceDB } from "../db";
+import {
+	productTool,
+	orderTool,
+	serviceTool,
+	taskTool,
+	transactionTool,
+} from "../tools/commerce";
 
 /**
- * Workflow for processing complex orders with multiple validation steps
+ * UPDATED COMMERCE WORKFLOWS
+ * Using domain-clustered tools with action-based routing
+ * Aligned with InstantDB schema (nodes, products, instances, etc.)
  */
+
+// ============================================
+// 1. ORDER PROCESSING WORKFLOW
+// ============================================
+
 export const orderProcessingWorkflow = createWorkflowChain({
 	id: "order-processing",
 	name: "Order Processing Workflow",
 	purpose:
-		"Process customer orders with inventory validation, payment processing, and confirmation",
+		"Process customer orders with inventory validation, order creation, task generation, and payment processing",
 
 	input: z.object({
-		userId: z.string(),
+		contributorid: z.string(),
+		nodeid: z.string(),
 		items: z.array(
 			z.object({
 				productId: z.string(),
-				quantity: z.number(),
-				price: z.number(),
+				instanceId: z.string().optional(),
+				name: z.string(),
+				qty: z.number(),
+				unitprice: z.number(),
 			}),
 		),
-		providerId: z.string(),
-		orderNumber: z.string().optional(),
-		specialInstructions: z.string().optional(),
+		ordertype: z.enum(["store", "food", "delivery"]),
+		address: z.string().optional(),
+		phone: z.string().optional(),
 	}),
+
 	result: z.object({
 		success: z.boolean(),
-		orderId: z.string(),
-		orderNumber: z.string(),
-		total: z.number(),
-		status: z.string(),
+		orderId: z.string().optional(),
+		ordernum: z.string().optional(),
+		total: z.number().optional(),
 		message: z.string(),
 	}),
 })
-	// Step 1: Validate all items and inventory
+	// Step 1: Validate inventory for all items
 	.andThen({
-		id: "validate-order",
+		id: "validate-inventory",
 		execute: async ({ data }) => {
-			console.log(`Validating order for user ${data.userId}`);
+			console.log(`Validating inventory for ${data.items.length} items...`);
 
 			const validationResults = [];
 
 			for (const item of data.items) {
-				const available = await CommerceDB.checkInventory(
-					item.productId,
-					item.quantity,
-				);
-				const product = await CommerceDB.getProductDetails(item.productId);
+				if (item.instanceId) {
+					// Check instance availability
+					const availabilityCheck = await productTool.execute({
+						action: "checkAvailability",
+						instanceId: item.instanceId,
+						qty: item.qty,
+					});
 
-				validationResults.push({
-					productId: item.productId,
-					requestedQuantity: item.quantity,
-					available,
-					productName: product?.name || "Unknown",
-					availableQuantity: product?.quantity || 0,
-					price: item.price,
-				});
+					validationResults.push({
+						productId: item.productId,
+						instanceId: item.instanceId,
+						requestedQty: item.qty,
+						available: availabilityCheck.available,
+						currentQty: availabilityCheck.currentQty,
+						name: item.name,
+					});
+				} else {
+					// For products without instances, assume available
+					validationResults.push({
+						productId: item.productId,
+						requestedQty: item.qty,
+						available: true,
+						name: item.name,
+					});
+				}
 			}
 
-			const invalidItems = validationResults.filter((r) => !r.available);
+			const unavailableItems = validationResults.filter((r) => !r.available);
 
 			return {
 				...data,
 				validationResults,
-				hasInvalidItems: invalidItems.length > 0,
-				invalidItems,
+				hasUnavailableItems: unavailableItems.length > 0,
+				unavailableItems,
 			};
 		},
 	})
 
-	// Step 2: Calculate totals and apply any business rules
+	// Step 2: Create order if validation passed
 	.andThen({
-		id: "calculate-totals",
+		id: "create-order",
 		execute: async ({ data }) => {
-			// Type guard for validation step result
-			if ("hasInvalidItems" in data && data.hasInvalidItems) {
+			if ("hasUnavailableItems" in data && data.hasUnavailableItems) {
+				const unavailableList = (data.unavailableItems as any[])
+					.map(
+						(i) =>
+							`${i.name} (requested: ${i.requestedQty}, available: ${i.currentQty || 0})`,
+					)
+					.join(", ");
+
 				return {
 					...data,
 					success: false,
-					message: `Order cannot be processed. The following items are out of stock or insufficient quantity: ${data.invalidItems.map((i: any) => `${i.productName} (requested: ${i.requestedQuantity}, available: ${i.availableQuantity})`).join(", ")}`,
+					message: `Cannot process order. Unavailable items: ${unavailableList}`,
 				};
 			}
 
-			const subtotal = data.items.reduce(
-				(sum, item) => sum + item.price * item.quantity,
-				0,
-			);
-			const tax = subtotal * 0.18; // 18% tax
-			const discount = subtotal > 1000 ? subtotal * 0.05 : 0; // 5% discount for orders over $1000
-			const total = subtotal + tax - discount;
+			// Create order using orderTool
+			const orderResult = await orderTool.execute({
+				action: "create",
+				contributorid: data.contributorid,
+				nodeid: data.nodeid,
+				ordertype: data.ordertype,
+				items: data.items,
+				address: data.address,
+				phone: data.phone,
+			});
+
+			if (!orderResult.success) {
+				return {
+					...data,
+					success: false,
+					message: orderResult.message,
+				};
+			}
 
 			return {
 				...data,
-				subtotal,
-				tax,
-				discount,
-				total,
-				orderNumber: data.orderNumber || `ORD-${Date.now()}`,
+				orderId: orderResult.orderId,
+				ordernum: orderResult.ordernum,
+				total: orderResult.total,
 			};
 		},
 	})
 
-	// Step 3: Create order and update inventory
+	// Step 3: Update instance inventory
 	.andThen({
-		id: "process-order",
+		id: "update-inventory",
 		execute: async ({ data }) => {
-			// Check if we have a failed validation result
 			if ("success" in data && !data.success) {
-				return {
-					success: false,
-					orderId: "",
-					orderNumber: ("orderNumber" in data ? data.orderNumber : "") || "",
-					total: 0,
-					status: "failed",
-					message: "message" in data ? data.message : "Order validation failed",
-				};
+				return data;
 			}
 
-			try {
-				// Type guard to ensure we have the required data
-				if (!("total" in data) || !("orderNumber" in data)) {
-					throw new Error("Missing required order data");
-				}
-
-				// Create the order
-				await CommerceDB.createOrder({
-					ordernumber: data.orderNumber,
-					userid: data.userId,
-					providerid: data.providerId,
-					items: data.items.map((item) => ({
+			// Update instance quantities for reserved items
+			for (const item of data.items) {
+				if (item.instanceId) {
+					// Get current instance
+					const instances = await productTool.execute({
+						action: "getInstances",
 						productId: item.productId,
-						productName: "", // Would need to fetch from DB
-						quantity: item.quantity,
-						price: item.price,
-					})),
-					total: data.total,
-				});
+					});
 
-				// Update inventory
-				for (const item of data.items) {
-					await CommerceDB.updateInventory(item.productId, -item.quantity);
+					const instance = instances.instances?.find(
+						(i: any) => i.id === item.instanceId,
+					);
+
+					if (instance) {
+						// Reduce available quantity
+						await productTool.execute({
+							action: "updateInstance",
+							instanceId: item.instanceId,
+							qty: instance.qty - item.qty,
+						});
+					}
 				}
-
-				return {
-					success: true,
-					orderId: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-					orderNumber: data.orderNumber as string,
-					total: data.total as number,
-					status: "confirmed",
-					message: `Order ${data.orderNumber} processed successfully. Total: $${(data.total as number).toFixed(2)}`,
-				};
-			} catch (error) {
-				console.error("Error processing order:", error);
-				const orderNumber = "orderNumber" in data ? data.orderNumber : "";
-				return {
-					success: false,
-					orderId: "",
-					orderNumber: orderNumber || "",
-					total: 0,
-					status: "error",
-					message: `Failed to process order: ${error instanceof Error ? error.message : "Unknown error"}`,
-				};
 			}
+
+			return data;
+		},
+	})
+
+	// Step 4: Generate workflow tasks
+	.andThen({
+		id: "generate-tasks",
+		execute: async ({ data }) => {
+			if ("success" in data && !data.success) {
+				return data;
+			}
+
+			const orderId = "orderId" in data ? data.orderId : "";
+			const ordertype = data.ordertype;
+
+			const tasks = [];
+
+			// Task 1: Prepare order
+			const prepareTask = await taskTool.execute({
+				action: "create",
+				reltype: "order",
+				relid: orderId,
+				nodeid: data.nodeid,
+				tasktype: "prepare",
+				title:
+					ordertype === "food"
+						? "Prepare Food Order"
+						: "Prepare Order for Pickup",
+				seq: 1,
+			});
+			tasks.push(prepareTask);
+
+			// Task 2: Deliver (if delivery order)
+			if (ordertype === "delivery" || ordertype === "food") {
+				const deliverTask = await taskTool.execute({
+					action: "create",
+					reltype: "order",
+					relid: orderId,
+					nodeid: data.nodeid,
+					tasktype: "deliver",
+					title: "Deliver Order",
+					seq: 2,
+				});
+				tasks.push(deliverTask);
+			}
+
+			return {
+				...data,
+				tasks,
+			};
+		},
+	})
+
+	// Step 5: Create transaction
+	.andThen({
+		id: "create-transaction",
+		execute: async ({ data }) => {
+			if ("success" in data && !data.success) {
+				return data;
+			}
+
+			const orderId = "orderId" in data ? data.orderId : "";
+			const total = "total" in data ? data.total : 0;
+
+			const transaction = await transactionTool.execute({
+				action: "create",
+				orderid: orderId,
+				contributorid: data.contributorid,
+				nodeid: data.nodeid,
+				amount: total,
+				paymethod: "cash",
+			});
+
+			return {
+				success: true,
+				orderId,
+				ordernum: "ordernum" in data ? data.ordernum : "",
+				total,
+				message: `Order processed successfully. Order ID: ${orderId}`,
+				transaction,
+			};
 		},
 	});
 
-/**
- * Workflow for product recommendation based on user preferences and purchase history
- */
-export const productRecommendationWorkflow = createWorkflowChain({
-	id: "product-recommendation",
-	name: "Product Recommendation Workflow",
+// ============================================
+// 2. SERVICE BOOKING WORKFLOW
+// ============================================
+
+export const serviceBookingWorkflow = createWorkflowChain({
+	id: "service-booking",
+	name: "Service Booking Workflow",
 	purpose:
-		"Generate personalized product recommendations based on user preferences and behavior",
+		"Book service appointments with slot validation, booking creation, and confirmation",
 
 	input: z.object({
-		userId: z.string(),
-		preferences: z
-			.object({
-				categories: z.array(z.string()).optional(),
-				priceRange: z
-					.object({
-						min: z.number().optional(),
-						max: z.number().optional(),
-					})
-					.optional(),
-				keywords: z.array(z.string()).optional(),
-			})
-			.optional(),
-		context: z.string().optional(), // e.g., "birthday gift", "office supplies"
+		contributorid: z.string(),
+		serviceId: z.string(),
+		nodeid: z.string(),
+		date: z.string(),
+		start: z.string(),
+		customerName: z.string(),
+		phone: z.string(),
+		email: z.string().optional(),
+		notes: z.string().optional(),
 	}),
+
 	result: z.object({
-		recommendations: z.array(
-			z.object({
-				productId: z.string(),
-				name: z.string(),
-				category: z.string(),
-				price: z.number(),
-				score: z.number(),
-				reason: z.string(),
-			}),
-		),
+		success: z.boolean(),
+		bookingId: z.string().optional(),
+		bookingnum: z.string().optional(),
+		message: z.string(),
+	}),
+})
+	// Step 1: Check slot availability
+	.andThen({
+		id: "check-slots",
+		execute: async ({ data }) => {
+			console.log(
+				`Checking available slots for service ${data.serviceId} on ${data.date}...`,
+			);
+
+			const slotsResult = await serviceTool.execute({
+				action: "getAvailableSlots",
+				serviceId: data.serviceId,
+				date: data.date,
+			});
+
+			if (!slotsResult.success || !slotsResult.slots?.length) {
+				return {
+					...data,
+					success: false,
+					message: `No available slots for ${data.date}`,
+				};
+			}
+
+			// Find slot matching the requested start time
+			const slot = slotsResult.slots.find((s: any) => s.start === data.start);
+
+			if (!slot) {
+				return {
+					...data,
+					success: false,
+					message: `Slot at ${data.start} is not available`,
+				};
+			}
+
+			return {
+				...data,
+				slotId: slot.id,
+				slotEnd: slot.end,
+			};
+		},
+	})
+
+	// Step 2: Create booking
+	.andThen({
+		id: "create-booking",
+		execute: async ({ data }) => {
+			if ("success" in data && !data.success) {
+				return data;
+			}
+
+			const slotId = "slotId" in data ? data.slotId : "";
+			const slotEnd = "slotEnd" in data ? data.slotEnd : "";
+
+			// Get service details for pricing
+			const serviceDetails = await serviceTool.execute({
+				action: "getAvailableSlots",
+				serviceId: data.serviceId,
+				date: data.date,
+			});
+
+			const price = serviceDetails.slots?.[0]?.service?.price || 0;
+			const duration = serviceDetails.slots?.[0]?.service?.duration || 60;
+
+			const bookingResult = await serviceTool.execute({
+				action: "createBooking",
+				contributorid: data.contributorid,
+				serviceId: data.serviceId,
+				nodeid: data.nodeid,
+				slotId,
+				date: data.date,
+				start: data.start,
+				end: slotEnd,
+				duration,
+				price,
+				customerName: data.customerName,
+				phone: data.phone,
+				email: data.email,
+				notes: data.notes,
+			});
+
+			if (!bookingResult.success) {
+				return {
+					...data,
+					success: false,
+					message: bookingResult.message,
+				};
+			}
+
+			return {
+				...data,
+				bookingId: bookingResult.bookingId,
+				bookingnum: bookingResult.bookingnum,
+				price,
+			};
+		},
+	})
+
+	// Step 3: Generate confirmation tasks
+	.andThen({
+		id: "generate-tasks",
+		execute: async ({ data }) => {
+			if ("success" in data && !data.success) {
+				return data;
+			}
+
+			const bookingId = "bookingId" in data ? data.bookingId : "";
+
+			// Task 1: Confirm booking
+			const confirmTask = await taskTool.execute({
+				action: "create",
+				reltype: "booking",
+				relid: bookingId,
+				nodeid: data.nodeid,
+				tasktype: "confirm",
+				title: "Confirm Booking",
+				seq: 1,
+			});
+
+			// Task 2: Send reminder (can be scheduled)
+			const reminderTask = await taskTool.execute({
+				action: "create",
+				reltype: "booking",
+				relid: bookingId,
+				nodeid: data.nodeid,
+				tasktype: "confirm",
+				title: "Send Reminder",
+				seq: 2,
+			});
+
+			// Task 3: Complete service
+			const completeTask = await taskTool.execute({
+				action: "create",
+				reltype: "booking",
+				relid: bookingId,
+				nodeid: data.nodeid,
+				tasktype: "complete",
+				title: "Complete Service",
+				seq: 3,
+			});
+
+			return {
+				...data,
+				tasks: [confirmTask, reminderTask, completeTask],
+			};
+		},
+	})
+
+	// Step 4: Create transaction
+	.andThen({
+		id: "create-transaction",
+		execute: async ({ data }) => {
+			if ("success" in data && !data.success) {
+				return data;
+			}
+
+			const bookingId = "bookingId" in data ? data.bookingId : "";
+			const price = "price" in data ? data.price : 0;
+
+			const transaction = await transactionTool.execute({
+				action: "create",
+				bookingid: bookingId,
+				contributorid: data.contributorid,
+				nodeid: data.nodeid,
+				amount: price,
+				paymethod: "card",
+			});
+
+			return {
+				success: true,
+				bookingId,
+				bookingnum: "bookingnum" in data ? data.bookingnum : "",
+				message: `Booking confirmed successfully. Booking ID: ${bookingId}`,
+				transaction,
+			};
+		},
+	});
+
+// ============================================
+// 3. PRODUCT DISCOVERY WORKFLOW
+// ============================================
+
+export const productDiscoveryWorkflow = createWorkflowChain({
+	id: "product-discovery",
+	name: "Product Discovery Workflow",
+	purpose:
+		"Discover and rank products based on search query, availability, and relevance",
+
+	input: z.object({
+		query: z.string(),
+		nodeid: z.string().optional(),
+		limit: z.number().optional(),
+	}),
+
+	result: z.object({
+		success: z.boolean(),
+		products: z.array(z.any()),
 		totalFound: z.number(),
 	}),
 })
+	// Step 1: Search products
 	.andThen({
-		id: "analyze-preferences",
+		id: "search-products",
 		execute: async ({ data }) => {
-			// In a real implementation, this would analyze user history, preferences, etc.
-			// For now, we'll use the provided preferences
+			console.log(`Searching for products: "${data.query}"...`);
 
-			let query = "";
-			const filters = [];
+			const searchResult = await productTool.execute({
+				action: "search",
+				query: data.query,
+				nodeid: data.nodeid,
+				limit: data.limit || 20,
+			});
 
-			if (data.preferences?.categories?.length) {
-				filters.push(
-					`category IN (${data.preferences.categories.map((c) => `'${c}'`).join(",")})`,
-				);
-			}
-
-			if (data.preferences?.keywords?.length) {
-				query = data.preferences.keywords.join(" ");
-			}
-
-			if (data.context) {
-				query += ` ${data.context}`;
+			if (!searchResult.success) {
+				return {
+					success: false,
+					products: [],
+					totalFound: 0,
+				};
 			}
 
 			return {
 				...data,
-				searchQuery: query.trim(),
-				filters: filters.join(" AND "),
+				products: searchResult.products || [],
 			};
 		},
 	})
 
+	// Step 2: Enrich with instance details
 	.andThen({
-		id: "generate-recommendations",
+		id: "enrich-products",
 		execute: async ({ data }) => {
-			// Search for products based on preferences
-			const products = await CommerceDB.searchProducts(
-				data.searchQuery || "",
-				undefined,
-				50,
+			const products = data.products || [];
+
+			// Get instances for each product
+			const enrichedProducts = await Promise.all(
+				products.map(async (product: any) => {
+					const instancesResult = await productTool.execute({
+						action: "getInstances",
+						productId: product.id,
+					});
+
+					return {
+						...product,
+						instances: instancesResult.instances || [],
+						availableInstances:
+							instancesResult.instances?.filter(
+								(i: any) => i.status === "available" && i.available > 0,
+							) || [],
+					};
+				}),
 			);
 
-			// Score and rank products
-			const scoredProducts = products.map((product) => {
+			return {
+				...data,
+				products: enrichedProducts,
+			};
+		},
+	})
+
+	// Step 3: Rank and filter
+	.andThen({
+		id: "rank-products",
+		execute: async ({ data }) => {
+			const products = data.products || [];
+
+			// Score products based on:
+			// - In stock: +50 points
+			// - Has available instances: +30 points
+			// - Featured: +20 points
+			const scoredProducts = products.map((product: any) => {
 				let score = 0;
-				const reasons: string[] = [];
 
-				// Price matching
-				if (data.preferences?.priceRange) {
-					const { min, max } = data.preferences.priceRange;
-					const productPrice = product.price as number;
-					if (min && productPrice >= min) {
-						score += 20;
-						reasons.push(`Within minimum price range`);
-					}
-					if (max && productPrice <= max) {
-						score += 20;
-						reasons.push(`Within maximum price range`);
-					}
-				}
-
-				// Category matching
-				if (data.preferences?.categories?.includes(String(product.category))) {
-					score += 30;
-					reasons.push(`Matches preferred category: ${product.category}`);
-				}
-
-				// Keyword matching (simple text match)
-				if (data.searchQuery) {
-					const queryWords = data.searchQuery.toLowerCase().split(" ");
-					const productName = String(product.name).toLowerCase();
-					const nameWords = productName.split(" ");
-
-					const matches = queryWords.filter((word) =>
-						nameWords.some((nameWord: string) => nameWord.includes(word)),
-					).length;
-
-					score += matches * 10;
-					if (matches > 0) {
-						reasons.push(`${matches} keyword matches`);
-					}
-				}
-
-				// Availability bonus
-				if (product.instock) {
-					score += 15;
-					reasons.push("Currently in stock");
-				}
+				if (product.instock) score += 50;
+				if (product.availableInstances?.length > 0) score += 30;
+				if (product.featured) score += 20;
 
 				return {
-					productId: product.id as string,
-					name: String(product.name),
-					category: String(product.category),
-					price: product.price as number,
+					...product,
 					score,
-					reason: reasons.join(", "),
 				};
 			});
 
-			// Sort by score and return top recommendations
-			const recommendations = scoredProducts
-				.sort((a, b) => b.score - a.score)
-				.slice(0, 10);
+			// Sort by score descending
+			const rankedProducts = scoredProducts.sort(
+				(a: any, b: any) => b.score - a.score,
+			);
 
 			return {
-				recommendations,
-				totalFound: products.length,
+				success: true,
+				products: rankedProducts,
+				totalFound: rankedProducts.length,
 			};
 		},
 	});
+
+// ============================================
+// 4. TASK EXECUTION WORKFLOW
+// ============================================
+
+export const taskExecutionWorkflow = createWorkflowChain({
+	id: "task-execution",
+	name: "Task Execution Workflow",
+	purpose: "Execute and track workflow tasks with location and OTP verification",
+
+	input: z.object({
+		taskId: z.string(),
+		assignedto: z.string().optional(),
+		lat: z.number().optional(),
+		lng: z.number().optional(),
+		otp: z.string().optional(),
+	}),
+
+	result: z.object({
+		success: z.boolean(),
+		message: z.string(),
+		status: z.string(),
+	}),
+})
+	// Step 1: Assign task if needed
+	.andThen({
+		id: "assign-task",
+		execute: async ({ data }) => {
+			if (data.assignedto) {
+				await taskTool.execute({
+					action: "assign",
+					taskId: data.taskId,
+					assignedto: data.assignedto,
+				});
+
+				return {
+					...data,
+					assigned: true,
+				};
+			}
+
+			return data;
+		},
+	})
+
+	// Step 2: Start task
+	.andThen({
+		id: "start-task",
+		execute: async ({ data }) => {
+			await taskTool.execute({
+				action: "updateStatus",
+				taskId: data.taskId,
+				status: "inprogress",
+			});
+
+			return {
+				...data,
+				status: "inprogress",
+			};
+		},
+	})
+
+	// Step 3: Update location if provided
+	.andThen({
+		id: "update-location",
+		execute: async ({ data }) => {
+			if (data.lat !== undefined && data.lng !== undefined) {
+				await taskTool.execute({
+					action: "updateLocation",
+					taskId: data.taskId,
+					lat: data.lat,
+					lng: data.lng,
+				});
+
+				return {
+					...data,
+					locationUpdated: true,
+				};
+			}
+
+			return data;
+		},
+	})
+
+	// Step 4: Complete task with OTP verification
+	.andThen({
+		id: "complete-task",
+		execute: async ({ data }) => {
+			if (data.otp) {
+				// Verify OTP and complete
+				const result = await taskTool.execute({
+					action: "verifyOTP",
+					taskId: data.taskId,
+					otp: data.otp,
+				});
+
+				return {
+					success: result.success,
+					message: result.message,
+					status: "completed",
+				};
+			} else {
+				// Complete without OTP
+				const result = await taskTool.execute({
+					action: "complete",
+					taskId: data.taskId,
+				});
+
+				return {
+					success: result.success,
+					message: result.message,
+					status: "completed",
+				};
+			}
+		},
+	});
+
+// ============================================
+// EXPORT ALL WORKFLOWS
+// ============================================
+
+export const commerceWorkflows = {
+	orderProcessing: orderProcessingWorkflow,
+	serviceBooking: serviceBookingWorkflow,
+	productDiscovery: productDiscoveryWorkflow,
+	taskExecution: taskExecutionWorkflow,
+};

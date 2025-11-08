@@ -4,7 +4,7 @@
  */
 
 import { init, id, tx } from "@instantdb/admin";
-import { instantDbSchema } from "./instantdb-schema";
+import _schema from "../../instant.schema";
 
 if (!process.env.INSTANTDB_APP_ID || !process.env.INSTANTDB_ADMIN_TOKEN) {
 	throw new Error(
@@ -16,7 +16,7 @@ if (!process.env.INSTANTDB_APP_ID || !process.env.INSTANTDB_ADMIN_TOKEN) {
 export const idb = init({
 	appId: process.env.INSTANTDB_APP_ID,
 	adminToken: process.env.INSTANTDB_ADMIN_TOKEN,
-	schema: instantDbSchema,
+	schema: _schema,
 });
 
 // Export helper functions

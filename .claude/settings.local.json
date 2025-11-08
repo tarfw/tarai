@@ -13,7 +13,10 @@
       "Bash(npx tsx:*)",
       "Bash(find:*)",
       "Bash(cat:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(timeout /t 5 /nobreak)",
+      "Bash(ping:*)",
+      "Bash(del:*)"
     ],
     "deny": [],
     "ask": []

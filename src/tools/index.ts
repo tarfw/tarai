@@ -1,14 +1,13 @@
-// Export all tools from this directory
+// Export all commerce tools
 export {
-	searchProductsTool,
-	semanticSearchTool,
-	generateEmbeddingsTool,
-	getProductDetailsTool,
-	checkInventoryTool,
-	createOrderTool,
-	createProductTool,
-	updateProductTool,
-	updateInventoryTool,
-	createProviderTool,
-	bulkCreateProductsTool,
+	commerceTools,
+	productTool,
+	orderTool,
+	serviceTool,
+	nodeTool,
+	contributorTool,
+	taskTool,
+	transactionTool,
+	searchTool,
+	reviewTool,
 } from "./commerce";
