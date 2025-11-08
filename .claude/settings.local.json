@@ -10,7 +10,10 @@
       "Bash(tree:*)",
       "Bash(taskkill:*)",
       "Bash(nul)",
-      "Bash(npx tsx:*)"
+      "Bash(npx tsx:*)",
+      "Bash(find:*)",
+      "Bash(cat:*)",
+      "Bash(curl:*)"
     ],
     "deny": [],
     "ask": []
