@@ -15,7 +15,7 @@ import { idb, id, tx } from "../db/instantdb-client";
 export const productTool = createTool({
 	name: "product",
 	description:
-		"Manage products and instances (variants, inventory, unique items). Actions: search, create, update, getDetails, createInstance, updateInstance, getInstances, checkAvailability. For 'create' action, required: action, nodeid, name, category, price",
+		"Manage products and instances (variants, inventory, unique items). Actions: search, create, update, getDetails, createInstance, createInstances (batch), updateInstance, getInstances, checkAvailability. For 'create' action, required: action, nodeid, name, category, price. For 'createInstances' (batch), required: action, productId, nodeid, instances (array)",
 	parameters: z
 		.object({
 			action: z.enum([
@@ -24,6 +24,7 @@ export const productTool = createTool({
 				"update",
 				"getDetails",
 				"createInstance",
+				"createInstances",
 				"updateInstance",
 				"getInstances",
 				"checkAvailability",
@@ -48,6 +49,24 @@ export const productTool = createTool({
 			qty: z.number().optional(),
 			attrs: z.record(z.any()).optional(),
 			priceadd: z.number().optional(),
+			// Batch instance creation
+			instances: z
+				.array(
+					z.object({
+						name: z.string(),
+						instanceType: z.enum([
+							"variant",
+							"inventory",
+							"capacity",
+							"asset",
+							"unique",
+						]),
+						qty: z.number().optional(),
+						attrs: z.record(z.any()).optional(),
+						priceadd: z.number().optional(),
+					}),
+				)
+				.optional(),
 		})
 		.strict(),
 	execute: async ({ action, ...params }) => {
@@ -114,6 +133,7 @@ export const productTool = createTool({
 					await idb.transact([
 						tx.products[productId]
 							.update({
+								nodeid,
 								name,
 								desc: desc || "",
 								category,
@@ -225,6 +245,8 @@ export const productTool = createTool({
 					await idb.transact([
 						tx.instances[instanceId]
 							.update({
+								productid: productId,
+								nodeid,
 								name: instanceName,
 								instancetype: instanceType,
 								qty,
@@ -244,6 +266,73 @@ export const productTool = createTool({
 						success: true,
 						message: `Instance "${instanceName}" created successfully`,
 						instanceId,
+					};
+				}
+
+				case "createInstances": {
+					const { productId, nodeid, instances } = params;
+
+					if (!productId || !nodeid || !instances || instances.length === 0) {
+						return {
+							success: false,
+							message:
+								"Missing required fields: productId, nodeid, instances (array)",
+						};
+					}
+
+					// Create all instances in a single transaction
+					const instanceIds: string[] = [];
+					const instanceTransactions = instances.map((instance) => {
+						const instanceId = id();
+						instanceIds.push(instanceId);
+						return tx.instances[instanceId]
+							.update({
+								productid: productId,
+								nodeid,
+								name: instance.name,
+								instancetype: instance.instanceType,
+								qty: instance.qty || 0,
+								available: instance.qty || 0,
+								reserved: 0,
+								attrs: instance.attrs || {},
+								priceadd: instance.priceadd || 0,
+								status: "available",
+								active: true,
+								createdat: Date.now(),
+								updatedat: Date.now(),
+							})
+							.link({ product: productId, node: nodeid });
+					});
+
+					await idb.transact(instanceTransactions);
+
+					// Verify instances were created by querying them back
+					const verifyResult = await idb.query({
+						instances: {
+							$: {
+								where: {
+									"product.id": productId,
+								},
+							},
+						},
+					});
+
+					// Return with actual instance IDs created
+					const createdInstances = instances.map((instance, index) => ({
+						instanceId: instanceIds[index],
+						name: instance.name,
+						instanceType: instance.instanceType,
+						qty: instance.qty || 0,
+						priceadd: instance.priceadd || 0,
+						attrs: instance.attrs || {},
+					}));
+
+					return {
+						success: true,
+						message: `${instances.length} instances created successfully (verified: ${verifyResult.instances?.length || 0} in DB)`,
+						count: instances.length,
+						instances: createdInstances,
+						verifiedCount: verifyResult.instances?.length || 0,
 					};
 				}
 
@@ -417,6 +506,8 @@ export const orderTool = createTool({
 					await idb.transact([
 						tx.orders[orderId]
 							.update({
+								contributorid,
+								nodeid,
 								ordernum,
 								ordertype: ordertype || "store",
 								subtotal,
@@ -440,6 +531,9 @@ export const orderTool = createTool({
 						const lineitemId = id();
 						return tx.lineitems[lineitemId]
 							.update({
+								orderid: orderId,
+								productid: item.productId,
+								instanceid: item.instanceId || undefined,
 								name: item.name,
 								instancename: item.instanceId || "",
 								qty: item.qty,
@@ -664,6 +758,7 @@ export const serviceTool = createTool({
 					await idb.transact([
 						tx.services[serviceId]
 							.update({
+								nodeid,
 								name,
 								desc: desc || "",
 								category,
@@ -702,6 +797,8 @@ export const serviceTool = createTool({
 					await idb.transact([
 						tx.slots[slotId]
 							.update({
+								serviceid: serviceId,
+								nodeid,
 								date,
 								start,
 								end,
@@ -788,6 +885,10 @@ export const serviceTool = createTool({
 					await idb.transact([
 						tx.bookings[bookingId]
 							.update({
+								contributorid,
+								serviceid: serviceId,
+								nodeid,
+								slotid: slotId,
 								bookingnum,
 								date,
 								start,
@@ -1391,6 +1492,7 @@ export const taskTool = createTool({
 					await idb.transact([
 						tx.tasks[taskId]
 							.update({
+								nodeid,
 								reltype,
 								relid,
 								tasktype,
@@ -1663,6 +1765,10 @@ export const transactionTool = createTool({
 
 					const transactionId = id();
 					const transactionData: any = {
+						contributorid,
+						nodeid,
+						orderid: orderid || undefined,
+						bookingid: bookingid || undefined,
 						amount,
 						currency,
 						paymethod,
@@ -2077,6 +2183,7 @@ export const reviewTool = createTool({
 					await idb.transact([
 						tx.reviews[reviewId]
 							.update({
+								contributorid,
 								targettype,
 								targetid,
 								rating,
