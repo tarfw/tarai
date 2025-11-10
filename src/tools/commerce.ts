@@ -15,7 +15,7 @@ import { idb, id, tx } from "../db/instantdb-client";
 export const productTool = createTool({
 	name: "product",
 	description:
-		"Manage products and instances (variants, inventory, unique items). Actions: search, create, update, getDetails, createInstance, createInstances (batch), updateInstance, getInstances, checkAvailability. For 'create' action, required: action, nodeid, name, category, price. For 'createInstances' (batch), required: action, productId, nodeid, instances (array)",
+		"Product & instance mgmt. Actions: search,create,update,getDetails,createInstance,createInstances,updateInstance,getInstances,checkAvailability",
 	parameters: z
 		.object({
 			action: z.enum([
@@ -432,7 +432,7 @@ export const productTool = createTool({
 export const orderTool = createTool({
 	name: "order",
 	description:
-		"Manage orders and line items. Actions: create, update, getDetails, addItems, updateStatus, cancel, getByContributor, getByNode",
+		"Order mgmt. Actions: create,update,getDetails,addItems,updateStatus,cancel,getByContributor,getByNode",
 	parameters: z.object({
 		action: z.enum([
 			"create",
@@ -707,7 +707,7 @@ export const orderTool = createTool({
 export const serviceTool = createTool({
 	name: "service",
 	description:
-		"Manage services, slots, and bookings. Actions: createService, updateService, createSlots, getAvailableSlots, createBooking, updateBooking, cancelBooking, getBookingDetails",
+		"Service & booking mgmt. Actions: createService,updateService,createSlots,getAvailableSlots,createBooking,updateBooking,cancelBooking,getBookingDetails",
 	parameters: z.object({
 		action: z.enum([
 			"createService",
@@ -1032,7 +1032,7 @@ export const serviceTool = createTool({
 export const nodeTool = createTool({
 	name: "node",
 	description:
-		"Manage business nodes. Actions: create, update, getDetails, getProducts, getServices, getOrders, search",
+		"Node mgmt. Actions: create,update,getDetails,getProducts,getServices,getOrders,search",
 	parameters: z.object({
 		action: z.enum([
 			"create",
@@ -1237,7 +1237,7 @@ export const nodeTool = createTool({
 export const contributorTool = createTool({
 	name: "contributor",
 	description:
-		"Manage contributors (customers, staff, drivers). Actions: create, update, getDetails, getOrders, getBookings, getTasks",
+		"Contributor mgmt. Actions: create,update,getDetails,getOrders,getBookings,getTasks",
 	parameters: z.object({
 		action: z.enum([
 			"create",
@@ -1435,7 +1435,7 @@ export const contributorTool = createTool({
 export const taskTool = createTool({
 	name: "task",
 	description:
-		"Manage workflow tasks. Actions: create, assign, updateStatus, complete, updateLocation, verifyOTP, getByOrder, getByBooking",
+		"Task mgmt. Actions: create,assign,updateStatus,complete,updateLocation,verifyOTP,getByOrder,getByBooking",
 	parameters: z.object({
 		action: z.enum([
 			"create",
@@ -1714,7 +1714,7 @@ export const taskTool = createTool({
 export const transactionTool = createTool({
 	name: "transaction",
 	description:
-		"Manage payment transactions. Actions: create, refund, getHistory, getByContributor, getByNode",
+		"Payment mgmt. Actions: create,refund,getHistory,getByContributor,getByNode",
 	parameters: z.object({
 		action: z.enum([
 			"create",
@@ -1916,7 +1916,7 @@ export const transactionTool = createTool({
 export const searchTool = createTool({
 	name: "search",
 	description:
-		"Advanced search across products, services, nodes. Actions: products, services, nodes, nearMe, semantic",
+		"Search products/services/nodes. Actions: products,services,nodes,nearMe,semantic",
 	parameters: z.object({
 		action: z.enum(["products", "services", "nodes", "nearMe", "semantic"]),
 		query: z.string().optional(),
@@ -2133,7 +2133,7 @@ export const searchTool = createTool({
 export const reviewTool = createTool({
 	name: "review",
 	description:
-		"Manage customer reviews. Actions: create, update, getByTarget, getByContributor, verify, delete",
+		"Review mgmt. Actions: create,update,getByTarget,getByContributor,verify,delete",
 	parameters: z.object({
 		action: z.enum([
 			"create",

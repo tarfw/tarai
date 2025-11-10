@@ -16,7 +16,10 @@
       "Bash(curl:*)",
       "Bash(timeout /t 5 /nobreak)",
       "Bash(ping:*)",
-      "Bash(del:*)"
+      "Bash(del:*)",
+      "Bash(echo:*)",
+      "Bash(C:tarfwtaraisrcindex.ts)",
+      "Bash(srcindex.ts)"
     ],
     "deny": [],
     "ask": []
