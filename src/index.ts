@@ -11,6 +11,10 @@ import {
 	createDiscoveryAgent,
 	createNodeAgent,
 	createCustomerAgent,
+	createServiceAgent,
+	createBookingAgent,
+	createAnalyticsAgent,
+	createAdminAgent,
 } from "./agents";
 import { commerceWorkflows } from "./workflows/commerce";
 
@@ -57,9 +61,15 @@ async function initializeApp() {
 			instance: createInstanceAgent(testNodeId),
 			order: createOrderAgent(testNodeId),
 			node: createNodeAgent(testNodeId),
+			service: createServiceAgent(testNodeId),
+			analytics: createAnalyticsAgent(testNodeId),
 
 			// Customer-scoped agents (demo)
 			customer: createCustomerAgent(testCustomerId),
+			booking: createBookingAgent(testCustomerId),
+
+			// Admin agent (universal for admins)
+			admin: createAdminAgent(),
 		};
 
 		// Create and start the VoltAgent
@@ -80,13 +90,24 @@ async function initializeApp() {
 		});
 
 		logger.info("🎉 Multi-Agent Commerce System started successfully!");
-		logger.info("🤖 Loaded 6 specialized agents:");
-		logger.info("   • Discovery Agent (universal search)");
-		logger.info("   • Product Agent (product management)");
-		logger.info("   • Instance Agent (inventory/variants)");
-		logger.info("   • Order Agent (order management)");
-		logger.info("   • Node Agent (store settings)");
-		logger.info("   • Customer Agent (customer view)");
+		logger.info("🤖 Loaded 10 specialized agents:");
+		logger.info("");
+		logger.info("   Universal Agents:");
+		logger.info("   • Discovery Agent - Search products/services/nodes");
+		logger.info("   • Admin Agent - Platform management");
+		logger.info("");
+		logger.info("   Node-Owner Agents:");
+		logger.info("   • Product Agent - Product management");
+		logger.info("   • Instance Agent - Inventory/variants");
+		logger.info("   • Order Agent - Order management");
+		logger.info("   • Service Agent - Services & slots");
+		logger.info("   • Node Agent - Store settings");
+		logger.info("   • Analytics Agent - Business insights");
+		logger.info("");
+		logger.info("   Customer Agents:");
+		logger.info("   • Customer Agent - My orders/profile");
+		logger.info("   • Booking Agent - Appointment booking");
+		logger.info("");
 		logger.info("🔄 Loaded 4 automated workflows");
 		logger.info("🌐 Server running on http://localhost:3141");
 		logger.info("");
@@ -95,12 +116,17 @@ async function initializeApp() {
 		logger.info("   • /agents/product - Product management");
 		logger.info("   • /agents/instance - Inventory management");
 		logger.info("   • /agents/order - Order management");
+		logger.info("   • /agents/service - Service management");
+		logger.info("   • /agents/booking - Appointment booking");
 		logger.info("   • /agents/node - Store settings");
 		logger.info("   • /agents/customer - Customer view");
+		logger.info("   • /agents/analytics - Business insights");
+		logger.info("   • /agents/admin - Platform admin");
 		logger.info("");
 		logger.info("💰 Token usage optimized:");
 		logger.info("   • 85% reduction per request (4000 → 600 tokens)");
 		logger.info("   • Specialized agents with focused tools");
+		logger.info("   • Dynamic routing & agent handoff support");
 	} catch (error) {
 		logger.error("❌ Failed to initialize application:", error as Error);
 		process.exit(1);
