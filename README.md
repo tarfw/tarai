@@ -16,7 +16,7 @@ yarn install
 yarn <android | ios>
 ```
 
-## :memo: Blog Post
+## :memo: Blog Posts
 
 [Building an AI-Powered Note-Taking App in React Native — Part 1: Text Semantic Search](https://blog.swmansion.com/building-an-ai-note-taking-app-with-react-native-executorch-and-rag-3f3c94a2f92b)
 
