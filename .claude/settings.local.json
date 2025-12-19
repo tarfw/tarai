@@ -15,7 +15,12 @@
       "WebFetch(domain:docs.swmansion.com)",
       "WebFetch(domain:blog.swmansion.com)",
       "Bash(cat:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(git remote set-url:*)",
+      "Bash(npx expo start:*)",
+      "Bash(ls:*)"
     ]
   }
 }

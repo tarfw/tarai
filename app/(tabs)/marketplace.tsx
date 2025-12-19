@@ -7,22 +7,43 @@ import {
   TouchableOpacity,
   View,
   ScrollView,
-  FlatList
+  Pressable,
+  Dimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { listingService } from "@/services/listingService";
 import { COMMERCE_CATEGORIES } from "@/services/vectorStores/listingVectorStore";
 import type { CachedListing } from "@/types/listing";
-import { colors } from "@/constants/theme";
 import { useFocusEffect } from "expo-router";
+import { useTheme } from "@/contexts/ThemeContext";
+
+const { width: SCREEN_WIDTH } = Dimensions.get("window");
+const CARD_GAP = 12;
+const CARD_PADDING = 16;
+const CARD_WIDTH = (SCREEN_WIDTH - (CARD_PADDING * 2) - CARD_GAP) / 2;
 
 export default function Marketplace() {
   const insets = useSafeAreaInsets();
+  const { colors, spacing, radius, typography, isDark, toggleTheme } = useTheme();
   const [searchQuery, setSearchQuery] = useState("");
   const [suggestions, setSuggestions] = useState<Array<{ text: string; type: string; icon: string }>>([]);
   const [searchResults, setSearchResults] = useState<CachedListing[]>([]);
   const [cachedListings, setCachedListings] = useState<CachedListing[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
+
+  const categoryColors: Record<string, string> = {
+    transportation: colors.blue,
+    food_delivery: colors.orange,
+    service: colors.green,
+    booking: colors.purple,
+    physical_product: colors.teal,
+    educational: colors.pink,
+    event: colors.warning,
+    rental: colors.accent,
+    digital_product: colors.success,
+    recurring_service: colors.error,
+  };
 
   useFocusEffect(
     useCallback(() => {
@@ -33,7 +54,6 @@ export default function Marketplace() {
   const loadCachedListings = async () => {
     try {
       const listings = await listingService.getCachedListings();
-      console.log('Marketplace loaded listings:', listings.length, listings);
       setCachedListings(listings);
     } catch (e) {
       console.error('Failed to load cached listings', e);
@@ -53,19 +73,12 @@ export default function Marketplace() {
     setIsSearching(true);
 
     try {
-      // Get semantic suggestions
       const suggs = await listingService.getSemanticSuggestions(query);
       setSuggestions(suggs);
 
-      // Perform search (vector or text fallback)
       const results = await listingService.searchListingsByText(query, {}, 10);
-      console.log('Search results:', results);
-
-      // Filter results by similarity threshold (0.15 minimum)
       const relevantResults = results.filter(r => r.similarity >= 0.15);
-      console.log('Relevant results (similarity >= 0.15):', relevantResults.length);
 
-      // Map results to cached listings, preserving search order
       const resultListings: typeof cachedListings = [];
       for (const result of relevantResults) {
         const listing = cachedListings.find(l => l.id === result.listingId);
@@ -73,16 +86,11 @@ export default function Marketplace() {
           resultListings.push(listing);
         }
       }
-      console.log('Filtered listings:', resultListings.length);
 
       setSearchResults(resultListings);
     } catch (e) {
       console.error('Failed to search', e);
     }
-  };
-
-  const handleSuggestionPress = (suggestion: { text: string; type: string }) => {
-    handleSearch(suggestion.text);
   };
 
   const handleClearSearch = () => {
@@ -92,103 +100,131 @@ export default function Marketplace() {
     setSearchResults([]);
   };
 
-  const renderListingCard = ({ item }: { item: CachedListing }) => (
-    <TouchableOpacity style={styles.card}>
-      <View style={styles.cardHeader}>
-        <Text style={styles.cardTitle}>{item.title}</Text>
-        <Text style={styles.cardType}>
-          {COMMERCE_CATEGORIES[item.type as keyof typeof COMMERCE_CATEGORIES]?.icon || '📦'}
-        </Text>
-      </View>
-      <View style={styles.cardFooter}>
-        <Text style={styles.cardPrice}>₹{item.price}</Text>
-        <Text style={styles.cardTypeLabel}>
-          {COMMERCE_CATEGORIES[item.type as keyof typeof COMMERCE_CATEGORIES]?.label || item.type}
-        </Text>
-      </View>
-    </TouchableOpacity>
-  );
+  const displayListings = isSearching ? searchResults : cachedListings;
 
-  const renderSuggestion = ({ item }: { item: { text: string; type: string; icon: string } }) => (
-    <TouchableOpacity
-      style={styles.suggestionChip}
-      onPress={() => handleSuggestionPress(item)}
-    >
-      <Text style={styles.suggestionIcon}>{item.icon}</Text>
-      <Text style={styles.suggestionText}>{item.text}</Text>
-    </TouchableOpacity>
-  );
+  const styles = createStyles(colors, spacing, radius, typography);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>TARAI</Text>
+        <Text style={styles.headerTitle}>Explore</Text>
+        <TouchableOpacity style={styles.headerButton} onPress={toggleTheme}>
+          <FontAwesome6
+            name={isDark ? "moon" : "sun"}
+            size={18}
+            color={colors.textTertiary}
+          />
+        </TouchableOpacity>
       </View>
 
       {/* Search Bar */}
-      <View style={styles.searchContainer}>
-        <View style={styles.searchBar}>
-          <FontAwesome6 name="magnifying-glass" size={18} color={colors.textSecondary} />
+      <View style={styles.searchWrapper}>
+        <View style={[styles.searchBar, isFocused && styles.searchBarFocused]}>
+          <FontAwesome6 name="magnifying-glass" size={16} color={colors.textTertiary} />
           <TextInput
-            placeholder="Search marketplace..."
+            placeholder="Search services, products..."
             value={searchQuery}
             onChangeText={handleSearch}
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => setIsFocused(false)}
             style={styles.searchInput}
-            placeholderTextColor={colors.textSecondary}
+            placeholderTextColor={colors.textTertiary}
+            selectionColor={colors.accent}
           />
-          {isSearching && (
-            <TouchableOpacity onPress={handleClearSearch}>
-              <FontAwesome6 name="xmark" size={18} color={colors.textSecondary} />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={handleClearSearch} style={styles.clearButton}>
+              <FontAwesome6 name="xmark" size={14} color={colors.textTertiary} />
             </TouchableOpacity>
           )}
         </View>
       </View>
 
-      {/* Suggestions */}
-      {suggestions.length > 0 && (
-        <View style={styles.suggestionsContainer}>
-          <Text style={styles.sectionLabel}>Suggestions</Text>
-          <FlatList
+      {/* Quick Categories */}
+      {!isSearching && (
+        <View style={styles.categoriesWrapper}>
+          <ScrollView
             horizontal
-            data={suggestions}
-            renderItem={renderSuggestion}
-            keyExtractor={(item, index) => `${item.type}-${index}`}
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.suggestionsList}
-          />
+            contentContainerStyle={styles.categoriesContainer}
+          >
+            {Object.entries(COMMERCE_CATEGORIES).slice(0, 6).map(([type, info]) => (
+              <TouchableOpacity
+                key={type}
+                style={styles.categoryChip}
+                onPress={() => handleSearch(info.label)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.categoryIcon}>{info.icon}</Text>
+                <Text style={styles.categoryLabel}>{info.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
         </View>
       )}
 
-      {/* Results or All Listings */}
-      <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
-        <Text style={styles.sectionLabel}>
-          {isSearching
-            ? `Search Results (${searchResults.length})`
-            : `All Listings (${cachedListings.length})`}
-        </Text>
+      {/* Suggestions */}
+      {isSearching && suggestions.length > 0 && (
+        <View style={styles.suggestionsWrapper}>
+          <Text style={styles.sectionLabel}>Suggestions</Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.suggestionsContainer}
+          >
+            {suggestions.map((item, index) => (
+              <TouchableOpacity
+                key={`${item.type}-${index}`}
+                style={styles.suggestionChip}
+                onPress={() => handleSearch(item.text)}
+              >
+                <Text style={styles.suggestionIcon}>{item.icon}</Text>
+                <Text style={styles.suggestionText}>{item.text}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      )}
 
-        {isSearching && searchResults.length === 0 && (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyStateText}>No results found</Text>
-            <Text style={styles.emptyStateSubtext}>Try different keywords</Text>
-          </View>
-        )}
-
-        {!isSearching && cachedListings.length === 0 && (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyStateText}>No listings yet</Text>
-            <Text style={styles.emptyStateSubtext}>
-              Demo data will load automatically
+      {/* Results */}
+      <ScrollView
+        style={styles.content}
+        contentContainerStyle={[
+          styles.contentContainer,
+          { paddingBottom: 80 + insets.bottom }
+        ]}
+        showsVerticalScrollIndicator={false}
+      >
+        {isSearching && (
+          <View style={styles.resultsHeader}>
+            <Text style={styles.sectionLabel}>
+              {searchResults.length} results
             </Text>
           </View>
         )}
 
-        <View style={styles.listingsGrid}>
-          {(isSearching ? searchResults : cachedListings).map(item => (
-            <View key={item.id} style={styles.gridItem}>
-              {renderListingCard({ item })}
+        {!isSearching && (
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Popular</Text>
+            <TouchableOpacity>
+              <Text style={styles.seeAllText}>See all</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {displayListings.length === 0 && isSearching && (
+          <View style={styles.emptyState}>
+            <View style={styles.emptyIconContainer}>
+              <FontAwesome6 name="magnifying-glass" size={32} color={colors.textTertiary} />
             </View>
+            <Text style={styles.emptyTitle}>No results</Text>
+            <Text style={styles.emptySubtitle}>Try different keywords</Text>
+          </View>
+        )}
+
+        <View style={styles.listingsGrid}>
+          {displayListings.map((item) => (
+            <ListingCard key={item.id} item={item} colors={colors} categoryColors={categoryColors} spacing={spacing} radius={radius} typography={typography} />
           ))}
         </View>
       </ScrollView>
@@ -196,7 +232,88 @@ export default function Marketplace() {
   );
 }
 
-const styles = StyleSheet.create({
+function ListingCard({
+  item,
+  colors,
+  categoryColors,
+  spacing,
+  radius,
+  typography
+}: {
+  item: CachedListing;
+  colors: any;
+  categoryColors: Record<string, string>;
+  spacing: any;
+  radius: any;
+  typography: any;
+}) {
+  const categoryColor = categoryColors[item.type] || colors.accent;
+  const category = COMMERCE_CATEGORIES[item.type as keyof typeof COMMERCE_CATEGORIES];
+
+  return (
+    <Pressable
+      style={({ pressed }) => [
+        {
+          width: CARD_WIDTH,
+          backgroundColor: colors.surface,
+          borderRadius: radius.lg,
+          borderWidth: 1,
+          borderColor: colors.border,
+          overflow: "hidden",
+        },
+        pressed && { opacity: 0.8 }
+      ]}
+    >
+      {/* Icon Header */}
+      <View style={{
+        height: 80,
+        backgroundColor: `${categoryColor}15`,
+        justifyContent: "center",
+        alignItems: "center",
+      }}>
+        <Text style={{ fontSize: 36 }}>{category?.icon || '📦'}</Text>
+      </View>
+
+      {/* Content */}
+      <View style={{ padding: spacing.md, gap: spacing.sm }}>
+        <Text
+          style={{
+            ...typography.headline,
+            color: colors.textPrimary,
+          }}
+          numberOfLines={2}
+        >
+          {item.title}
+        </Text>
+
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+          <View style={{
+            backgroundColor: `${categoryColor}20`,
+            paddingHorizontal: spacing.sm,
+            paddingVertical: spacing.xs,
+            borderRadius: radius.sm,
+          }}>
+            <Text style={{
+              ...typography.small,
+              color: categoryColor,
+              fontWeight: "600",
+            }}>
+              {category?.label || item.type}
+            </Text>
+          </View>
+          <Text style={{
+            ...typography.headline,
+            color: colors.textPrimary,
+          }}>
+            ₹{item.price}
+          </Text>
+        </View>
+      </View>
+    </Pressable>
+  );
+}
+
+const createStyles = (colors: any, spacing: any, radius: any, typography: any) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -204,133 +321,157 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: "#e0e0e0",
+    justifyContent: "space-between",
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
   },
   headerTitle: {
-    fontSize: 20,
-    fontWeight: "700",
+    ...typography.largeTitle,
     color: colors.textPrimary,
   },
-  searchContainer: {
-    padding: 16,
+  headerButton: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.md,
     backgroundColor: colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  searchWrapper: {
+    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.md,
   },
   searchBar: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: colors.background,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    gap: 8,
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: spacing.sm,
+  },
+  searchBarFocused: {
+    borderColor: colors.accent,
+    backgroundColor: colors.elevated,
   },
   searchInput: {
     flex: 1,
-    fontSize: 16,
+    ...typography.body,
     color: colors.textPrimary,
   },
-  suggestionsContainer: {
-    paddingVertical: 12,
-    backgroundColor: colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+  clearButton: {
+    padding: spacing.xs,
   },
-  suggestionsList: {
-    paddingHorizontal: 16,
-    gap: 8,
+  categoriesWrapper: {
+    marginBottom: spacing.md,
+  },
+  categoriesContainer: {
+    paddingHorizontal: spacing.lg,
+    gap: spacing.sm,
+    alignItems: "center",
+  },
+  categoryChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.full,
+    gap: spacing.xs,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  categoryIcon: {
+    fontSize: 14,
+  },
+  categoryLabel: {
+    ...typography.caption,
+    color: colors.textPrimary,
+  },
+  suggestionsWrapper: {
+    marginBottom: spacing.md,
+  },
+  sectionLabel: {
+    ...typography.caption,
+    color: colors.textTertiary,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.sm,
+  },
+  suggestionsContainer: {
+    paddingHorizontal: spacing.lg,
+    gap: spacing.sm,
   },
   suggestionChip: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: colors.background,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    gap: 6,
+    backgroundColor: colors.accentSubtle,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.full,
+    gap: spacing.xs,
   },
   suggestionIcon: {
-    fontSize: 16,
+    fontSize: 14,
   },
   suggestionText: {
-    fontSize: 14,
-    color: colors.textPrimary,
+    ...typography.caption,
+    color: colors.accent,
   },
   content: {
     flex: 1,
   },
   contentContainer: {
-    padding: 16,
+    paddingHorizontal: spacing.lg,
   },
-  sectionLabel: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: colors.textSecondary,
-    marginBottom: 12,
+  resultsHeader: {
+    marginBottom: spacing.md,
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: spacing.md,
+  },
+  sectionTitle: {
+    ...typography.headline,
+    color: colors.textPrimary,
+  },
+  seeAllText: {
+    ...typography.caption,
+    color: colors.accent,
   },
   listingsGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 12,
-  },
-  gridItem: {
-    width: "48%",
-  },
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    padding: 12,
-    gap: 8,
-  },
-  cardHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-  },
-  cardTitle: {
-    flex: 1,
-    fontSize: 14,
-    fontWeight: "600",
-    color: colors.textPrimary,
-  },
-  cardType: {
-    fontSize: 20,
-  },
-  cardFooter: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  cardPrice: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#2196F3",
-  },
-  cardTypeLabel: {
-    fontSize: 11,
-    color: colors.textSecondary,
+    gap: CARD_GAP,
   },
   emptyState: {
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 60,
-    gap: 8,
+    paddingVertical: spacing.xxl * 2,
+    gap: spacing.md,
   },
-  emptyStateText: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: colors.textSecondary,
+  emptyIconContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: radius.xl,
+    backgroundColor: colors.surface,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: spacing.md,
   },
-  emptyStateSubtext: {
-    fontSize: 14,
+  emptyTitle: {
+    ...typography.title,
+    color: colors.textPrimary,
+  },
+  emptySubtitle: {
+    ...typography.body,
     color: colors.textSecondary,
-    textAlign: "center",
-    paddingHorizontal: 32,
   },
 });

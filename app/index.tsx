@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import { ActivityIndicator, View, Text, StyleSheet } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import { listingVectorStore } from "@/services/vectorStores/listingVectorStore";
 import { listingService } from "@/services/listingService";
+import { colors, typography, spacing, radius } from "@/constants/theme";
 
 export default function Index() {
   const insets = useSafeAreaInsets();
@@ -29,7 +31,7 @@ export default function Index() {
 
         // Load demo data for testing
         const { loadDemoListings } = await import("@/services/demo/sampleListings");
-        setLoadingStatus("Loading demo listings...");
+        setLoadingStatus("Loading listings...");
         await loadDemoListings();
 
         setLoadingStatus("Ready!");
@@ -44,23 +46,69 @@ export default function Index() {
   }, []);
 
   return (
-    <View style={[styles.loadingContainer, { paddingTop: insets.top }]}>
-      <ActivityIndicator size="large" color="#000" />
-      <Text style={styles.loadingText}>{loadingStatus}</Text>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      <View style={styles.content}>
+        <LinearGradient
+          colors={[colors.accent, colors.purple]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.logoContainer}
+        >
+          <Text style={styles.logoText}>T</Text>
+        </LinearGradient>
+        <Text style={styles.appName}>TARAI</Text>
+        <Text style={styles.tagline}>Universal Commerce</Text>
+      </View>
+      <View style={styles.footer}>
+        <ActivityIndicator size="small" color={colors.accent} />
+        <Text style={styles.loadingText}>{loadingStatus}</Text>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  loadingContainer: {
+  container: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  content: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#f5f5f5",
-    gap: 16,
+    gap: spacing.md,
+  },
+  logoContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: radius.xl,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: spacing.md,
+  },
+  logoText: {
+    fontSize: 40,
+    fontWeight: "800",
+    color: colors.textPrimary,
+  },
+  appName: {
+    ...typography.largeTitle,
+    color: colors.textPrimary,
+    letterSpacing: 2,
+  },
+  tagline: {
+    ...typography.body,
+    color: colors.textSecondary,
+  },
+  footer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.md,
+    paddingBottom: spacing.xxl,
   },
   loadingText: {
-    fontSize: 16,
-    color: "#666",
+    ...typography.caption,
+    color: colors.textTertiary,
   },
 });
