@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   Platform,
   Pressable,
   Alert,
+  ActivityIndicator,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { FontAwesome6 } from "@expo/vector-icons";
@@ -48,9 +49,40 @@ export default function AddListing() {
   const [form, setForm] = useState<FormData>(INITIAL_FORM);
   const [errors, setErrors] = useState<Partial<FormData>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [showTypeSelector, setShowTypeSelector] = useState(false);
 
   const styles = createStyles(colors, spacing, radius, typography);
+
+  // Load existing listing data when editing
+  useEffect(() => {
+    if (isEditing && params.id) {
+      loadListing(params.id);
+    }
+  }, [isEditing, params.id]);
+
+  const loadListing = async (id: string) => {
+    setIsLoading(true);
+    try {
+      const listing = await listingService.getListingById(id);
+      if (listing) {
+        setForm({
+          title: listing.title || "",
+          description: "",
+          price: listing.price?.toString() || "",
+          type: (listing.type as CommerceType) || "physical_product",
+          category: "",
+          tags: "",
+          location: "",
+        });
+      }
+    } catch (error) {
+      console.error("Failed to load listing:", error);
+      Alert.alert("Error", "Failed to load listing data.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const categoryColors: Record<string, string> = {
     transportation: colors.blue,
@@ -157,6 +189,15 @@ export default function AddListing() {
   const selectedType = COMMERCE_CATEGORIES[form.type as keyof typeof COMMERCE_CATEGORIES];
   const typeColor = categoryColors[form.type] || colors.accent;
 
+  if (isLoading) {
+    return (
+      <View style={[styles.container, styles.loadingContainer, { paddingTop: insets.top }]}>
+        <ActivityIndicator size="large" color={colors.accent} />
+        <Text style={styles.loadingText}>Loading...</Text>
+      </View>
+    );
+  }
+
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* Header */}
@@ -167,10 +208,10 @@ export default function AddListing() {
         <Text style={styles.headerTitle}>{isEditing ? "Edit Item" : "New Item"}</Text>
         <TouchableOpacity
           onPress={handleSubmit}
-          disabled={isSubmitting}
-          style={[styles.saveButton, isSubmitting && styles.saveButtonDisabled]}
+          disabled={isSubmitting || isLoading}
+          style={[styles.saveButton, (isSubmitting || isLoading) && styles.saveButtonDisabled]}
         >
-          <Text style={[styles.saveButtonText, isSubmitting && styles.saveButtonTextDisabled]}>
+          <Text style={[styles.saveButtonText, (isSubmitting || isLoading) && styles.saveButtonTextDisabled]}>
             {isSubmitting ? "Saving..." : "Save"}
           </Text>
         </TouchableOpacity>
@@ -355,6 +396,15 @@ const createStyles = (colors: any, spacing: any, radius: any, typography: any) =
     container: {
       flex: 1,
       backgroundColor: colors.background,
+    },
+    loadingContainer: {
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    loadingText: {
+      ...typography.body,
+      color: colors.textSecondary,
+      marginTop: spacing.md,
     },
     header: {
       flexDirection: "row",
