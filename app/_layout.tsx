@@ -7,9 +7,9 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <KeyboardProvider>
-        <Stack>
-          <Stack.Screen name="index" options={{ title: "Notes" }} />
-          <Stack.Screen name="note/[id]" options={{ title: "Note Editor" }} />
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="index" />
+          <Stack.Screen name="(tabs)" />
         </Stack>
       </KeyboardProvider>
     </SafeAreaProvider>

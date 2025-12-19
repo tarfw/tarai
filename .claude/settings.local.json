@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir:*)",
+      "Bash(yarn android)",
+      "Bash(timeout 10 bash:*)",
+      "Bash(timeout 15 bash:*)",
+      "Bash(timeout 20 bash:*)",
+      "Bash(timeout 30 bash:*)",
+      "Bash(mkdir:*)",
+      "Bash(yarn add:*)",
+      "Bash(yarn why:*)",
+      "Bash(npx expo install:*)",
+      "WebSearch",
+      "WebFetch(domain:docs.swmansion.com)",
+      "WebFetch(domain:blog.swmansion.com)",
+      "Bash(cat:*)",
+      "Bash(git add:*)"
+    ]
+  }
+}

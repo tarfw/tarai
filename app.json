@@ -1,16 +1,16 @@
 {
   "expo": {
-    "name": "ai-note-taking-app",
-    "slug": "ai-note-taking-app",
+    "name": "tarai",
+    "slug": "tarai",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "ainotetakingapp",
+    "scheme": "tarai",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.ai-note-taking-app",
+      "bundleIdentifier": "com.anonymous.tarai",
       "appleTeamId": "J5FM626PE2"
     },
     "android": {
@@ -23,7 +23,7 @@
         "android.permission.RECORD_AUDIO",
         "android.permission.RECORD_AUDIO"
       ],
-      "package": "com.anonymous.ainotetakingapp"
+      "package": "com.anonymous.tarai"
     },
     "web": {
       "bundler": "metro",
