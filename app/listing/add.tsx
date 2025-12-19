@@ -68,12 +68,12 @@ export default function AddListing() {
       if (listing) {
         setForm({
           title: listing.title || "",
-          description: "",
+          description: listing.description || "",
           price: listing.price?.toString() || "",
           type: (listing.type as CommerceType) || "physical_product",
-          category: "",
-          tags: "",
-          location: "",
+          category: listing.category || "",
+          tags: listing.tags || "",
+          location: listing.location || "",
         });
       }
     } catch (error) {

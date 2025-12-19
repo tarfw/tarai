@@ -32,11 +32,23 @@ export async function createListing(data: {
     const id = `listing_${Date.now()}_${Math.random().toString(36).substring(7)}`;
     const now = Date.now();
 
-    // Save to mycache table
+    // Save to mycache table with all fields
     await db.execute(
-      `INSERT INTO mycache (id, title, type, price, thumbnail, cached)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [id, data.title, data.type, data.price, '', now]
+      `INSERT INTO mycache (id, title, type, price, description, category, tags, location, thumbnail, status, cached)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id,
+        data.title,
+        data.type,
+        data.price,
+        data.description || '',
+        data.category || '',
+        data.tags || '',
+        data.location || '',
+        '',
+        'active',
+        now
+      ]
     );
 
     // Try to add to vector store for semantic search
@@ -82,6 +94,22 @@ export async function updateListing(id: string, data: {
     if (data.price !== undefined) {
       updates.push('price = ?');
       values.push(data.price);
+    }
+    if (data.description !== undefined) {
+      updates.push('description = ?');
+      values.push(data.description);
+    }
+    if (data.category !== undefined) {
+      updates.push('category = ?');
+      values.push(data.category);
+    }
+    if (data.tags !== undefined) {
+      updates.push('tags = ?');
+      values.push(data.tags);
+    }
+    if (data.location !== undefined) {
+      updates.push('location = ?');
+      values.push(data.location);
     }
 
     updates.push('cached = ?');

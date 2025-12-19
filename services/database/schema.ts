@@ -9,7 +9,12 @@ export const SCHEMA_QUERIES = {
       title TEXT NOT NULL,
       type TEXT NOT NULL,
       price REAL NOT NULL,
+      description TEXT,
+      category TEXT,
+      tags TEXT,
+      location TEXT,
       thumbnail TEXT,
+      status TEXT DEFAULT 'active',
       cached INTEGER NOT NULL
     );
   `,
@@ -17,6 +22,15 @@ export const SCHEMA_QUERIES = {
   createMyCacheEmbeddingIndex: `
     CREATE INDEX IF NOT EXISTS idx_mycache_cached ON mycache(cached);
   `,
+
+  // Migration queries to add new columns to existing tables
+  migrations: [
+    `ALTER TABLE mycache ADD COLUMN description TEXT;`,
+    `ALTER TABLE mycache ADD COLUMN category TEXT;`,
+    `ALTER TABLE mycache ADD COLUMN tags TEXT;`,
+    `ALTER TABLE mycache ADD COLUMN location TEXT;`,
+    `ALTER TABLE mycache ADD COLUMN status TEXT DEFAULT 'active';`,
+  ],
 
   // Browsed items cache (recent views)
   createBrowsedTable: `
@@ -80,6 +94,18 @@ export const initializeDatabase = async (db: any) => {
     await db.execute(SCHEMA_QUERIES.createBrowsedIndex);
     await db.execute(SCHEMA_QUERIES.createSearchesIndex);
     await db.execute(SCHEMA_QUERIES.createOfflineQueueIndex);
+
+    // Run migrations (add new columns to existing tables)
+    for (const migration of SCHEMA_QUERIES.migrations) {
+      try {
+        await db.execute(migration);
+      } catch (migrationError: any) {
+        // Ignore "duplicate column" errors - column already exists
+        if (!migrationError?.message?.includes('duplicate column')) {
+          console.warn('Migration warning:', migrationError?.message);
+        }
+      }
+    }
 
     console.log('TARAI local database initialized successfully');
   } catch (error) {

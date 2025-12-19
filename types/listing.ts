@@ -56,7 +56,12 @@ export interface CachedListing {
   title: string;
   type: CommerceType;
   price: number;
-  thumbnail: string;
+  description?: string;
+  category?: string;
+  tags?: string;
+  location?: string;
+  thumbnail?: string;
+  status?: string;
   cached: number;
 }
 
