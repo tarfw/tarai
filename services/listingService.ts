@@ -17,6 +17,142 @@ const db = open({
   location: "default"
 });
 
+// ========== CRUD OPERATIONS ==========
+
+export async function createListing(data: {
+  title: string;
+  type: string;
+  price: number;
+  description?: string;
+  category?: string;
+  tags?: string;
+  location?: string;
+}): Promise<string> {
+  try {
+    const id = `listing_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+    const now = Date.now();
+
+    // Save to mycache table
+    await db.execute(
+      `INSERT INTO mycache (id, title, type, price, thumbnail, cached)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [id, data.title, data.type, data.price, '', now]
+    );
+
+    // Try to add to vector store for semantic search
+    try {
+      const searchText = `${data.type}: ${data.title}. ${data.description || ''} ${data.category || ''} ${data.tags || ''}`;
+      await listingVectorStore.add({
+        document: searchText,
+        metadata: { listingId: id, type: data.type }
+      });
+    } catch (vectorError) {
+      console.warn(`Vector indexing failed for ${id}, text search will be used`);
+    }
+
+    console.log(`Created listing: ${id}`);
+    return id;
+  } catch (error) {
+    console.error('Failed to create listing:', error);
+    throw error;
+  }
+}
+
+export async function updateListing(id: string, data: {
+  title?: string;
+  type?: string;
+  price?: number;
+  description?: string;
+  category?: string;
+  tags?: string;
+  location?: string;
+}): Promise<void> {
+  try {
+    const updates: string[] = [];
+    const values: any[] = [];
+
+    if (data.title !== undefined) {
+      updates.push('title = ?');
+      values.push(data.title);
+    }
+    if (data.type !== undefined) {
+      updates.push('type = ?');
+      values.push(data.type);
+    }
+    if (data.price !== undefined) {
+      updates.push('price = ?');
+      values.push(data.price);
+    }
+
+    updates.push('cached = ?');
+    values.push(Date.now());
+    values.push(id);
+
+    await db.execute(
+      `UPDATE mycache SET ${updates.join(', ')} WHERE id = ?`,
+      values
+    );
+
+    // Update vector store
+    try {
+      // Remove old vector entry
+      await listingVectorStore.delete({
+        predicate: (doc) => doc.metadata?.listingId === id
+      });
+
+      // Add new vector entry
+      const searchText = `${data.type}: ${data.title}. ${data.description || ''} ${data.category || ''} ${data.tags || ''}`;
+      await listingVectorStore.add({
+        document: searchText,
+        metadata: { listingId: id, type: data.type }
+      });
+    } catch (vectorError) {
+      console.warn(`Vector update failed for ${id}`);
+    }
+
+    console.log(`Updated listing: ${id}`);
+  } catch (error) {
+    console.error('Failed to update listing:', error);
+    throw error;
+  }
+}
+
+export async function deleteListing(id: string): Promise<void> {
+  try {
+    await db.execute('DELETE FROM mycache WHERE id = ?', [id]);
+
+    // Remove from vector store
+    try {
+      await listingVectorStore.delete({
+        predicate: (doc) => doc.metadata?.listingId === id
+      });
+    } catch (vectorError) {
+      console.warn(`Vector deletion failed for ${id}`);
+    }
+
+    console.log(`Deleted listing: ${id}`);
+  } catch (error) {
+    console.error('Failed to delete listing:', error);
+    throw error;
+  }
+}
+
+export async function getListingById(id: string): Promise<CachedListing | null> {
+  try {
+    const result = await db.execute(
+      'SELECT * FROM mycache WHERE id = ?',
+      [id]
+    );
+
+    const rows = result.rows?._array || result.rows || [];
+    const rowsArray = Array.isArray(rows) ? rows : [];
+    return rowsArray.length > 0 ? rowsArray[0] : null;
+  } catch (error) {
+    console.error('Failed to get listing:', error);
+    return null;
+  }
+}
+
 // ========== LOCAL CACHE OPERATIONS ==========
 
 export async function cacheUserListings(listings: CachedListing[]): Promise<void> {
@@ -325,6 +461,12 @@ export async function initializeListingService(): Promise<void> {
 }
 
 export const listingService = {
+  // CRUD operations
+  createListing,
+  updateListing,
+  deleteListing,
+  getListingById,
+
   // Cache operations
   cacheUserListings,
   getCachedListings,

@@ -20,7 +20,9 @@
       "Bash(git push:*)",
       "Bash(git remote set-url:*)",
       "Bash(npx expo start:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(find:*)",
+      "Bash(grep:*)"
     ]
   }
 }
