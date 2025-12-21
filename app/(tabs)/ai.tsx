@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -8,11 +8,13 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
+  ActivityIndicator,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { FontAwesome6 } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { colors, typography, spacing, radius } from "@/constants/theme";
+import { listingService } from "@/services/listingService";
 
 const QUICK_ACTIONS = [
   { icon: "magnifying-glass", label: "Find services", prompt: "Help me find..." },
@@ -21,16 +23,52 @@ const QUICK_ACTIONS = [
   { icon: "circle-question", label: "Get help", prompt: "I have a question about..." },
 ];
 
-const SUGGESTIONS = [
+const DEFAULT_SUGGESTIONS = [
   "Find a plumber near me",
   "Book a taxi for tomorrow",
   "Order biryani for dinner",
   "Compare AC repair services",
 ];
 
+type Suggestion = {
+  text: string;
+  type: string;
+  icon: string;
+};
+
 export default function AI() {
   const insets = useSafeAreaInsets();
   const [message, setMessage] = useState("");
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
+
+  // Debounced semantic search for suggestions
+  useEffect(() => {
+    if (message.trim().length < 2) {
+      setSuggestions([]);
+      return;
+    }
+
+    setIsLoadingSuggestions(true);
+    const timeoutId = setTimeout(async () => {
+      try {
+        const results = await listingService.getSemanticSuggestions(message.trim());
+        setSuggestions(results);
+      } catch (error) {
+        console.error("Failed to get suggestions:", error);
+        setSuggestions([]);
+      } finally {
+        setIsLoadingSuggestions(false);
+      }
+    }, 300); // 300ms debounce
+
+    return () => clearTimeout(timeoutId);
+  }, [message]);
+
+  const handleSuggestionPress = useCallback((text: string) => {
+    setMessage(text);
+    setSuggestions([]);
+  }, []);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -94,18 +132,48 @@ export default function AI() {
 
         {/* Suggestions */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Try asking</Text>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>
+              {message.trim().length >= 2 ? "Suggestions from listings" : "Try asking"}
+            </Text>
+            {isLoadingSuggestions && (
+              <ActivityIndicator size="small" color={colors.accent} />
+            )}
+          </View>
           <View style={styles.suggestionsContainer}>
-            {SUGGESTIONS.map((suggestion, index) => (
-              <TouchableOpacity
-                key={index}
-                style={styles.suggestionItem}
-                onPress={() => setMessage(suggestion)}
-              >
-                <FontAwesome6 name="arrow-turn-up" size={12} color={colors.textTertiary} style={{ transform: [{ rotate: '90deg' }] }} />
-                <Text style={styles.suggestionText}>{suggestion}</Text>
-              </TouchableOpacity>
-            ))}
+            {message.trim().length >= 2 ? (
+              // Show semantic suggestions based on input
+              suggestions.length > 0 ? (
+                suggestions.map((suggestion, index) => (
+                  <TouchableOpacity
+                    key={`${suggestion.type}-${index}`}
+                    style={styles.suggestionItem}
+                    onPress={() => handleSuggestionPress(suggestion.text)}
+                  >
+                    <Text style={styles.suggestionIcon}>{suggestion.icon}</Text>
+                    <Text style={styles.suggestionText}>{suggestion.text}</Text>
+                    <FontAwesome6 name="arrow-up-right" size={12} color={colors.textTertiary} />
+                  </TouchableOpacity>
+                ))
+              ) : !isLoadingSuggestions ? (
+                <View style={styles.noSuggestionsContainer}>
+                  <FontAwesome6 name="magnifying-glass" size={16} color={colors.textTertiary} />
+                  <Text style={styles.noSuggestionsText}>No matching listings found</Text>
+                </View>
+              ) : null
+            ) : (
+              // Show default suggestions
+              DEFAULT_SUGGESTIONS.map((suggestion, index) => (
+                <TouchableOpacity
+                  key={index}
+                  style={styles.suggestionItem}
+                  onPress={() => setMessage(suggestion)}
+                >
+                  <FontAwesome6 name="arrow-turn-up" size={12} color={colors.textTertiary} style={{ transform: [{ rotate: '90deg' }] }} />
+                  <Text style={styles.suggestionText}>{suggestion}</Text>
+                </TouchableOpacity>
+              ))
+            )}
           </View>
         </View>
       </ScrollView>
@@ -208,12 +276,17 @@ const styles = StyleSheet.create({
   section: {
     marginBottom: spacing.xl,
   },
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: spacing.md,
+  },
   sectionTitle: {
     ...typography.caption,
     color: colors.textTertiary,
     textTransform: "uppercase",
     letterSpacing: 0.5,
-    marginBottom: spacing.md,
   },
   quickActionsGrid: {
     flexDirection: "row",
@@ -254,10 +327,24 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
+  suggestionIcon: {
+    fontSize: 16,
+  },
   suggestionText: {
     ...typography.body,
     color: colors.textSecondary,
     flex: 1,
+  },
+  noSuggestionsContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.sm,
+    paddingVertical: spacing.lg,
+  },
+  noSuggestionsText: {
+    ...typography.body,
+    color: colors.textTertiary,
   },
   inputWrapper: {
     position: "absolute",

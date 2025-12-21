@@ -11,7 +11,16 @@ import {
   Pressable,
   Alert,
   ActivityIndicator,
+  Modal,
+  Dimensions,
 } from "react-native";
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  withTiming,
+  runOnJS,
+} from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { FontAwesome6 } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
@@ -53,6 +62,32 @@ export default function AddListing() {
   const [showTypeSelector, setShowTypeSelector] = useState(false);
 
   const styles = createStyles(colors, spacing, radius, typography);
+  const { height: screenHeight } = Dimensions.get("window");
+
+  // Bottom sheet animation
+  const translateY = useSharedValue(screenHeight);
+  const backdropOpacity = useSharedValue(0);
+
+  const openSheet = () => {
+    setShowTypeSelector(true);
+    backdropOpacity.value = withTiming(1, { duration: 200 });
+    translateY.value = withSpring(0, { damping: 20, stiffness: 200 });
+  };
+
+  const closeSheet = () => {
+    backdropOpacity.value = withTiming(0, { duration: 150 });
+    translateY.value = withSpring(screenHeight, { damping: 20, stiffness: 200 }, () => {
+      runOnJS(setShowTypeSelector)(false);
+    });
+  };
+
+  const sheetStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: translateY.value }],
+  }));
+
+  const backdropStyle = useAnimatedStyle(() => ({
+    opacity: backdropOpacity.value,
+  }));
 
   // Load existing listing data when editing
   useEffect(() => {
@@ -232,7 +267,7 @@ export default function AddListing() {
             <Text style={styles.sectionLabel}>Type</Text>
             <TouchableOpacity
               style={[styles.typeSelector, { borderColor: `${typeColor}50` }]}
-              onPress={() => setShowTypeSelector(!showTypeSelector)}
+              onPress={openSheet}
               activeOpacity={0.7}
             >
               <View style={[styles.typeIconContainer, { backgroundColor: `${typeColor}20` }]}>
@@ -243,46 +278,11 @@ export default function AddListing() {
                 <Text style={styles.typeSelectorHint}>Tap to change</Text>
               </View>
               <FontAwesome6
-                name={showTypeSelector ? "chevron-up" : "chevron-down"}
+                name="chevron-down"
                 size={14}
                 color={colors.textTertiary}
               />
             </TouchableOpacity>
-
-            {showTypeSelector && (
-              <View style={styles.typeGrid}>
-                {Object.entries(COMMERCE_CATEGORIES).map(([type, info]) => {
-                  const isSelected = form.type === type;
-                  const chipColor = categoryColors[type] || colors.accent;
-                  return (
-                    <Pressable
-                      key={type}
-                      style={[
-                        styles.typeChip,
-                        {
-                          backgroundColor: isSelected ? `${chipColor}20` : colors.surface,
-                          borderColor: isSelected ? chipColor : colors.border,
-                        },
-                      ]}
-                      onPress={() => {
-                        updateField("type", type as CommerceType);
-                        setShowTypeSelector(false);
-                      }}
-                    >
-                      <Text style={styles.typeChipIcon}>{info.icon}</Text>
-                      <Text
-                        style={[
-                          styles.typeChipLabel,
-                          { color: isSelected ? chipColor : colors.textSecondary },
-                        ]}
-                      >
-                        {info.label}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            )}
           </View>
 
           {/* Title */}
@@ -387,6 +387,73 @@ export default function AddListing() {
           )}
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* Type Selection Bottom Sheet */}
+      <Modal
+        visible={showTypeSelector}
+        transparent
+        animationType="none"
+        statusBarTranslucent
+        onRequestClose={closeSheet}
+      >
+        <View style={styles.modalContainer}>
+          <Animated.View style={[styles.backdrop, backdropStyle]}>
+            <Pressable style={StyleSheet.absoluteFill} onPress={closeSheet} />
+          </Animated.View>
+
+          <Animated.View style={[styles.bottomSheet, sheetStyle, { paddingBottom: insets.bottom + spacing.lg }]}>
+            {/* Handle */}
+            <View style={styles.sheetHandle} />
+
+            {/* Header */}
+            <View style={styles.sheetHeader}>
+              <Text style={styles.sheetTitle}>Select Type</Text>
+              <TouchableOpacity onPress={closeSheet} style={styles.sheetCloseButton}>
+                <FontAwesome6 name="xmark" size={18} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Type Options */}
+            <ScrollView
+              style={styles.sheetContent}
+              showsVerticalScrollIndicator={false}
+            >
+              {Object.entries(COMMERCE_CATEGORIES).map(([type, info]) => {
+                const isSelected = form.type === type;
+                const chipColor = categoryColors[type] || colors.accent;
+                return (
+                  <Pressable
+                    key={type}
+                    style={[
+                      styles.typeOption,
+                      isSelected && { backgroundColor: `${chipColor}15` },
+                    ]}
+                    onPress={() => {
+                      updateField("type", type as CommerceType);
+                      closeSheet();
+                    }}
+                  >
+                    <View style={[styles.typeOptionIcon, { backgroundColor: `${chipColor}20` }]}>
+                      <Text style={styles.typeOptionIconText}>{info.icon}</Text>
+                    </View>
+                    <View style={styles.typeOptionContent}>
+                      <Text style={[
+                        styles.typeOptionLabel,
+                        isSelected && { color: chipColor },
+                      ]}>
+                        {info.label}
+                      </Text>
+                    </View>
+                    {isSelected && (
+                      <FontAwesome6 name="check" size={16} color={chipColor} />
+                    )}
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </Animated.View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -596,5 +663,80 @@ const createStyles = (colors: any, spacing: any, radius: any, typography: any) =
     deleteButtonText: {
       ...typography.body,
       color: colors.error,
+    },
+    // Bottom Sheet styles
+    modalContainer: {
+      flex: 1,
+      justifyContent: "flex-end",
+    },
+    backdrop: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: "rgba(0, 0, 0, 0.5)",
+    },
+    bottomSheet: {
+      backgroundColor: colors.background,
+      borderTopLeftRadius: radius.xl,
+      borderTopRightRadius: radius.xl,
+      maxHeight: "70%",
+    },
+    sheetHandle: {
+      width: 36,
+      height: 4,
+      backgroundColor: colors.border,
+      borderRadius: 2,
+      alignSelf: "center",
+      marginTop: spacing.sm,
+      marginBottom: spacing.sm,
+    },
+    sheetHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.md,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    sheetTitle: {
+      ...typography.headline,
+      color: colors.textPrimary,
+    },
+    sheetCloseButton: {
+      width: 32,
+      height: 32,
+      borderRadius: radius.md,
+      backgroundColor: colors.surface,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    sheetContent: {
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+    },
+    typeOption: {
+      flexDirection: "row",
+      alignItems: "center",
+      padding: spacing.md,
+      borderRadius: radius.lg,
+      marginVertical: spacing.xs,
+      gap: spacing.md,
+    },
+    typeOptionIcon: {
+      width: 44,
+      height: 44,
+      borderRadius: radius.md,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    typeOptionIconText: {
+      fontSize: 22,
+    },
+    typeOptionContent: {
+      flex: 1,
+    },
+    typeOptionLabel: {
+      ...typography.body,
+      color: colors.textPrimary,
+      fontWeight: "500",
     },
   });

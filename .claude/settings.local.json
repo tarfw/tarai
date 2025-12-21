@@ -22,7 +22,8 @@
       "Bash(npx expo start:*)",
       "Bash(ls:*)",
       "Bash(find:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(rm:*)"
     ]
   }
 }
