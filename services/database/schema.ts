@@ -77,6 +77,28 @@ export const SCHEMA_QUERIES = {
   createOfflineQueueIndex: `
     CREATE INDEX IF NOT EXISTS idx_offlinequeue_status ON offlinequeue(status);
   `,
+
+  // Universal cart table for all listing types
+  createCartTable: `
+    CREATE TABLE IF NOT EXISTS cart (
+      id TEXT PRIMARY KEY,
+      listingid TEXT NOT NULL,
+      listingtype TEXT NOT NULL,
+      sellerid TEXT NOT NULL,
+      title TEXT NOT NULL,
+      price REAL NOT NULL,
+      quantity INTEGER DEFAULT 1,
+      thumbnail TEXT,
+      metadata TEXT,
+      added INTEGER NOT NULL
+    );
+  `,
+
+  createCartIndexes: [
+    `CREATE INDEX IF NOT EXISTS idx_cart_sellerid ON cart(sellerid);`,
+    `CREATE INDEX IF NOT EXISTS idx_cart_added ON cart(added);`,
+    `CREATE INDEX IF NOT EXISTS idx_cart_listingid ON cart(listingid);`,
+  ],
 };
 
 export const initializeDatabase = async (db: any) => {
@@ -94,6 +116,12 @@ export const initializeDatabase = async (db: any) => {
     await db.execute(SCHEMA_QUERIES.createBrowsedIndex);
     await db.execute(SCHEMA_QUERIES.createSearchesIndex);
     await db.execute(SCHEMA_QUERIES.createOfflineQueueIndex);
+
+    // Create cart table and indexes
+    await db.execute(SCHEMA_QUERIES.createCartTable);
+    for (const indexQuery of SCHEMA_QUERIES.createCartIndexes) {
+      await db.execute(indexQuery);
+    }
 
     // Run migrations (add new columns to existing tables)
     for (const migration of SCHEMA_QUERIES.migrations) {

@@ -1,13 +1,34 @@
-import { Tabs } from "expo-router";
+import { Tabs, useFocusEffect } from "expo-router";
 import { FontAwesome6 } from "@expo/vector-icons";
-import { View, StyleSheet, Pressable } from "react-native";
+import { View, StyleSheet, Pressable, Text } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BlurView } from "expo-blur";
 import { useTheme } from "@/contexts/ThemeContext";
+import { useState, useCallback } from "react";
+import { cartService } from "@/services/cartService";
 
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
+  const [cartCount, setCartCount] = useState(0);
+
+  // Refresh cart count when any tab gains focus
+  useFocusEffect(
+    useCallback(() => {
+      const loadCartCount = async () => {
+        try {
+          const count = await cartService.getCartCount();
+          setCartCount(count);
+        } catch (e) {
+          console.error("Failed to load cart count", e);
+        }
+      };
+      loadCartCount();
+      // Set up interval to refresh cart count
+      const interval = setInterval(loadCartCount, 2000);
+      return () => clearInterval(interval);
+    }, [])
+  );
 
   return (
     <Tabs
@@ -99,6 +120,28 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="cart"
+        options={{
+          title: "Cart",
+          tabBarIcon: ({ color, focused }) => (
+            <View style={focused ? [styles.activeIconContainer, { backgroundColor: colors.accentSubtle }] : undefined}>
+              <FontAwesome6
+                name="cart-shopping"
+                size={20}
+                color={focused ? colors.accent : color}
+              />
+              {cartCount > 0 && (
+                <View style={[styles.badge, { backgroundColor: colors.error }]}>
+                  <Text style={styles.badgeText}>
+                    {cartCount > 99 ? "99+" : cartCount}
+                  </Text>
+                </View>
+              )}
+            </View>
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="listings"
         options={{
           title: "My Items",
@@ -122,5 +165,21 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: 6,
     marginTop: -6,
+  },
+  badge: {
+    position: "absolute",
+    top: -4,
+    right: -8,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 4,
+  },
+  badgeText: {
+    color: "#FFFFFF",
+    fontSize: 10,
+    fontWeight: "700",
   },
 });
