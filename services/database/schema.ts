@@ -2,7 +2,7 @@
 // All single-word columns as per TARAI.md specification
 
 export const SCHEMA_QUERIES = {
-  // User's cached listings with embeddings for offline search
+  // User's cached nodes with embeddings for offline search
   createMyCacheTable: `
     CREATE TABLE IF NOT EXISTS mycache (
       id TEXT PRIMARY KEY,
@@ -78,12 +78,12 @@ export const SCHEMA_QUERIES = {
     CREATE INDEX IF NOT EXISTS idx_offlinequeue_status ON offlinequeue(status);
   `,
 
-  // Universal cart table for all listing types
+  // Universal cart table for all node types
   createCartTable: `
     CREATE TABLE IF NOT EXISTS cart (
       id TEXT PRIMARY KEY,
-      listingid TEXT NOT NULL,
-      listingtype TEXT NOT NULL,
+      nodeid TEXT NOT NULL,
+      nodetype TEXT NOT NULL,
       sellerid TEXT NOT NULL,
       title TEXT NOT NULL,
       price REAL NOT NULL,
@@ -97,7 +97,7 @@ export const SCHEMA_QUERIES = {
   createCartIndexes: [
     `CREATE INDEX IF NOT EXISTS idx_cart_sellerid ON cart(sellerid);`,
     `CREATE INDEX IF NOT EXISTS idx_cart_added ON cart(added);`,
-    `CREATE INDEX IF NOT EXISTS idx_cart_listingid ON cart(listingid);`,
+    `CREATE INDEX IF NOT EXISTS idx_cart_nodeid ON cart(nodeid);`,
   ],
 };
 
@@ -116,6 +116,23 @@ export const initializeDatabase = async (db: any) => {
     await db.execute(SCHEMA_QUERIES.createBrowsedIndex);
     await db.execute(SCHEMA_QUERIES.createSearchesIndex);
     await db.execute(SCHEMA_QUERIES.createOfflineQueueIndex);
+
+    // Migration: Drop old cart table if it has old column names (listingid/listingtype)
+    try {
+      await db.execute('DROP TABLE IF EXISTS cart;');
+      console.log('Dropped old cart table for migration');
+    } catch (e) {
+      console.warn('Could not drop cart table:', e);
+    }
+
+    // Migration: Drop old vector store tables (tarai_listing_vectors)
+    try {
+      await db.execute('DROP TABLE IF EXISTS tarai_listing_vectors;');
+      await db.execute('DROP TABLE IF EXISTS tarai_listing_vectors_metadata;');
+      console.log('Dropped old vector store tables for migration');
+    } catch (e) {
+      console.warn('Could not drop old vector store tables:', e);
+    }
 
     // Create cart table and indexes
     await db.execute(SCHEMA_QUERIES.createCartTable);

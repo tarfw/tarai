@@ -142,7 +142,7 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="listings"
+        name="nodes"
         options={{
           title: "My Items",
           tabBarIcon: ({ color, focused }) => (

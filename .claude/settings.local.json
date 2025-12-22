@@ -23,7 +23,10 @@
       "Bash(ls:*)",
       "Bash(find:*)",
       "Bash(grep:*)",
-      "Bash(rm:*)"
+      "Bash(rm:*)",
+      "WebFetch(domain:docs.bsky.app)",
+      "Bash(wc:*)",
+      "Bash(bun start)"
     ]
   }
 }

@@ -25,9 +25,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { FontAwesome6 } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import { useTheme } from "@/contexts/ThemeContext";
-import { COMMERCE_CATEGORIES } from "@/services/vectorStores/listingVectorStore";
-import { listingService } from "@/services/listingService";
-import type { CommerceType } from "@/types/listing";
+import { COMMERCE_CATEGORIES } from "@/services/vectorStores/nodeVectorStore";
+import { nodeService } from "@/services/nodeService";
+import type { CommerceType } from "@/types/node";
 
 type FormData = {
   title: string;
@@ -49,7 +49,7 @@ const INITIAL_FORM: FormData = {
   location: "",
 };
 
-export default function AddListing() {
+export default function AddNode() {
   const insets = useSafeAreaInsets();
   const { colors, spacing, radius, typography } = useTheme();
   const params = useLocalSearchParams<{ id?: string; mode?: string }>();
@@ -89,31 +89,31 @@ export default function AddListing() {
     opacity: backdropOpacity.value,
   }));
 
-  // Load existing listing data when editing
+  // Load existing node data when editing
   useEffect(() => {
     if (isEditing && params.id) {
-      loadListing(params.id);
+      loadNode(params.id);
     }
   }, [isEditing, params.id]);
 
-  const loadListing = async (id: string) => {
+  const loadNode = async (id: string) => {
     setIsLoading(true);
     try {
-      const listing = await listingService.getListingById(id);
-      if (listing) {
+      const node = await nodeService.getNodeById(id);
+      if (node) {
         setForm({
-          title: listing.title || "",
-          description: listing.description || "",
-          price: listing.price?.toString() || "",
-          type: (listing.type as CommerceType) || "physical_product",
-          category: listing.category || "",
-          tags: listing.tags || "",
-          location: listing.location || "",
+          title: node.title || "",
+          description: node.description || "",
+          price: node.price?.toString() || "",
+          type: (node.type as CommerceType) || "physical_product",
+          category: node.category || "",
+          tags: node.tags || "",
+          location: node.location || "",
         });
       }
     } catch (error) {
-      console.error("Failed to load listing:", error);
-      Alert.alert("Error", "Failed to load listing data.");
+      console.error("Failed to load node:", error);
+      Alert.alert("Error", "Failed to load node data.");
     } finally {
       setIsLoading(false);
     }
@@ -168,7 +168,7 @@ export default function AddListing() {
     setIsSubmitting(true);
     try {
       if (isEditing && params.id) {
-        await listingService.updateListing(params.id, {
+        await nodeService.updateNode(params.id, {
           title: form.title.trim(),
           type: form.type,
           price: Number(form.price),
@@ -178,7 +178,7 @@ export default function AddListing() {
           location: form.location.trim(),
         });
       } else {
-        await listingService.createListing({
+        await nodeService.createNode({
           title: form.title.trim(),
           type: form.type,
           price: Number(form.price),
@@ -190,8 +190,8 @@ export default function AddListing() {
       }
       router.back();
     } catch (error) {
-      console.error("Failed to save listing:", error);
-      Alert.alert("Error", "Failed to save listing. Please try again.");
+      console.error("Failed to save node:", error);
+      Alert.alert("Error", "Failed to save node. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
@@ -199,8 +199,8 @@ export default function AddListing() {
 
   const handleDelete = () => {
     Alert.alert(
-      "Delete Listing",
-      "Are you sure you want to delete this listing? This action cannot be undone.",
+      "Delete Node",
+      "Are you sure you want to delete this node? This action cannot be undone.",
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -209,10 +209,10 @@ export default function AddListing() {
           onPress: async () => {
             if (params.id) {
               try {
-                await listingService.deleteListing(params.id);
+                await nodeService.deleteNode(params.id);
                 router.back();
               } catch (error) {
-                Alert.alert("Error", "Failed to delete listing.");
+                Alert.alert("Error", "Failed to delete node.");
               }
             }
           },
@@ -382,7 +382,7 @@ export default function AddListing() {
           {isEditing && (
             <TouchableOpacity style={styles.deleteButton} onPress={handleDelete}>
               <FontAwesome6 name="trash" size={16} color={colors.error} />
-              <Text style={styles.deleteButtonText}>Delete Listing</Text>
+              <Text style={styles.deleteButtonText}>Delete Node</Text>
             </TouchableOpacity>
           )}
         </ScrollView>

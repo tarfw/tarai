@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { cartService, calculateItemTotal } from "@/services/cartService";
-import { COMMERCE_CATEGORIES } from "@/services/vectorStores/listingVectorStore";
+import { COMMERCE_CATEGORIES } from "@/services/vectorStores/nodeVectorStore";
 import type { CartItem, CartSummary } from "@/types/cart";
 import { useFocusEffect, router } from "expo-router";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -127,16 +127,16 @@ export default function Cart() {
   };
 
   const formatMetadata = (item: CartItem): string | null => {
-    const { metadata, listingType } = item;
+    const { metadata, nodeType } = item;
     const parts: string[] = [];
 
-    if (listingType === "rental" && metadata.duration) {
+    if (nodeType === "rental" && metadata.duration) {
       parts.push(`${metadata.duration} ${metadata.durationUnit || "days"}`);
     }
-    if (listingType === "booking" && metadata.scheduledDate) {
+    if (nodeType === "booking" && metadata.scheduledDate) {
       parts.push(new Date(metadata.scheduledDate).toLocaleDateString());
     }
-    if (listingType === "event" && metadata.ticketCount) {
+    if (nodeType === "event" && metadata.ticketCount) {
       parts.push(`${metadata.ticketCount} tickets`);
     }
     if (metadata.variant) parts.push(metadata.variant);
@@ -207,8 +207,8 @@ export default function Cart() {
                 </View>
 
                 {group.items.map((item) => {
-                  const categoryColor = categoryColors[item.listingType] || colors.accent;
-                  const category = COMMERCE_CATEGORIES[item.listingType as keyof typeof COMMERCE_CATEGORIES];
+                  const categoryColor = categoryColors[item.nodeType] || colors.accent;
+                  const category = COMMERCE_CATEGORIES[item.nodeType as keyof typeof COMMERCE_CATEGORIES];
                   const itemTotal = calculateItemTotal(item);
                   const metadataText = formatMetadata(item);
 
@@ -225,7 +225,7 @@ export default function Cart() {
                         <Text style={styles.itemTitle} numberOfLines={1}>
                           {item.title}
                         </Text>
-                        <Text style={styles.itemType}>{category?.label || item.listingType}</Text>
+                        <Text style={styles.itemType}>{category?.label || item.nodeType}</Text>
                         {metadataText && (
                           <Text style={styles.itemMeta}>{metadataText}</Text>
                         )}

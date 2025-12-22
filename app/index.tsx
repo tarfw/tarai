@@ -3,8 +3,8 @@ import { ActivityIndicator, View, Text, StyleSheet } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
-import { listingVectorStore } from "@/services/vectorStores/listingVectorStore";
-import { listingService } from "@/services/listingService";
+import { nodeVectorStore } from "@/services/vectorStores/nodeVectorStore";
+import { nodeService } from "@/services/nodeService";
 import { colors, typography, spacing, radius } from "@/constants/theme";
 
 export default function Index() {
@@ -18,7 +18,7 @@ export default function Index() {
         setLoadingStatus("Loading AI model...");
         try {
           console.log("Starting vector store load...");
-          await listingVectorStore.load();
+          await nodeVectorStore.load();
           console.log("Vector store loaded successfully!");
         } catch (aiError: any) {
           console.warn('AI model failed to load:', aiError?.message || aiError);
@@ -27,12 +27,12 @@ export default function Index() {
         }
 
         setLoadingStatus("Initializing database...");
-        await listingService.initialize();
+        await nodeService.initialize();
 
-        // Load demo data for testing
-        const { loadDemoListings } = await import("@/services/demo/sampleListings");
-        setLoadingStatus("Loading listings...");
-        await loadDemoListings();
+        // Load demo data for testing (force reload to rebuild vector index after migration)
+        const { loadDemoNodes } = await import("@/services/demo/sampleNodes");
+        setLoadingStatus("Loading nodes...");
+        await loadDemoNodes(true); // Force reload to rebuild vector store
 
         setLoadingStatus("Ready!");
 

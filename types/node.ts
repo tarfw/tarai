@@ -1,4 +1,4 @@
-// TARAI Commerce Listing Types
+// TARAI Commerce Node Types
 // Based on TARAI.md specification
 
 export type CommerceType =
@@ -13,9 +13,9 @@ export type CommerceType =
   | 'transportation'
   | 'educational';
 
-export type ListingStatus = 'draft' | 'active' | 'paused' | 'sold';
+export type NodeStatus = 'draft' | 'active' | 'paused' | 'sold';
 
-export interface Listing {
+export interface Node {
   id: string;
   userid: string;
 
@@ -38,7 +38,7 @@ export interface Listing {
   thumbnail: string;
 
   // Metadata
-  status: ListingStatus;
+  status: NodeStatus;
   sales: number;
   rating: number;
 
@@ -51,7 +51,7 @@ export interface Listing {
 }
 
 // For local cache
-export interface CachedListing {
+export interface CachedNode {
   id: string;
   title: string;
   type: CommerceType;
@@ -66,7 +66,7 @@ export interface CachedListing {
 }
 
 // For browsing history
-export interface BrowsedListing {
+export interface BrowsedNode {
   id: string;
   title: string;
   type: CommerceType;

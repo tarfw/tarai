@@ -14,7 +14,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { FontAwesome6 } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { colors, typography, spacing, radius } from "@/constants/theme";
-import { listingService } from "@/services/listingService";
+import { nodeService } from "@/services/nodeService";
 
 const QUICK_ACTIONS = [
   { icon: "magnifying-glass", label: "Find services", prompt: "Help me find..." },
@@ -52,7 +52,7 @@ export default function AI() {
     setIsLoadingSuggestions(true);
     const timeoutId = setTimeout(async () => {
       try {
-        const results = await listingService.getSemanticSuggestions(message.trim());
+        const results = await nodeService.getSemanticSuggestions(message.trim());
         setSuggestions(results);
       } catch (error) {
         console.error("Failed to get suggestions:", error);
@@ -134,7 +134,7 @@ export default function AI() {
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>
-              {message.trim().length >= 2 ? "Suggestions from listings" : "Try asking"}
+              {message.trim().length >= 2 ? "Suggestions from nodes" : "Try asking"}
             </Text>
             {isLoadingSuggestions && (
               <ActivityIndicator size="small" color={colors.accent} />
@@ -158,7 +158,7 @@ export default function AI() {
               ) : !isLoadingSuggestions ? (
                 <View style={styles.noSuggestionsContainer}>
                   <FontAwesome6 name="magnifying-glass" size={16} color={colors.textTertiary} />
-                  <Text style={styles.noSuggestionsText}>No matching listings found</Text>
+                  <Text style={styles.noSuggestionsText}>No matching nodes found</Text>
                 </View>
               ) : null
             ) : (

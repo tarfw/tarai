@@ -1,7 +1,7 @@
 // TARAI Universal Cart Types
-// Supports all listing types with flexible metadata
+// Supports all node types with flexible metadata
 
-import type { CommerceType } from "./listing";
+import type { CommerceType } from "./node";
 
 export interface CartItemMetadata {
   // Rental specific
@@ -37,8 +37,8 @@ export interface CartItemMetadata {
 
 export interface CartItem {
   id: string;
-  listingId: string;
-  listingType: CommerceType;
+  nodeId: string;
+  nodeType: CommerceType;
   sellerId: string;
   title: string;
   price: number;
@@ -49,8 +49,8 @@ export interface CartItem {
 }
 
 export interface CartItemInput {
-  listingId: string;
-  listingType: CommerceType;
+  nodeId: string;
+  nodeType: CommerceType;
   sellerId: string;
   title: string;
   price: number;

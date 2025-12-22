@@ -12,10 +12,10 @@ import {
   Modal,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { listingService } from "@/services/listingService";
+import { nodeService } from "@/services/nodeService";
 import { cartService } from "@/services/cartService";
-import { COMMERCE_CATEGORIES } from "@/services/vectorStores/listingVectorStore";
-import type { CachedListing, CommerceType } from "@/types/listing";
+import { COMMERCE_CATEGORIES } from "@/services/vectorStores/nodeVectorStore";
+import type { CachedNode, CommerceType } from "@/types/node";
 import type { CartItemMetadata } from "@/types/cart";
 import { useFocusEffect } from "expo-router";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -30,14 +30,14 @@ export default function Marketplace() {
   const { colors, spacing, radius, typography, isDark, toggleTheme } = useTheme();
   const [searchQuery, setSearchQuery] = useState("");
   const [suggestions, setSuggestions] = useState<Array<{ text: string; type: string; icon: string }>>([]);
-  const [searchResults, setSearchResults] = useState<CachedListing[]>([]);
-  const [cachedListings, setCachedListings] = useState<CachedListing[]>([]);
+  const [searchResults, setSearchResults] = useState<CachedNode[]>([]);
+  const [cachedNodes, setCachedNodes] = useState<CachedNode[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
 
   // Add to cart modal state
   const [modalVisible, setModalVisible] = useState(false);
-  const [selectedListing, setSelectedListing] = useState<CachedListing | null>(null);
+  const [selectedNode, setSelectedNode] = useState<CachedNode | null>(null);
   const [metadata, setMetadata] = useState<CartItemMetadata>({});
   const [quantity, setQuantity] = useState(1);
 
@@ -56,16 +56,16 @@ export default function Marketplace() {
 
   useFocusEffect(
     useCallback(() => {
-      loadCachedListings();
+      loadCachedNodes();
     }, [])
   );
 
-  const loadCachedListings = async () => {
+  const loadCachedNodes = async () => {
     try {
-      const listings = await listingService.getCachedListings();
-      setCachedListings(listings);
+      const nodes = await nodeService.getCachedNodes();
+      setCachedNodes(nodes);
     } catch (e) {
-      console.error('Failed to load cached listings', e);
+      console.error('Failed to load cached nodes', e);
     }
   };
 
@@ -82,21 +82,21 @@ export default function Marketplace() {
     setIsSearching(true);
 
     try {
-      const suggs = await listingService.getSemanticSuggestions(query);
+      const suggs = await nodeService.getSemanticSuggestions(query);
       setSuggestions(suggs);
 
-      const results = await listingService.searchListingsByText(query, {}, 10);
+      const results = await nodeService.searchNodesByText(query, {}, 10);
       const relevantResults = results.filter(r => r.similarity >= 0.15);
 
-      const resultListings: typeof cachedListings = [];
+      const resultNodes: typeof cachedNodes = [];
       for (const result of relevantResults) {
-        const listing = cachedListings.find(l => l.id === result.listingId);
-        if (listing) {
-          resultListings.push(listing);
+        const node = cachedNodes.find(l => l.id === result.nodeId);
+        if (node) {
+          resultNodes.push(node);
         }
       }
 
-      setSearchResults(resultListings);
+      setSearchResults(resultNodes);
     } catch (e) {
       console.error('Failed to search', e);
     }
@@ -109,8 +109,8 @@ export default function Marketplace() {
     setSearchResults([]);
   };
 
-  const handleListingPress = (listing: CachedListing) => {
-    setSelectedListing(listing);
+  const handleNodePress = (node: CachedNode) => {
+    setSelectedNode(node);
     setMetadata({});
     setQuantity(1);
     setModalVisible(true);
@@ -118,23 +118,23 @@ export default function Marketplace() {
 
   const handleCloseModal = () => {
     setModalVisible(false);
-    setSelectedListing(null);
+    setSelectedNode(null);
     setMetadata({});
     setQuantity(1);
   };
 
   const handleAddToCart = async () => {
-    if (!selectedListing) return;
+    if (!selectedNode) return;
 
     try {
       await cartService.addToCart({
-        listingId: selectedListing.id,
-        listingType: selectedListing.type as CommerceType,
-        sellerId: "demo_seller", // In real app, this would come from listing data
-        title: selectedListing.title,
-        price: selectedListing.price,
+        nodeId: selectedNode.id,
+        nodeType: selectedNode.type as CommerceType,
+        sellerId: "demo_seller", // In real app, this would come from node data
+        title: selectedNode.title,
+        price: selectedNode.price,
         quantity,
-        thumbnail: selectedListing.thumbnail,
+        thumbnail: selectedNode.thumbnail,
         metadata,
       });
 
@@ -144,30 +144,20 @@ export default function Marketplace() {
     }
   };
 
-  const displayListings = isSearching ? searchResults : cachedListings;
+  const displayNodes = isSearching ? searchResults : cachedNodes;
 
   const styles = createStyles(colors, spacing, radius, typography);
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Explore</Text>
-        <TouchableOpacity style={styles.headerButton} onPress={toggleTheme}>
-          <FontAwesome6
-            name={isDark ? "moon" : "sun"}
-            size={18}
-            color={colors.textTertiary}
-          />
-        </TouchableOpacity>
-      </View>
-
-      {/* Search Bar */}
+    <View style={[styles.container, { paddingTop: insets.top + spacing.md }]}>
+      {/* Modern AI Search Bar */}
       <View style={styles.searchWrapper}>
         <View style={[styles.searchBar, isFocused && styles.searchBarFocused]}>
-          <FontAwesome6 name="magnifying-glass" size={16} color={colors.textTertiary} />
+          {!isFocused && searchQuery.length === 0 && (
+            <FontAwesome6 name="magnifying-glass" size={24} color={colors.textTertiary} style={styles.searchIcon} />
+          )}
           <TextInput
-            placeholder="Search services, products..."
+            placeholder="Search anything..."
             value={searchQuery}
             onChangeText={handleSearch}
             onFocus={() => setIsFocused(true)}
@@ -175,13 +165,18 @@ export default function Marketplace() {
             style={styles.searchInput}
             placeholderTextColor={colors.textTertiary}
             selectionColor={colors.accent}
+            autoCapitalize="none"
+            autoCorrect={false}
           />
           {searchQuery.length > 0 && (
             <TouchableOpacity onPress={handleClearSearch} style={styles.clearButton}>
-              <FontAwesome6 name="xmark" size={14} color={colors.textTertiary} />
+              <FontAwesome6 name="xmark" size={18} color={colors.textSecondary} />
             </TouchableOpacity>
           )}
         </View>
+        {isFocused && searchQuery.length === 0 && (
+          <Text style={styles.searchHint}>Try "taxi", "food", "plumber"...</Text>
+        )}
       </View>
 
       {/* Quick Categories */}
@@ -256,7 +251,7 @@ export default function Marketplace() {
           </View>
         )}
 
-        {displayListings.length === 0 && isSearching && (
+        {displayNodes.length === 0 && isSearching && (
           <View style={styles.emptyState}>
             <View style={styles.emptyIconContainer}>
               <FontAwesome6 name="magnifying-glass" size={32} color={colors.textTertiary} />
@@ -266,9 +261,9 @@ export default function Marketplace() {
           </View>
         )}
 
-        <View style={styles.listingsGrid}>
-          {displayListings.map((item) => (
-            <ListingCard
+        <View style={styles.nodesGrid}>
+          {displayNodes.map((item) => (
+            <NodeCard
               key={item.id}
               item={item}
               colors={colors}
@@ -276,7 +271,7 @@ export default function Marketplace() {
               spacing={spacing}
               radius={radius}
               typography={typography}
-              onPress={() => handleListingPress(item)}
+              onPress={() => handleNodePress(item)}
             />
           ))}
         </View>
@@ -285,7 +280,7 @@ export default function Marketplace() {
       {/* Add to Cart Modal */}
       <AddToCartModal
         visible={modalVisible}
-        listing={selectedListing}
+        node={selectedNode}
         metadata={metadata}
         setMetadata={setMetadata}
         quantity={quantity}
@@ -305,7 +300,7 @@ export default function Marketplace() {
 // Add to Cart Modal with type-specific fields
 function AddToCartModal({
   visible,
-  listing,
+  node,
   metadata,
   setMetadata,
   quantity,
@@ -319,7 +314,7 @@ function AddToCartModal({
   categoryColors,
 }: {
   visible: boolean;
-  listing: CachedListing | null;
+  node: CachedNode | null;
   metadata: CartItemMetadata;
   setMetadata: (m: CartItemMetadata) => void;
   quantity: number;
@@ -332,10 +327,10 @@ function AddToCartModal({
   typography: any;
   categoryColors: Record<string, string>;
 }) {
-  if (!listing) return null;
+  if (!node) return null;
 
-  const category = COMMERCE_CATEGORIES[listing.type as keyof typeof COMMERCE_CATEGORIES];
-  const categoryColor = categoryColors[listing.type] || colors.accent;
+  const category = COMMERCE_CATEGORIES[node.type as keyof typeof COMMERCE_CATEGORIES];
+  const categoryColor = categoryColors[node.type] || colors.accent;
 
   const updateMetadata = (key: string, value: any) => {
     setMetadata({ ...metadata, [key]: value });
@@ -343,7 +338,7 @@ function AddToCartModal({
 
   // Render type-specific metadata fields
   const renderMetadataFields = () => {
-    switch (listing.type) {
+    switch (node.type) {
       case "rental":
         return (
           <View style={{ gap: spacing.md }}>
@@ -639,12 +634,12 @@ function AddToCartModal({
 
   // Calculate total price based on type
   const calculateTotal = () => {
-    let total = listing.price * quantity;
+    let total = node.price * quantity;
 
-    if (listing.type === "rental" && metadata.duration) {
-      total = listing.price * metadata.duration * quantity;
-    } else if (listing.type === "event" && metadata.ticketCount) {
-      total = listing.price * metadata.ticketCount;
+    if (node.type === "rental" && metadata.duration) {
+      total = node.price * metadata.duration * quantity;
+    } else if (node.type === "event" && metadata.ticketCount) {
+      total = node.price * metadata.ticketCount;
     }
 
     return total;
@@ -675,7 +670,7 @@ function AddToCartModal({
           </View>
 
           <ScrollView style={{ padding: spacing.lg }} showsVerticalScrollIndicator={false}>
-            {/* Listing Info */}
+            {/* Node Info */}
             <View style={{ flexDirection: "row", gap: spacing.md, marginBottom: spacing.xl }}>
               <View style={{
                 width: 72,
@@ -689,7 +684,7 @@ function AddToCartModal({
               </View>
               <View style={{ flex: 1, gap: spacing.xs }}>
                 <Text style={{ ...typography.headline, color: colors.textPrimary }} numberOfLines={2}>
-                  {listing.title}
+                  {node.title}
                 </Text>
                 <View style={{
                   alignSelf: "flex-start",
@@ -699,10 +694,10 @@ function AddToCartModal({
                   borderRadius: radius.sm,
                 }}>
                   <Text style={{ ...typography.small, color: categoryColor, fontWeight: "600" }}>
-                    {category?.label || listing.type}
+                    {category?.label || node.type}
                   </Text>
                 </View>
-                <Text style={{ ...typography.title, color: colors.accent }}>₹{listing.price}</Text>
+                <Text style={{ ...typography.title, color: colors.accent }}>₹{node.price}</Text>
               </View>
             </View>
 
@@ -710,7 +705,7 @@ function AddToCartModal({
             {renderMetadataFields()}
 
             {/* Quantity (for non-event types) */}
-            {listing.type !== "event" && (
+            {node.type !== "event" && (
               <View style={{ marginTop: spacing.xl, gap: spacing.md }}>
                 <Text style={{ ...typography.caption, color: colors.textTertiary, textTransform: "uppercase" }}>
                   Quantity
@@ -795,7 +790,7 @@ function AddToCartModal({
   );
 }
 
-function ListingCard({
+function NodeCard({
   item,
   colors,
   categoryColors,
@@ -804,7 +799,7 @@ function ListingCard({
   typography,
   onPress,
 }: {
-  item: CachedListing;
+  item: CachedNode;
   colors: any;
   categoryColors: Record<string, string>;
   spacing: any;
@@ -884,27 +879,6 @@ const createStyles = (colors: any, spacing: any, radius: any, typography: any) =
     flex: 1,
     backgroundColor: colors.background,
   },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-  },
-  headerTitle: {
-    ...typography.largeTitle,
-    color: colors.textPrimary,
-  },
-  headerButton: {
-    width: 40,
-    height: 40,
-    borderRadius: radius.md,
-    backgroundColor: colors.surface,
-    justifyContent: "center",
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
   searchWrapper: {
     paddingHorizontal: spacing.lg,
     marginBottom: spacing.md,
@@ -912,25 +886,42 @@ const createStyles = (colors: any, spacing: any, radius: any, typography: any) =
   searchBar: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    gap: spacing.sm,
+    backgroundColor: "transparent",
+    paddingHorizontal: spacing.xs,
+    paddingVertical: spacing.sm,
+    borderWidth: 0,
   },
   searchBarFocused: {
-    borderColor: colors.accent,
-    backgroundColor: colors.elevated,
+    backgroundColor: "transparent",
+  },
+  searchIcon: {
+    marginRight: spacing.md,
+    opacity: 0.4,
   },
   searchInput: {
     flex: 1,
-    ...typography.body,
+    fontSize: 28,
+    fontWeight: "700",
     color: colors.textPrimary,
+    padding: 0,
+    margin: 0,
+    lineHeight: 36,
   },
   clearButton: {
-    padding: spacing.xs,
+    width: 32,
+    height: 32,
+    borderRadius: radius.md,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: colors.surface,
+    marginLeft: spacing.sm,
+  },
+  searchHint: {
+    ...typography.body,
+    color: colors.textTertiary,
+    marginTop: spacing.sm,
+    marginLeft: spacing.xs,
+    opacity: 0.6,
   },
   categoriesWrapper: {
     marginBottom: spacing.md,
@@ -1012,7 +1003,7 @@ const createStyles = (colors: any, spacing: any, radius: any, typography: any) =
     ...typography.caption,
     color: colors.accent,
   },
-  listingsGrid: {
+  nodesGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: CARD_GAP,

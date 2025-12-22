@@ -2,10 +2,10 @@
 // Handles cart operations with OPSQLite persistence
 
 import type { CartItem, CartItemInput, CartItemMetadata, CartSummary } from "@/types/cart";
-import type { CommerceType } from "@/types/listing";
+import type { CommerceType } from "@/types/node";
 import { open } from "@op-engineering/op-sqlite";
 
-// Use same database instance as listingService
+// Use same database instance as nodeService
 const db = open({
   name: "tarai.db",
   location: "default"
@@ -14,9 +14,9 @@ const db = open({
 // ========== PRICE CALCULATION ==========
 
 export function calculateItemTotal(item: CartItem): number {
-  const { price, quantity, listingType, metadata } = item;
+  const { price, quantity, nodeType, metadata } = item;
 
-  switch (listingType) {
+  switch (nodeType) {
     case "rental":
       // Price per duration unit
       const duration = metadata.duration || 1;
@@ -53,8 +53,8 @@ export async function addToCart(input: CartItemInput): Promise<string> {
   try {
     // Check if item already exists in cart
     const existing = await db.execute(
-      "SELECT * FROM cart WHERE listingid = ?",
-      [input.listingId]
+      "SELECT * FROM cart WHERE nodeid = ?",
+      [input.nodeId]
     );
 
     const rows = existing.rows?._array || existing.rows || [];
@@ -73,12 +73,12 @@ export async function addToCart(input: CartItemInput): Promise<string> {
     const now = Date.now();
 
     await db.execute(
-      `INSERT INTO cart (id, listingid, listingtype, sellerid, title, price, quantity, thumbnail, metadata, added)
+      `INSERT INTO cart (id, nodeid, nodetype, sellerid, title, price, quantity, thumbnail, metadata, added)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
-        input.listingId,
-        input.listingType,
+        input.nodeId,
+        input.nodeType,
         input.sellerId,
         input.title,
         input.price,
@@ -171,8 +171,8 @@ export async function getCartItems(): Promise<CartItem[]> {
 
     return rowsArray.map((row) => ({
       id: row.id,
-      listingId: row.listingid,
-      listingType: row.listingtype as CommerceType,
+      nodeId: row.nodeid,
+      nodeType: row.nodetype as CommerceType,
       sellerId: row.sellerid,
       title: row.title,
       price: row.price,
@@ -229,7 +229,7 @@ export async function getCartSummary(): Promise<CartSummary> {
       subtotal += itemTotal;
 
       // Group by type
-      byType[item.listingType] = (byType[item.listingType] || 0) + itemTotal;
+      byType[item.nodeType] = (byType[item.nodeType] || 0) + itemTotal;
 
       // Group by seller
       if (!bySeller[item.sellerId]) {
@@ -283,8 +283,8 @@ export async function getCartItemById(id: string): Promise<CartItem | null> {
     const row = rowsArray[0];
     return {
       id: row.id,
-      listingId: row.listingid,
-      listingType: row.listingtype as CommerceType,
+      nodeId: row.nodeid,
+      nodeType: row.nodetype as CommerceType,
       sellerId: row.sellerid,
       title: row.title,
       price: row.price,
@@ -299,11 +299,11 @@ export async function getCartItemById(id: string): Promise<CartItem | null> {
   }
 }
 
-export async function isInCart(listingId: string): Promise<boolean> {
+export async function isInCart(nodeId: string): Promise<boolean> {
   try {
     const result = await db.execute(
-      "SELECT COUNT(*) as count FROM cart WHERE listingid = ?",
-      [listingId]
+      "SELECT COUNT(*) as count FROM cart WHERE nodeid = ?",
+      [nodeId]
     );
 
     const rows = result.rows?._array || result.rows || [];

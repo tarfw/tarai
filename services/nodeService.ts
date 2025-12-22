@@ -1,14 +1,14 @@
-// TARAI Listing Service
-// Handles local listing operations with vector embeddings
+// TARAI Node Service
+// Handles local node operations with vector embeddings
 
-import type { Listing, CachedListing, BrowsedListing, SearchQuery } from "@/types/listing";
+import type { Node, CachedNode, BrowsedNode, SearchQuery } from "@/types/node";
 import {
-  listingSplitter,
-  listingToString,
-  listingVectorStore,
+  nodeSplitter,
+  nodeToString,
+  nodeVectorStore,
   generateQueryEmbedding,
   COMMERCE_CATEGORIES
-} from "@/services/vectorStores/listingVectorStore";
+} from "@/services/vectorStores/nodeVectorStore";
 import { open } from "@op-engineering/op-sqlite";
 
 // Initialize local database
@@ -19,7 +19,7 @@ const db = open({
 
 // ========== CRUD OPERATIONS ==========
 
-export async function createListing(data: {
+export async function createNode(data: {
   title: string;
   type: string;
   price: number;
@@ -29,7 +29,7 @@ export async function createListing(data: {
   location?: string;
 }): Promise<string> {
   try {
-    const id = `listing_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+    const id = `node_${Date.now()}_${Math.random().toString(36).substring(7)}`;
     const now = Date.now();
 
     // Save to mycache table with all fields
@@ -54,23 +54,23 @@ export async function createListing(data: {
     // Try to add to vector store for semantic search
     try {
       const searchText = `${data.type}: ${data.title}. ${data.description || ''} ${data.category || ''} ${data.tags || ''}`;
-      await listingVectorStore.add({
+      await nodeVectorStore.add({
         document: searchText,
-        metadata: { listingId: id, type: data.type }
+        metadata: { nodeId: id, type: data.type }
       });
     } catch (vectorError) {
       console.warn(`Vector indexing failed for ${id}, text search will be used`);
     }
 
-    console.log(`Created listing: ${id}`);
+    console.log(`Created node: ${id}`);
     return id;
   } catch (error) {
-    console.error('Failed to create listing:', error);
+    console.error('Failed to create node:', error);
     throw error;
   }
 }
 
-export async function updateListing(id: string, data: {
+export async function updateNode(id: string, data: {
   title?: string;
   type?: string;
   price?: number;
@@ -124,48 +124,48 @@ export async function updateListing(id: string, data: {
     // Update vector store
     try {
       // Remove old vector entry
-      await listingVectorStore.delete({
-        predicate: (doc) => doc.metadata?.listingId === id
+      await nodeVectorStore.delete({
+        predicate: (doc) => doc.metadata?.nodeId === id
       });
 
       // Add new vector entry
       const searchText = `${data.type}: ${data.title}. ${data.description || ''} ${data.category || ''} ${data.tags || ''}`;
-      await listingVectorStore.add({
+      await nodeVectorStore.add({
         document: searchText,
-        metadata: { listingId: id, type: data.type }
+        metadata: { nodeId: id, type: data.type }
       });
     } catch (vectorError) {
       console.warn(`Vector update failed for ${id}`);
     }
 
-    console.log(`Updated listing: ${id}`);
+    console.log(`Updated node: ${id}`);
   } catch (error) {
-    console.error('Failed to update listing:', error);
+    console.error('Failed to update node:', error);
     throw error;
   }
 }
 
-export async function deleteListing(id: string): Promise<void> {
+export async function deleteNode(id: string): Promise<void> {
   try {
     await db.execute('DELETE FROM mycache WHERE id = ?', [id]);
 
     // Remove from vector store
     try {
-      await listingVectorStore.delete({
-        predicate: (doc) => doc.metadata?.listingId === id
+      await nodeVectorStore.delete({
+        predicate: (doc) => doc.metadata?.nodeId === id
       });
     } catch (vectorError) {
       console.warn(`Vector deletion failed for ${id}`);
     }
 
-    console.log(`Deleted listing: ${id}`);
+    console.log(`Deleted node: ${id}`);
   } catch (error) {
-    console.error('Failed to delete listing:', error);
+    console.error('Failed to delete node:', error);
     throw error;
   }
 }
 
-export async function getListingById(id: string): Promise<CachedListing | null> {
+export async function getNodeById(id: string): Promise<CachedNode | null> {
   try {
     const result = await db.execute(
       'SELECT * FROM mycache WHERE id = ?',
@@ -176,42 +176,42 @@ export async function getListingById(id: string): Promise<CachedListing | null> 
     const rowsArray = Array.isArray(rows) ? rows : [];
     return rowsArray.length > 0 ? rowsArray[0] : null;
   } catch (error) {
-    console.error('Failed to get listing:', error);
+    console.error('Failed to get node:', error);
     return null;
   }
 }
 
 // ========== LOCAL CACHE OPERATIONS ==========
 
-export async function cacheUserListings(listings: CachedListing[]): Promise<void> {
+export async function cacheUserNodes(nodes: CachedNode[]): Promise<void> {
   try {
-    for (const listing of listings) {
+    for (const node of nodes) {
       // Save to database (required)
       await db.execute(
         `INSERT OR REPLACE INTO mycache (id, title, type, price, thumbnail, cached)
          VALUES (?, ?, ?, ?, ?, ?)`,
-        [listing.id, listing.title, listing.type, listing.price, listing.thumbnail, Date.now()]
+        [node.id, node.title, node.type, node.price, node.thumbnail, Date.now()]
       );
 
       // Try to add to vector store (optional - may fail if model not loaded)
       try {
-        const searchText = `${listing.type}: ${listing.title}`;
-        await listingVectorStore.add({
+        const searchText = `${node.type}: ${node.title}`;
+        await nodeVectorStore.add({
           document: searchText,
-          metadata: { listingId: listing.id, type: listing.type }
+          metadata: { nodeId: node.id, type: node.type }
         });
       } catch (vectorError) {
         // Vector store failed, but data is still in database
-        console.warn(`Vector indexing failed for ${listing.id}, text search will be used`);
+        console.warn(`Vector indexing failed for ${node.id}, text search will be used`);
       }
     }
   } catch (error) {
-    console.error('Failed to cache user listings:', error);
+    console.error('Failed to cache user nodes:', error);
     throw error;
   }
 }
 
-export async function getCachedListings(): Promise<CachedListing[]> {
+export async function getCachedNodes(): Promise<CachedNode[]> {
   try {
     const result = await db.execute(
       'SELECT * FROM mycache ORDER BY cached DESC'
@@ -221,7 +221,7 @@ export async function getCachedListings(): Promise<CachedListing[]> {
     const rows = result.rows?._array || result.rows || [];
     return Array.isArray(rows) ? rows : [];
   } catch (error) {
-    console.error('Failed to get cached listings:', error);
+    console.error('Failed to get cached nodes:', error);
     return [];
   }
 }
@@ -231,7 +231,7 @@ export async function clearCache(): Promise<void> {
     await db.execute('DELETE FROM mycache');
     // Try to clear vector store, but don't fail if table doesn't exist
     try {
-      await listingVectorStore.delete({ predicate: () => true });
+      await nodeVectorStore.delete({ predicate: () => true });
     } catch (vectorError) {
       // Vector table may not exist yet, that's ok
     }
@@ -243,12 +243,12 @@ export async function clearCache(): Promise<void> {
 
 // ========== BROWSING HISTORY ==========
 
-export async function addToBrowsed(listing: BrowsedListing): Promise<void> {
+export async function addToBrowsed(node: BrowsedNode): Promise<void> {
   try {
     await db.execute(
       `INSERT OR REPLACE INTO browsed (id, title, type, price, seller, thumbnail, cached)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [listing.id, listing.title, listing.type, listing.price, listing.seller, listing.thumbnail, Date.now()]
+      [node.id, node.title, node.type, node.price, node.seller, node.thumbnail, Date.now()]
     );
 
     // Keep only last 50 browsed items
@@ -262,7 +262,7 @@ export async function addToBrowsed(listing: BrowsedListing): Promise<void> {
   }
 }
 
-export async function getBrowsedListings(limit: number = 20): Promise<BrowsedListing[]> {
+export async function getBrowsedNodes(limit: number = 20): Promise<BrowsedNode[]> {
   try {
     const result = await db.execute(
       'SELECT * FROM browsed ORDER BY cached DESC LIMIT ?',
@@ -272,7 +272,7 @@ export async function getBrowsedListings(limit: number = 20): Promise<BrowsedLis
     const rows = result.rows?._array || result.rows || [];
     return Array.isArray(rows) ? rows : [];
   } catch (error) {
-    console.error('Failed to get browsed listings:', error);
+    console.error('Failed to get browsed nodes:', error);
     return [];
   }
 }
@@ -315,17 +315,17 @@ export async function getSearchHistory(limit: number = 10): Promise<SearchQuery[
 
 // ========== VECTOR SEARCH ==========
 
-export async function searchListingsByText(
+export async function searchNodesByText(
   query: string,
   filters?: { type?: string },
   limit: number = 20
-): Promise<Array<{ listingId: string; similarity: number; type: string }>> {
+): Promise<Array<{ nodeId: string; similarity: number; type: string }>> {
   try {
     await saveSearchQuery(query);
 
     // Try vector search first
     try {
-      const results = await listingVectorStore.query({
+      const results = await nodeVectorStore.query({
         queryText: query.trim(),
         nResults: limit * 3  // Get more results to account for duplicates
       });
@@ -336,14 +336,14 @@ export async function searchListingsByText(
         filteredResults = results.filter(r => r.metadata?.type === filters.type);
       }
 
-      // Deduplicate by listingId and keep highest similarity
-      const uniqueResults = new Map<string, { listingId: string; similarity: number; type: string }>();
+      // Deduplicate by nodeId and keep highest similarity
+      const uniqueResults = new Map<string, { nodeId: string; similarity: number; type: string }>();
       for (const r of filteredResults) {
-        const listingId = r.metadata?.listingId as string;
-        const existing = uniqueResults.get(listingId);
+        const nodeId = r.metadata?.nodeId as string;
+        const existing = uniqueResults.get(nodeId);
         if (!existing || r.similarity > existing.similarity) {
-          uniqueResults.set(listingId, {
-            listingId,
+          uniqueResults.set(nodeId, {
+            nodeId,
             similarity: r.similarity,
             type: r.metadata?.type as string
           });
@@ -368,13 +368,13 @@ export async function searchListingsByText(
       const rowsArray = Array.isArray(rows) ? rows : [];
 
       return rowsArray.map(r => ({
-        listingId: r.id,
+        nodeId: r.id,
         similarity: 0.5,
         type: r.type
       }));
     }
   } catch (error) {
-    console.error('Failed to search listings by text:', error);
+    console.error('Failed to search nodes by text:', error);
     return [];
   }
 }
@@ -473,39 +473,39 @@ export async function markQueueItemSynced(id: string): Promise<void> {
 
 // ========== INITIALIZATION ==========
 
-export async function initializeListingService(): Promise<void> {
+export async function initializeNodeService(): Promise<void> {
   try {
-    console.log('Initializing TARAI listing service...');
+    console.log('Initializing TARAI node service...');
 
     // Import schema initialization
     const { initializeDatabase } = await import('./database/schema');
     await initializeDatabase(db);
 
-    console.log('TARAI listing service initialized');
+    console.log('TARAI node service initialized');
   } catch (error) {
-    console.error('Failed to initialize listing service:', error);
+    console.error('Failed to initialize node service:', error);
     throw error;
   }
 }
 
-export const listingService = {
+export const nodeService = {
   // CRUD operations
-  createListing,
-  updateListing,
-  deleteListing,
-  getListingById,
+  createNode,
+  updateNode,
+  deleteNode,
+  getNodeById,
 
   // Cache operations
-  cacheUserListings,
-  getCachedListings,
+  cacheUserNodes,
+  getCachedNodes,
   clearCache,
 
   // Browsing history
   addToBrowsed,
-  getBrowsedListings,
+  getBrowsedNodes,
 
   // Search operations
-  searchListingsByText,
+  searchNodesByText,
   getSemanticSuggestions,
 
   // Search history
@@ -518,5 +518,5 @@ export const listingService = {
   markQueueItemSynced,
 
   // Initialization
-  initialize: initializeListingService,
+  initialize: initializeNodeService,
 };

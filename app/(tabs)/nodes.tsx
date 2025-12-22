@@ -12,19 +12,19 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
-import { listingService } from "@/services/listingService";
-import { COMMERCE_CATEGORIES } from "@/services/vectorStores/listingVectorStore";
-import type { CachedListing } from "@/types/listing";
+import { nodeService } from "@/services/nodeService";
+import { COMMERCE_CATEGORIES } from "@/services/vectorStores/nodeVectorStore";
+import type { CachedNode } from "@/types/node";
 import { useFocusEffect, router } from "expo-router";
 import { useTheme } from "@/contexts/ThemeContext";
 
-export default function Listings() {
+export default function Nodes() {
   const insets = useSafeAreaInsets();
-  const { colors, spacing, radius, typography } = useTheme();
-  const [listings, setListings] = useState<CachedListing[]>([]);
+  const { colors, spacing, radius, typography, toggleTheme, isDark } = useTheme();
+  const [nodes, setNodes] = useState<CachedNode[]>([]);
   const [selectedFilter, setSelectedFilter] = useState("all");
   const [menuVisible, setMenuVisible] = useState(false);
-  const [selectedItem, setSelectedItem] = useState<CachedListing | null>(null);
+  const [selectedItem, setSelectedItem] = useState<CachedNode | null>(null);
 
   const categoryColors: Record<string, string> = {
     transportation: colors.blue,
@@ -47,28 +47,28 @@ export default function Listings() {
 
   useFocusEffect(
     useCallback(() => {
-      loadListings();
+      loadNodes();
     }, [])
   );
 
-  const loadListings = async () => {
+  const loadNodes = async () => {
     try {
-      const cachedListings = await listingService.getCachedListings();
-      setListings(cachedListings);
+      const cachedNodes = await nodeService.getCachedNodes();
+      setNodes(cachedNodes);
     } catch (e) {
-      console.error("Failed to load listings", e);
+      console.error("Failed to load nodes", e);
     }
   };
 
   const handleAddPress = () => {
-    router.push("/listing/add");
+    router.push("/node/add");
   };
 
-  const handleItemPress = (item: CachedListing) => {
-    router.push(`/listing/add?id=${item.id}&mode=edit`);
+  const handleItemPress = (item: CachedNode) => {
+    router.push(`/node/add?id=${item.id}&mode=edit`);
   };
 
-  const handleMorePress = (item: CachedListing) => {
+  const handleMorePress = (item: CachedNode) => {
     setSelectedItem(item);
     setMenuVisible(true);
   };
@@ -76,7 +76,7 @@ export default function Listings() {
   const handleEdit = () => {
     setMenuVisible(false);
     if (selectedItem) {
-      router.push(`/listing/add?id=${selectedItem.id}&mode=edit`);
+      router.push(`/node/add?id=${selectedItem.id}&mode=edit`);
     }
   };
 
@@ -84,7 +84,7 @@ export default function Listings() {
     setMenuVisible(false);
     if (selectedItem) {
       Alert.alert(
-        "Delete Listing",
+        "Delete Node",
         `Are you sure you want to delete "${selectedItem.title}"?`,
         [
           { text: "Cancel", style: "cancel" },
@@ -93,10 +93,10 @@ export default function Listings() {
             style: "destructive",
             onPress: async () => {
               try {
-                await listingService.deleteListing(selectedItem.id);
-                loadListings();
+                await nodeService.deleteNode(selectedItem.id);
+                loadNodes();
               } catch (error) {
-                Alert.alert("Error", "Failed to delete listing.");
+                Alert.alert("Error", "Failed to delete node.");
               }
             },
           },
@@ -106,9 +106,9 @@ export default function Listings() {
   };
 
   const stats = {
-    total: listings.length,
-    active: listings.length,
-    views: listings.length * 42,
+    total: nodes.length,
+    active: nodes.length,
+    views: nodes.length * 42,
   };
 
   const styles = createStyles(colors, spacing, radius, typography);
@@ -118,16 +118,25 @@ export default function Listings() {
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>My Items</Text>
-        <TouchableOpacity style={styles.addButton} onPress={handleAddPress}>
-          <LinearGradient
-            colors={[colors.accent, colors.purple]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.addButtonGradient}
-          >
-            <FontAwesome6 name="plus" size={16} color="#FFFFFF" />
-          </LinearGradient>
-        </TouchableOpacity>
+        <View style={styles.headerActions}>
+          <TouchableOpacity style={styles.headerButton} onPress={toggleTheme}>
+            <FontAwesome6
+              name={isDark ? "moon" : "sun"}
+              size={18}
+              color={colors.textTertiary}
+            />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.addButton} onPress={handleAddPress}>
+            <LinearGradient
+              colors={[colors.accent, colors.purple]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.addButtonGradient}
+            >
+              <FontAwesome6 name="plus" size={16} color="#FFFFFF" />
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Stats */}
@@ -168,13 +177,13 @@ export default function Listings() {
         contentContainerStyle={[styles.contentContainer, { paddingBottom: 80 + insets.bottom }]}
         showsVerticalScrollIndicator={false}
       >
-        {listings.length === 0 ? (
+        {nodes.length === 0 ? (
           <View style={styles.emptyState}>
             <View style={styles.emptyIconContainer}>
               <FontAwesome6 name="cube" size={32} color={colors.textTertiary} />
             </View>
             <Text style={styles.emptyTitle}>No items yet</Text>
-            <Text style={styles.emptySubtitle}>Create your first listing and start selling</Text>
+            <Text style={styles.emptySubtitle}>Create your first node and start selling</Text>
             <TouchableOpacity style={styles.emptyButton} onPress={handleAddPress}>
               <LinearGradient
                 colors={[colors.accent, colors.purple]}
@@ -183,13 +192,13 @@ export default function Listings() {
                 style={styles.emptyButtonGradient}
               >
                 <FontAwesome6 name="plus" size={14} color="#FFFFFF" />
-                <Text style={styles.emptyButtonText}>Create listing</Text>
+                <Text style={styles.emptyButtonText}>Create node</Text>
               </LinearGradient>
             </TouchableOpacity>
           </View>
         ) : (
-          <View style={styles.listingsContainer}>
-            {listings.map((item) => {
+          <View style={styles.nodesContainer}>
+            {nodes.map((item) => {
               const categoryColor = categoryColors[item.type] || colors.accent;
               const category = COMMERCE_CATEGORIES[item.type as keyof typeof COMMERCE_CATEGORIES];
               const status = STATUS_CONFIG.active;
@@ -197,26 +206,26 @@ export default function Listings() {
               return (
                 <Pressable
                   key={item.id}
-                  style={({ pressed }) => [styles.listingItem, pressed && styles.listingItemPressed]}
+                  style={({ pressed }) => [styles.nodeItem, pressed && styles.nodeItemPressed]}
                   onPress={() => handleItemPress(item)}
                 >
-                  <View style={[styles.listingIcon, { backgroundColor: `${categoryColor}20` }]}>
-                    <Text style={styles.listingIconEmoji}>{category?.icon || "📦"}</Text>
+                  <View style={[styles.nodeIcon, { backgroundColor: `${categoryColor}20` }]}>
+                    <Text style={styles.nodeIconEmoji}>{category?.icon || "📦"}</Text>
                   </View>
-                  <View style={styles.listingContent}>
-                    <Text style={styles.listingTitle} numberOfLines={1}>
+                  <View style={styles.nodeContent}>
+                    <Text style={styles.nodeTitle} numberOfLines={1}>
                       {item.title}
                     </Text>
-                    <View style={styles.listingMeta}>
+                    <View style={styles.nodeMeta}>
                       <View style={[styles.statusBadge, { backgroundColor: `${status.color}20` }]}>
                         <View style={[styles.statusDot, { backgroundColor: status.color }]} />
                         <Text style={[styles.statusText, { color: status.color }]}>{status.label}</Text>
                       </View>
-                      <Text style={styles.listingType}>{category?.label || item.type}</Text>
+                      <Text style={styles.nodeType}>{category?.label || item.type}</Text>
                     </View>
                   </View>
-                  <View style={styles.listingRight}>
-                    <Text style={styles.listingPrice}>₹{item.price}</Text>
+                  <View style={styles.nodeRight}>
+                    <Text style={styles.nodePrice}>₹{item.price}</Text>
                     <TouchableOpacity
                       style={styles.moreButton}
                       onPress={() => handleMorePress(item)}
@@ -275,6 +284,21 @@ const createStyles = (colors: any, spacing: any, radius: any, typography: any) =
     headerTitle: {
       ...typography.largeTitle,
       color: colors.textPrimary,
+    },
+    headerActions: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacing.sm,
+    },
+    headerButton: {
+      width: 40,
+      height: 40,
+      borderRadius: radius.md,
+      backgroundColor: colors.surface,
+      justifyContent: "center",
+      alignItems: "center",
+      borderWidth: 1,
+      borderColor: colors.border,
     },
     addButton: {
       borderRadius: radius.md,
@@ -345,10 +369,10 @@ const createStyles = (colors: any, spacing: any, radius: any, typography: any) =
     contentContainer: {
       paddingHorizontal: spacing.lg,
     },
-    listingsContainer: {
+    nodesContainer: {
       gap: spacing.sm,
     },
-    listingItem: {
+    nodeItem: {
       flexDirection: "row",
       alignItems: "center",
       gap: spacing.md,
@@ -358,28 +382,28 @@ const createStyles = (colors: any, spacing: any, radius: any, typography: any) =
       borderWidth: 1,
       borderColor: colors.border,
     },
-    listingItemPressed: {
+    nodeItemPressed: {
       backgroundColor: colors.surfaceHover,
     },
-    listingIcon: {
+    nodeIcon: {
       width: 48,
       height: 48,
       borderRadius: radius.md,
       justifyContent: "center",
       alignItems: "center",
     },
-    listingIconEmoji: {
+    nodeIconEmoji: {
       fontSize: 24,
     },
-    listingContent: {
+    nodeContent: {
       flex: 1,
       gap: spacing.xs,
     },
-    listingTitle: {
+    nodeTitle: {
       ...typography.headline,
       color: colors.textPrimary,
     },
-    listingMeta: {
+    nodeMeta: {
       flexDirection: "row",
       alignItems: "center",
       gap: spacing.sm,
@@ -401,15 +425,15 @@ const createStyles = (colors: any, spacing: any, radius: any, typography: any) =
       ...typography.small,
       fontWeight: "600",
     },
-    listingType: {
+    nodeType: {
       ...typography.small,
       color: colors.textTertiary,
     },
-    listingRight: {
+    nodeRight: {
       alignItems: "flex-end",
       gap: spacing.sm,
     },
-    listingPrice: {
+    nodePrice: {
       ...typography.headline,
       color: colors.textPrimary,
     },

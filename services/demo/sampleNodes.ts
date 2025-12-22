@@ -1,9 +1,9 @@
-// Sample TARAI Listings for Testing
+// Sample TARAI Nodes for Testing
 // Following Tamil names and realistic Indian commerce scenarios from TARAI.md
 
-import type { CachedListing } from "@/types/listing";
+import type { CachedNode } from "@/types/node";
 
-export const SAMPLE_LISTINGS: CachedListing[] = [
+export const SAMPLE_NODES: CachedNode[] = [
   // Transportation - Taxis
   {
     id: "taxi_001",
@@ -198,34 +198,41 @@ export const TEST_QUERIES = [
 ];
 
 // Function to initialize demo data
-export async function loadDemoListings() {
+export async function loadDemoNodes(forceReload: boolean = false) {
   try {
-    const { listingService } = await import('../listingService');
+    const { nodeService } = await import('../nodeService');
 
-    console.log('Loading demo listings...');
+    console.log('Loading demo nodes...');
 
     // Check if already loaded
-    const existing = await listingService.getCachedListings();
-    console.log(`Existing cached listings: ${existing.length}`);
+    const existing = await nodeService.getCachedNodes();
+    console.log(`Existing cached nodes: ${existing.length}`);
 
-    if (existing.length >= SAMPLE_LISTINGS.length) {
-      console.log('Demo listings already loaded, skipping...');
+    if (!forceReload && existing.length >= SAMPLE_NODES.length) {
+      console.log('Demo nodes already loaded, skipping...');
       return existing;
     }
 
-    // Cache listings (vector store table is created during load in index.tsx)
-    await listingService.cacheUserListings(SAMPLE_LISTINGS);
+    // Clear existing cache and reload (useful after vector store migration)
+    if (forceReload && existing.length > 0) {
+      console.log('Force reload: clearing existing nodes...');
+      await nodeService.clearCache();
+    }
+
+    // Cache nodes (vector store table is created during load in index.tsx)
+    console.log('Caching demo nodes and building vector index...');
+    await nodeService.cacheUserNodes(SAMPLE_NODES);
 
     // Verify data was saved
-    const loaded = await listingService.getCachedListings();
-    console.log(`After loading - cached listings: ${loaded.length}`);
+    const loaded = await nodeService.getCachedNodes();
+    console.log(`After loading - cached nodes: ${loaded.length}`);
 
-    console.log(`Loaded ${SAMPLE_LISTINGS.length} demo listings`);
+    console.log(`✓ Loaded ${SAMPLE_NODES.length} demo nodes`);
     console.log('Try searching with queries like:', TEST_QUERIES.slice(0, 3));
 
     return loaded;
   } catch (error) {
-    console.error('Failed to load demo listings:', error);
+    console.error('Failed to load demo nodes:', error);
     throw error;
   }
 }

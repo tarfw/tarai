@@ -1,4 +1,4 @@
-// TARAI Listing Vector Store
+// TARAI Node Vector Store
 // Using all-MiniLM-L6-v2 (384D) as per TARAI.md specification
 
 import { RecursiveCharacterTextSplitter } from 'react-native-rag';
@@ -17,38 +17,38 @@ const embeddings = new ExecuTorchEmbeddings({
   }
 });
 
-// Vector store for commerce listings
-export const listingVectorStore = new OPSQLiteVectorStore({
-  name: "tarai_listing_vectors",
+// Vector store for commerce nodes
+export const nodeVectorStore = new OPSQLiteVectorStore({
+  name: "tarai_node_vectors",
   embeddings: embeddings,
 });
 
-// Convert listing to searchable string
+// Convert node to searchable string
 // Combines title, description, category, and tags for semantic search
-export const listingToString = (listing: {
+export const nodeToString = (node: {
   title: string;
   description: string;
   category: string;
   tags: string;
   type: string;
 }) => {
-  return `${listing.type}: ${listing.title}
+  return `${node.type}: ${node.title}
 
-${listing.description}
+${node.description}
 
-Category: ${listing.category}
-Tags: ${listing.tags}`;
+Category: ${node.category}
+Tags: ${node.tags}`;
 };
 
 // Text splitter for long descriptions
-export const listingSplitter = new RecursiveCharacterTextSplitter({
+export const nodeSplitter = new RecursiveCharacterTextSplitter({
   chunkSize: 500,
   chunkOverlap: 100,
 });
 
 // Helper to generate embedding for a query
 export const generateQueryEmbedding = async (query: string): Promise<number[]> => {
-  const embeddings = listingVectorStore.embeddings;
+  const embeddings = nodeVectorStore.embeddings;
   if (!embeddings) {
     throw new Error('Embeddings not initialized');
   }
