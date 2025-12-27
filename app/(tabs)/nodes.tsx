@@ -227,10 +227,16 @@ export default function NodesScreen() {
           return (
             <TouchableOpacity
               key={type}
-              style={[styles.filterChip, isActive && styles.filterChipActive]}
+              style={[
+                styles.filterChip,
+                {
+                  backgroundColor: isActive ? colors.accent : colors.surface,
+                  borderColor: isActive ? colors.accent : colors.border,
+                },
+              ]}
               onPress={() => applyFilter(type)}
             >
-              <Text style={[styles.filterChipText, isActive && styles.filterChipTextActive]}>
+              <Text style={[styles.filterChipText, { color: isActive ? '#FFFFFF' : colors.textPrimary }]}>
                 {type === 'all' ? 'All' : type}
               </Text>
             </TouchableOpacity>
@@ -436,22 +442,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 12,
     paddingVertical: 8,
-    backgroundColor: colors.surface,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: colors.border,
-  },
-  filterChipActive: {
-    backgroundColor: colors.accent,
-    borderColor: colors.accent,
   },
   filterChipText: {
     fontSize: 13,
     fontWeight: '500',
-    color: colors.textPrimary,
-  },
-  filterChipTextActive: {
-    color: '#FFFFFF',
   },
   listWrapper: {
     flex: 1,

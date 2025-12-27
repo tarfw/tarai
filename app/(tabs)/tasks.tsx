@@ -145,49 +145,73 @@ export default function TasksScreen() {
         contentContainerStyle={styles.filtersContainer}
       >
         <TouchableOpacity
-          style={[styles.filterChip, activeFilter === 'all' && styles.filterChipActive]}
+          style={[
+            styles.filterChip,
+            {
+              backgroundColor: activeFilter === 'all' ? colors.accent : colors.surface,
+              borderColor: activeFilter === 'all' ? colors.accent : colors.border,
+            },
+          ]}
           onPress={() => applyFilter('all')}
         >
-          <Text style={[styles.filterChipText, activeFilter === 'all' && styles.filterChipTextActive]}>
+          <Text style={[styles.filterChipText, { color: activeFilter === 'all' ? '#FFFFFF' : colors.textPrimary }]}>
             All
           </Text>
-          <Text style={[styles.filterChipCount, activeFilter === 'all' && styles.filterChipCountActive]}>
+          <Text style={[styles.filterChipCount, { color: activeFilter === 'all' ? '#FFFFFF' : colors.textSecondary }]}>
             {stats.total}
           </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.filterChip, activeFilter === 'pending' && styles.filterChipActive]}
+          style={[
+            styles.filterChip,
+            {
+              backgroundColor: activeFilter === 'pending' ? colors.accent : colors.surface,
+              borderColor: activeFilter === 'pending' ? colors.accent : colors.border,
+            },
+          ]}
           onPress={() => applyFilter('pending')}
         >
-          <Text style={[styles.filterChipText, activeFilter === 'pending' && styles.filterChipTextActive]}>
+          <Text style={[styles.filterChipText, { color: activeFilter === 'pending' ? '#FFFFFF' : colors.textPrimary }]}>
             Pending
           </Text>
-          <Text style={[styles.filterChipCount, activeFilter === 'pending' && styles.filterChipCountActive]}>
+          <Text style={[styles.filterChipCount, { color: activeFilter === 'pending' ? '#FFFFFF' : colors.textSecondary }]}>
             {stats.pending}
           </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.filterChip, activeFilter === 'progress' && styles.filterChipActive]}
+          style={[
+            styles.filterChip,
+            {
+              backgroundColor: activeFilter === 'progress' ? colors.accent : colors.surface,
+              borderColor: activeFilter === 'progress' ? colors.accent : colors.border,
+            },
+          ]}
           onPress={() => applyFilter('progress')}
         >
-          <Text style={[styles.filterChipText, activeFilter === 'progress' && styles.filterChipTextActive]}>
+          <Text style={[styles.filterChipText, { color: activeFilter === 'progress' ? '#FFFFFF' : colors.textPrimary }]}>
             In progress
           </Text>
-          <Text style={[styles.filterChipCount, activeFilter === 'progress' && styles.filterChipCountActive]}>
+          <Text style={[styles.filterChipCount, { color: activeFilter === 'progress' ? '#FFFFFF' : colors.textSecondary }]}>
             {stats.progress}
           </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.filterChip, activeFilter === 'completed' && styles.filterChipActive]}
+          style={[
+            styles.filterChip,
+            {
+              backgroundColor: activeFilter === 'completed' ? colors.accent : colors.surface,
+              borderColor: activeFilter === 'completed' ? colors.accent : colors.border,
+            },
+          ]}
           onPress={() => applyFilter('completed')}
         >
-          <Text style={[styles.filterChipText, activeFilter === 'completed' && styles.filterChipTextActive]}>
+          <Text style={[styles.filterChipText, { color: activeFilter === 'completed' ? '#FFFFFF' : colors.textPrimary }]}>
             Done
           </Text>
-          <Text style={[styles.filterChipCount, activeFilter === 'completed' && styles.filterChipCountActive]}>
+          <Text style={[styles.filterChipCount, { color: activeFilter === 'completed' ? '#FFFFFF' : colors.textSecondary }]}>
             {stats.completed}
           </Text>
         </TouchableOpacity>
@@ -375,31 +399,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 12,
     paddingVertical: 8,
-    backgroundColor: colors.surface,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: colors.border,
     gap: 6,
-  },
-  filterChipActive: {
-    backgroundColor: colors.accent,
-    borderColor: colors.accent,
   },
   filterChipText: {
     fontSize: 13,
     fontWeight: '500',
-    color: colors.textPrimary,
-  },
-  filterChipTextActive: {
-    color: '#FFFFFF',
   },
   filterChipCount: {
     fontSize: 12,
     fontWeight: '600',
-    color: colors.textSecondary,
-  },
-  filterChipCountActive: {
-    color: '#FFFFFF',
   },
   listWrapper: {
     flex: 1,
