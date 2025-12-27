@@ -89,7 +89,7 @@ export default function TabLayout() {
       options={{
       title: 'relay',
       tabBarIcon: ({ color, focused }) => (
-      <FontAwesome6 name="comments" size={22} color={focused ? colors.accent : color} />
+      <FontAwesome6 name="square" size={22} color={focused ? colors.accent : color} />
           ),
         }}
       />

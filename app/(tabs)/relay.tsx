@@ -107,8 +107,8 @@ export default function DMsScreen() {
       {/* Header with logout */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Relay</Text>
-        <TouchableOpacity onPress={handleLogout} style={styles.logoutButton} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-          <FontAwesome6 name="arrow-right-from-bracket" size={20} color={colors.error} />
+        <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
+          <Text style={styles.logoutText}>Sign Out</Text>
         </TouchableOpacity>
       </View>
 
@@ -148,7 +148,7 @@ export default function DMsScreen() {
       ) : displayList.length === 0 ? (
         <View style={styles.emptyState}>
           <View style={styles.emptyIconContainer}>
-            <FontAwesome6 name="comments" size={40} color={colors.accent} />
+            <FontAwesome6 name="square" size={40} color={colors.accent} />
           </View>
           <Text style={styles.emptyTitle}>
             {searchQuery.trim().length > 0 ? 'No users found' : 'Relay'}
@@ -327,6 +327,11 @@ const createStyles = (colors: any, spacing: any, radius: any, typography: any) =
     },
     logoutButton: {
       padding: spacing.sm,
+    },
+    logoutText: {
+      ...typography.caption,
+      color: colors.error,
+      fontWeight: '600',
     },
     searchWrapper: {
       paddingHorizontal: spacing.lg,
