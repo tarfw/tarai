@@ -88,8 +88,8 @@ export default function TabLayout() {
       name="people"
       options={{
       title: 'relays',
-          tabBarIcon: ({ color, focused }) => (
-            <FontAwesome6 name="circle-user" size={22} color={focused ? colors.accent : color} />
+      tabBarIcon: ({ color, focused }) => (
+      <FontAwesome6 name="circle" size={22} color={focused ? colors.accent : color} />
           ),
         }}
       />
