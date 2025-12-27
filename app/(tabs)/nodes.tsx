@@ -137,7 +137,7 @@ export default function NodesScreen() {
     }
   };
 
-  const filterTypes: (NodeType | 'all')[] = ['all', 'product', 'food', 'service', 'booking', 'transport', 'event'];
+  
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top + 16 }]}>
@@ -182,7 +182,7 @@ export default function NodesScreen() {
             </View>
             <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>No nodes found</Text>
             <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
-              {selectedFilter === 'all' ? 'Create your first node' : `No ${selectedFilter} nodes`}
+              Create your first node
             </Text>
             <TouchableOpacity style={[styles.emptyButton, { backgroundColor: colors.accent }]} onPress={handleAddPress}>
               <FontAwesome6 name="plus" size={14} color="#FFFFFF" />
