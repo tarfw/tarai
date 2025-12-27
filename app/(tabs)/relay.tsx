@@ -108,7 +108,7 @@ export default function DMsScreen() {
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Relay</Text>
         <TouchableOpacity onPress={handleLogout} style={styles.logoutButton} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-          <FontAwesome6 name="sign-out" size={20} color={colors.error} />
+          <FontAwesome6 name="arrow-right-from-bracket" size={20} color={colors.error} />
         </TouchableOpacity>
       </View>
 
