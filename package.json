@@ -11,6 +11,7 @@
     "lint": "expo lint"
   },
   "dependencies": {
+    "@atproto/api": "^0.18.8",
     "@expo/vector-icons": "^14.1.0",
     "@op-engineering/op-sqlite": "^15.1.14",
     "@react-native-async-storage/async-storage": "2.1.2",

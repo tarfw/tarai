@@ -1,113 +1,139 @@
 // TARAI Node Vector Store
-// Using all-MiniLM-L6-v2 (384D) as per TARAI.md specification
+// Using all-MiniLM-L6-v2 (384D) for semantic search
+// Following: https://blog.swmansion.com/building-an-ai-powered-note-taking-app-in-react-native-part-1-text-semantic-search
 
 import { RecursiveCharacterTextSplitter } from 'react-native-rag';
 import { OPSQLiteVectorStore } from '@react-native-rag/op-sqlite';
 import { ExecuTorchEmbeddings } from '@react-native-rag/executorch';
-import { ALL_MINILM_L6_V2 } from "react-native-executorch";
+import { ALL_MINILM_L6_V2 } from 'react-native-executorch';
 
-console.log("ALL_MINILM_L6_V2 config:", JSON.stringify(ALL_MINILM_L6_V2));
+console.log('[VectorStore] Initializing with ALL_MINILM_L6_V2:', JSON.stringify(ALL_MINILM_L6_V2, null, 2));
 
-// Create embeddings instance with proper config
-const embeddings = new ExecuTorchEmbeddings({
-  modelSource: ALL_MINILM_L6_V2.modelSource,
-  tokenizerSource: ALL_MINILM_L6_V2.tokenizerSource,
-  onDownloadProgress: (progress) => {
-    console.log("all-MiniLM-L6-v2 model download progress:", Math.round(progress * 100) + "%");
-  }
-});
-
-// Vector store for commerce nodes
+// Vector store with embedding model (exactly as blog shows)
 export const nodeVectorStore = new OPSQLiteVectorStore({
-  name: "tarai_node_vectors",
-  embeddings: embeddings,
+  name: 'tarai_node_vectors',
+  embeddings: new ExecuTorchEmbeddings(ALL_MINILM_L6_V2),
 });
+
+console.log('[VectorStore] OPSQLiteVectorStore created');
 
 // Convert node to searchable string
-// Combines title, description, category, and tags for semantic search
 export const nodeToString = (node: {
   title: string;
-  description: string;
-  category: string;
-  tags: string;
   type: string;
+  data?: string;
 }) => {
-  return `${node.type}: ${node.title}
-
-${node.description}
-
-Category: ${node.category}
-Tags: ${node.tags}`;
+  const parsed = node.data ? JSON.parse(node.data) : {};
+  return `${node.type}: ${node.title}. ${parsed.desc || ''} ${parsed.tags || ''}`;
 };
 
-// Text splitter for long descriptions
+// Text splitter for long content
 export const nodeSplitter = new RecursiveCharacterTextSplitter({
   chunkSize: 500,
   chunkOverlap: 100,
 });
 
-// Helper to generate embedding for a query
-export const generateQueryEmbedding = async (query: string): Promise<number[]> => {
-  const embeddings = nodeVectorStore.embeddings;
-  if (!embeddings) {
-    throw new Error('Embeddings not initialized');
-  }
-
-  // Generate embedding for the query
-  const result = await embeddings.embedQuery(query);
-  return Array.from(result);
-};
-
-// Commerce type categories for suggestion system
-export const COMMERCE_CATEGORIES = {
-  physical_product: {
+// Commerce categories (12 types)
+export const COMMERCE_CATEGORIES: Record<
+  string,
+  { icon: string; label: string; examples: string[] }
+> = {
+  product: {
     icon: '📦',
     label: 'Products',
-    examples: ['Electronics', 'Fashion', 'Home & Living', 'Grocery', 'Books']
+    examples: ['Electronics', 'Fashion', 'Home', 'Grocery', 'Books'],
+  },
+  digital: {
+    icon: '💾',
+    label: 'Digital',
+    examples: ['Software', 'eBooks', 'Music', 'Templates', 'Courses'],
   },
   service: {
     icon: '🔧',
     label: 'Services',
-    examples: ['Plumbing', 'Electrical', 'Cleaning', 'Repair', 'Painting']
+    examples: ['Plumbing', 'Electrical', 'Cleaning', 'Repair', 'Painting'],
+  },
+  subscription: {
+    icon: '🔄',
+    label: 'Subscriptions',
+    examples: ['Memberships', 'SaaS', 'Streaming', 'Fitness', 'Meal Plans'],
   },
   booking: {
     icon: '📅',
     label: 'Bookings',
-    examples: ['Hotels', 'Restaurants', 'Salon', 'Doctor', 'Gym']
-  },
-  transportation: {
-    icon: '🚗',
-    label: 'Transport',
-    examples: ['Taxi', 'Auto', 'Bike Taxi', 'Car Rental', 'Moving']
-  },
-  food_delivery: {
-    icon: '🍔',
-    label: 'Food',
-    examples: ['Restaurants', 'Cloud Kitchen', 'Homemade', 'Bakery', 'Groceries']
-  },
-  event: {
-    icon: '🎉',
-    label: 'Events',
-    examples: ['Concerts', 'Shows', 'Sports', 'Workshops', 'Festivals']
-  },
-  educational: {
-    icon: '📚',
-    label: 'Education',
-    examples: ['Tutoring', 'Courses', 'Training', 'Coaching', 'Classes']
+    examples: ['Salon', 'Doctor', 'Spa', 'Consultant', 'Restaurant'],
   },
   rental: {
     icon: '🏠',
     label: 'Rentals',
-    examples: ['Apartments', 'Equipment', 'Vehicles', 'Tools', 'Electronics']
+    examples: ['Cars', 'Equipment', 'Bikes', 'Tools', 'Venues'],
   },
-  digital_product: {
-    icon: '💾',
-    label: 'Digital',
-    examples: ['Software', 'eBooks', 'Courses', 'Music', 'Templates']
+  event: {
+    icon: '🎉',
+    label: 'Events',
+    examples: ['Concerts', 'Workshops', 'Sports', 'Festivals', 'Shows'],
   },
-  recurring_service: {
-    icon: '🔄',
-    label: 'Subscriptions',
-    examples: ['Memberships', 'SaaS', 'Meal Plans', 'Fitness', 'Streaming']
+  food: {
+    icon: '🍔',
+    label: 'Food',
+    examples: ['Restaurant', 'Cloud Kitchen', 'Homemade', 'Bakery', 'Tiffin'],
   },
+  transport: {
+    icon: '🚗',
+    label: 'Transport',
+    examples: ['Taxi', 'Auto', 'Courier', 'Moving', 'Logistics'],
+  },
+  education: {
+    icon: '📚',
+    label: 'Education',
+    examples: ['Tutoring', 'Courses', 'Coaching', 'Training', 'Classes'],
+  },
+  realestate: {
+    icon: '🏢',
+    label: 'Real Estate',
+    examples: ['Apartments', 'Houses', 'PG', 'Commercial', 'Land'],
+  },
+  healthcare: {
+    icon: '🏥',
+    label: 'Healthcare',
+    examples: ['Consultation', 'Lab Tests', 'Pharmacy', 'Therapy', 'Nursing'],
+  },
+};
+
+// Task type categories
+export const TASK_CATEGORIES: Record<
+  string,
+  { icon: string; label: string; examples: string[] }
+> = {
+  pay: { icon: '💳', label: 'Payment', examples: ['Pay for order'] },
+  confirm: { icon: '✅', label: 'Confirm', examples: ['Accept order'] },
+  prepare: { icon: '👨‍🍳', label: 'Prepare', examples: ['Cook food', 'Pack items'] },
+  pickup: { icon: '📍', label: 'Pickup', examples: ['Collect package'] },
+  deliver: { icon: '🚚', label: 'Deliver', examples: ['Drop to customer'] },
+  receive: { icon: '📬', label: 'Receive', examples: ['Confirm delivery'] },
+  rate: { icon: '⭐', label: 'Rate', examples: ['Review order'] },
+  checkin: { icon: '🎫', label: 'Check-in', examples: ['Arrive at venue'] },
+  serve: { icon: '🛎️', label: 'Serve', examples: ['Provide service'] },
+  complete: { icon: '🏁', label: 'Complete', examples: ['Mark done'] },
+};
+
+// Person role categories
+export const ROLE_CATEGORIES: Record<
+  string,
+  { icon: string; label: string }
+> = {
+  seller: { icon: '🏪', label: 'Seller' },
+  buyer: { icon: '🛒', label: 'Buyer' },
+  staff: { icon: '👔', label: 'Staff' },
+  driver: { icon: '🚗', label: 'Driver' },
+  host: { icon: '🎤', label: 'Host' },
+  instructor: { icon: '👨‍🏫', label: 'Instructor' },
+  student: { icon: '🎓', label: 'Student' },
+  doctor: { icon: '👨‍⚕️', label: 'Doctor' },
+  patient: { icon: '🤒', label: 'Patient' },
+  landlord: { icon: '🏠', label: 'Landlord' },
+  tenant: { icon: '🔑', label: 'Tenant' },
+  agent: { icon: '🤝', label: 'Agent' },
+  manager: { icon: '👨‍💼', label: 'Manager' },
+  support: { icon: '🎧', label: 'Support' },
 };

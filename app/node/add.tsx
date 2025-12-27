@@ -27,26 +27,28 @@ import { router, useLocalSearchParams } from "expo-router";
 import { useTheme } from "@/contexts/ThemeContext";
 import { COMMERCE_CATEGORIES } from "@/services/vectorStores/nodeVectorStore";
 import { nodeService } from "@/services/nodeService";
-import type { CommerceType } from "@/types/node";
+import type { NodeType, NodeStatus } from "@/types/node";
 
 type FormData = {
   title: string;
   description: string;
-  price: string;
-  type: CommerceType;
-  category: string;
+  value: string;
+  type: NodeType;
   tags: string;
   location: string;
+  quantity: string;
+  status: NodeStatus;
 };
 
 const INITIAL_FORM: FormData = {
   title: "",
   description: "",
-  price: "",
-  type: "physical_product",
-  category: "",
+  value: "",
+  type: "product",
   tags: "",
   location: "",
+  quantity: "1",
+  status: "active",
 };
 
 export default function AddNode() {
@@ -101,14 +103,21 @@ export default function AddNode() {
     try {
       const node = await nodeService.getNodeById(id);
       if (node) {
+        // Parse the data JSON field
+        let parsedData: { desc?: string; tags?: string } = {};
+        try {
+          if (node.data) parsedData = JSON.parse(node.data);
+        } catch (e) {}
+
         setForm({
           title: node.title || "",
-          description: node.description || "",
-          price: node.price?.toString() || "",
-          type: (node.type as CommerceType) || "physical_product",
-          category: node.category || "",
-          tags: node.tags || "",
+          description: parsedData.desc || "",
+          value: node.value?.toString() || "",
+          type: (node.type as NodeType) || "product",
+          tags: parsedData.tags || "",
           location: node.location || "",
+          quantity: node.quantity?.toString() || "1",
+          status: (node.status as NodeStatus) || "active",
         });
       }
     } catch (error) {
@@ -120,16 +129,24 @@ export default function AddNode() {
   };
 
   const categoryColors: Record<string, string> = {
-    transportation: colors.blue,
-    food_delivery: colors.orange,
+    transport: colors.blue,
+    food: colors.orange,
     service: colors.green,
     booking: colors.purple,
-    physical_product: colors.teal,
-    educational: colors.pink,
+    product: colors.teal,
+    education: colors.pink,
     event: colors.warning,
     rental: colors.accent,
-    digital_product: colors.success,
-    recurring_service: colors.error,
+    digital: colors.success,
+    subscription: colors.error,
+    healthcare: '#ec4899',
+    realestate: '#8b5cf6',
+    order: colors.blue,
+    variant: colors.textTertiary,
+    inventory: colors.textTertiary,
+    store: colors.textTertiary,
+    cart: colors.textTertiary,
+    search: colors.textTertiary,
   };
 
   const updateField = (field: keyof FormData, value: string) => {
@@ -148,14 +165,12 @@ export default function AddNode() {
       newErrors.title = "Title must be at least 3 characters";
     }
 
-    if (!form.description.trim()) {
-      newErrors.description = "Description is required";
+    if (form.value.trim() && (isNaN(Number(form.value)) || Number(form.value) < 0)) {
+      newErrors.value = "Enter a valid value";
     }
 
-    if (!form.price.trim()) {
-      newErrors.price = "Price is required";
-    } else if (isNaN(Number(form.price)) || Number(form.price) <= 0) {
-      newErrors.price = "Enter a valid price";
+    if (form.quantity.trim() && (isNaN(Number(form.quantity)) || Number(form.quantity) < 0)) {
+      newErrors.quantity = "Enter a valid quantity";
     }
 
     setErrors(newErrors);
@@ -167,25 +182,31 @@ export default function AddNode() {
 
     setIsSubmitting(true);
     try {
+      // Build the data JSON field
+      const dataJson = JSON.stringify({
+        desc: form.description.trim(),
+        tags: form.tags.trim(),
+      });
+
       if (isEditing && params.id) {
         await nodeService.updateNode(params.id, {
           title: form.title.trim(),
           type: form.type,
-          price: Number(form.price),
-          description: form.description.trim(),
-          category: form.category.trim(),
-          tags: form.tags.trim(),
+          data: dataJson,
+          value: Number(form.value) || 0,
+          quantity: Number(form.quantity) || 1,
           location: form.location.trim(),
+          status: form.status,
         });
       } else {
         await nodeService.createNode({
           title: form.title.trim(),
           type: form.type,
-          price: Number(form.price),
-          description: form.description.trim(),
-          category: form.category.trim(),
-          tags: form.tags.trim(),
+          data: dataJson,
+          value: Number(form.value) || 0,
+          quantity: Number(form.quantity) || 1,
           location: form.location.trim(),
+          status: form.status,
         });
       }
       router.back();
@@ -221,8 +242,16 @@ export default function AddNode() {
     );
   };
 
-  const selectedType = COMMERCE_CATEGORIES[form.type as keyof typeof COMMERCE_CATEGORIES];
+  const selectedType = COMMERCE_CATEGORIES[form.type];
   const typeColor = categoryColors[form.type] || colors.accent;
+
+  // Status options
+  const STATUS_OPTIONS: { value: NodeStatus; label: string; color: string }[] = [
+    { value: "active", label: "Active", color: "#22c55e" },
+    { value: "pending", label: "Pending", color: "#f59e0b" },
+    { value: "completed", label: "Completed", color: "#3b82f6" },
+    { value: "cancelled", label: "Cancelled", color: "#ef4444" },
+  ];
 
   if (isLoading) {
     return (
@@ -317,35 +346,63 @@ export default function AddNode() {
             <Text style={styles.charCount}>{form.description.length}/1000</Text>
           </View>
 
-          {/* Price */}
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel}>Price</Text>
-            <View style={[styles.priceContainer, errors.price && styles.inputError]}>
-              <Text style={styles.currencySymbol}>₹</Text>
-              <TextInput
-                style={styles.priceInput}
-                placeholder="0"
-                placeholderTextColor={colors.textTertiary}
-                value={form.price}
-                onChangeText={(v) => updateField("price", v.replace(/[^0-9.]/g, ""))}
-                keyboardType="numeric"
-                maxLength={10}
-              />
+          {/* Value & Quantity Row */}
+          <View style={[styles.section, { flexDirection: "row", gap: spacing.md }]}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.sectionLabel}>Value (₹)</Text>
+              <View style={[styles.priceContainer, errors.value && styles.inputError]}>
+                <Text style={styles.currencySymbol}>₹</Text>
+                <TextInput
+                  style={styles.priceInput}
+                  placeholder="0"
+                  placeholderTextColor={colors.textTertiary}
+                  value={form.value}
+                  onChangeText={(v) => updateField("value", v.replace(/[^0-9.]/g, ""))}
+                  keyboardType="numeric"
+                  maxLength={10}
+                />
+              </View>
+              {errors.value && <Text style={styles.errorText}>{errors.value}</Text>}
             </View>
-            {errors.price && <Text style={styles.errorText}>{errors.price}</Text>}
+            <View style={{ flex: 1 }}>
+              <Text style={styles.sectionLabel}>Quantity</Text>
+              <TextInput
+                style={[styles.input, errors.quantity && styles.inputError]}
+                placeholder="1"
+                placeholderTextColor={colors.textTertiary}
+                value={form.quantity}
+                onChangeText={(v) => updateField("quantity", v.replace(/[^0-9]/g, ""))}
+                keyboardType="numeric"
+                maxLength={6}
+              />
+              {errors.quantity && <Text style={styles.errorText}>{errors.quantity}</Text>}
+            </View>
           </View>
 
-          {/* Category */}
+          {/* Status */}
           <View style={styles.section}>
-            <Text style={styles.sectionLabel}>Category</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="e.g., Electronics, Food, Home Services"
-              placeholderTextColor={colors.textTertiary}
-              value={form.category}
-              onChangeText={(v) => updateField("category", v)}
-              maxLength={50}
-            />
+            <Text style={styles.sectionLabel}>Status</Text>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }}>
+              {STATUS_OPTIONS.map((opt) => {
+                const isSelected = form.status === opt.value;
+                return (
+                  <TouchableOpacity
+                    key={opt.value}
+                    style={[
+                      styles.statusChip,
+                      { borderColor: isSelected ? opt.color : colors.border },
+                      isSelected && { backgroundColor: `${opt.color}15` },
+                    ]}
+                    onPress={() => setForm((prev) => ({ ...prev, status: opt.value }))}
+                  >
+                    <View style={[styles.statusDot, { backgroundColor: opt.color }]} />
+                    <Text style={[styles.statusLabel, isSelected && { color: opt.color }]}>
+                      {opt.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
           </View>
 
           {/* Tags */}
@@ -429,7 +486,7 @@ export default function AddNode() {
                       isSelected && { backgroundColor: `${chipColor}15` },
                     ]}
                     onPress={() => {
-                      updateField("type", type as CommerceType);
+                      updateField("type", type as NodeType);
                       closeSheet();
                     }}
                   >
@@ -736,6 +793,26 @@ const createStyles = (colors: any, spacing: any, radius: any, typography: any) =
     },
     typeOptionLabel: {
       ...typography.body,
+      color: colors.textPrimary,
+      fontWeight: "500",
+    },
+    statusChip: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      gap: spacing.xs,
+      backgroundColor: colors.surface,
+    },
+    statusDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+    },
+    statusLabel: {
+      ...typography.caption,
       color: colors.textPrimary,
       fontWeight: "500",
     },

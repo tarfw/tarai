@@ -1,158 +1,116 @@
 // TARAI Local Database Schema (OP-SQLite)
-// All single-word columns as per TARAI.md specification
+// 3-table schema: nodes, people, tasks
 
 export const SCHEMA_QUERIES = {
-  // User's cached nodes with embeddings for offline search
-  createMyCacheTable: `
-    CREATE TABLE IF NOT EXISTS mycache (
+  // Main nodes table (10 columns)
+  createNodesTable: `
+    CREATE TABLE IF NOT EXISTS nodes (
       id TEXT PRIMARY KEY,
-      title TEXT NOT NULL,
       type TEXT NOT NULL,
-      price REAL NOT NULL,
-      description TEXT,
-      category TEXT,
-      tags TEXT,
+      title TEXT NOT NULL,
+      parent TEXT,
+      data TEXT,
+      quantity INTEGER DEFAULT 1,
+      value REAL DEFAULT 0,
       location TEXT,
-      thumbnail TEXT,
       status TEXT DEFAULT 'active',
-      cached INTEGER NOT NULL
+      created INTEGER NOT NULL,
+      updated INTEGER NOT NULL
     );
   `,
 
-  createMyCacheEmbeddingIndex: `
-    CREATE INDEX IF NOT EXISTS idx_mycache_cached ON mycache(cached);
-  `,
-
-  // Migration queries to add new columns to existing tables
-  migrations: [
-    `ALTER TABLE mycache ADD COLUMN description TEXT;`,
-    `ALTER TABLE mycache ADD COLUMN category TEXT;`,
-    `ALTER TABLE mycache ADD COLUMN tags TEXT;`,
-    `ALTER TABLE mycache ADD COLUMN location TEXT;`,
-    `ALTER TABLE mycache ADD COLUMN status TEXT DEFAULT 'active';`,
+  createNodesIndexes: [
+    `CREATE INDEX IF NOT EXISTS idx_nodes_type ON nodes(type);`,
+    `CREATE INDEX IF NOT EXISTS idx_nodes_parent ON nodes(parent);`,
+    `CREATE INDEX IF NOT EXISTS idx_nodes_type_parent ON nodes(type, parent);`,
+    `CREATE INDEX IF NOT EXISTS idx_nodes_status ON nodes(status);`,
+    `CREATE INDEX IF NOT EXISTS idx_nodes_updated ON nodes(updated);`,
   ],
 
-  // Browsed items cache (recent views)
-  createBrowsedTable: `
-    CREATE TABLE IF NOT EXISTS browsed (
-      id TEXT PRIMARY KEY,
-      title TEXT NOT NULL,
-      type TEXT NOT NULL,
-      price REAL NOT NULL,
-      seller TEXT NOT NULL,
-      thumbnail TEXT,
-      cached INTEGER NOT NULL
+  // People junction table (node <-> person relationships)
+  createPeopleTable: `
+    CREATE TABLE IF NOT EXISTS people (
+      nodeid TEXT NOT NULL,
+      personid TEXT NOT NULL,
+      role TEXT,
+      PRIMARY KEY (nodeid, personid),
+      FOREIGN KEY (nodeid) REFERENCES nodes(id) ON DELETE CASCADE
     );
   `,
 
-  createBrowsedIndex: `
-    CREATE INDEX IF NOT EXISTS idx_browsed_cached ON browsed(cached);
-  `,
+  createPeopleIndexes: [
+    `CREATE INDEX IF NOT EXISTS idx_people_personid ON people(personid);`,
+    `CREATE INDEX IF NOT EXISTS idx_people_role ON people(personid, role);`,
+  ],
 
-  // Search history with timestamps
-  createSearchesTable: `
-    CREATE TABLE IF NOT EXISTS searches (
-      id TEXT PRIMARY KEY,
-      query TEXT NOT NULL,
-      created INTEGER NOT NULL
-    );
-  `,
-
-  createSearchesIndex: `
-    CREATE INDEX IF NOT EXISTS idx_searches_created ON searches(created);
-  `,
-
-  // Offline queue for pending transactions
-  createOfflineQueueTable: `
-    CREATE TABLE IF NOT EXISTS offlinequeue (
-      id TEXT PRIMARY KEY,
-      transactiondata TEXT NOT NULL,
-      status TEXT NOT NULL,
-      retries INTEGER DEFAULT 0,
-      created INTEGER NOT NULL,
-      synced INTEGER
-    );
-  `,
-
-  createOfflineQueueIndex: `
-    CREATE INDEX IF NOT EXISTS idx_offlinequeue_status ON offlinequeue(status);
-  `,
-
-  // Universal cart table for all node types
-  createCartTable: `
-    CREATE TABLE IF NOT EXISTS cart (
+  // Tasks table (11 columns)
+  createTasksTable: `
+    CREATE TABLE IF NOT EXISTS tasks (
       id TEXT PRIMARY KEY,
       nodeid TEXT NOT NULL,
-      nodetype TEXT NOT NULL,
-      sellerid TEXT NOT NULL,
+      personid TEXT NOT NULL,
+      type TEXT NOT NULL,
       title TEXT NOT NULL,
-      price REAL NOT NULL,
-      quantity INTEGER DEFAULT 1,
-      thumbnail TEXT,
-      metadata TEXT,
-      added INTEGER NOT NULL
+      status TEXT DEFAULT 'pending',
+      priority INTEGER DEFAULT 0,
+      due INTEGER,
+      data TEXT,
+      created INTEGER NOT NULL,
+      updated INTEGER NOT NULL,
+      FOREIGN KEY (nodeid) REFERENCES nodes(id) ON DELETE CASCADE
     );
   `,
 
-  createCartIndexes: [
-    `CREATE INDEX IF NOT EXISTS idx_cart_sellerid ON cart(sellerid);`,
-    `CREATE INDEX IF NOT EXISTS idx_cart_added ON cart(added);`,
-    `CREATE INDEX IF NOT EXISTS idx_cart_nodeid ON cart(nodeid);`,
+  createTasksIndexes: [
+    `CREATE INDEX IF NOT EXISTS idx_tasks_personid ON tasks(personid);`,
+    `CREATE INDEX IF NOT EXISTS idx_tasks_nodeid ON tasks(nodeid);`,
+    `CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);`,
+    `CREATE INDEX IF NOT EXISTS idx_tasks_personid_status ON tasks(personid, status);`,
+    `CREATE INDEX IF NOT EXISTS idx_tasks_due ON tasks(due);`,
   ],
 };
 
 export const initializeDatabase = async (db: any) => {
   try {
-    console.log('Initializing TARAI local database...');
+    console.log('Initializing TARAI database (3-table schema)...');
 
-    // Create tables
-    await db.execute(SCHEMA_QUERIES.createMyCacheTable);
-    await db.execute(SCHEMA_QUERIES.createBrowsedTable);
-    await db.execute(SCHEMA_QUERIES.createSearchesTable);
-    await db.execute(SCHEMA_QUERIES.createOfflineQueueTable);
+    // Drop old legacy tables (not vector tables - those persist embeddings)
+    const oldTables = [
+      'mycache', 'browsed', 'searches', 'offlinequeue', 'cart',
+      'tarai_listing_vectors', 'tarai_listing_vectors_metadata'
+    ];
 
-    // Create indexes
-    await db.execute(SCHEMA_QUERIES.createMyCacheEmbeddingIndex);
-    await db.execute(SCHEMA_QUERIES.createBrowsedIndex);
-    await db.execute(SCHEMA_QUERIES.createSearchesIndex);
-    await db.execute(SCHEMA_QUERIES.createOfflineQueueIndex);
-
-    // Migration: Drop old cart table if it has old column names (listingid/listingtype)
-    try {
-      await db.execute('DROP TABLE IF EXISTS cart;');
-      console.log('Dropped old cart table for migration');
-    } catch (e) {
-      console.warn('Could not drop cart table:', e);
-    }
-
-    // Migration: Drop old vector store tables (tarai_listing_vectors)
-    try {
-      await db.execute('DROP TABLE IF EXISTS tarai_listing_vectors;');
-      await db.execute('DROP TABLE IF EXISTS tarai_listing_vectors_metadata;');
-      console.log('Dropped old vector store tables for migration');
-    } catch (e) {
-      console.warn('Could not drop old vector store tables:', e);
-    }
-
-    // Create cart table and indexes
-    await db.execute(SCHEMA_QUERIES.createCartTable);
-    for (const indexQuery of SCHEMA_QUERIES.createCartIndexes) {
-      await db.execute(indexQuery);
-    }
-
-    // Run migrations (add new columns to existing tables)
-    for (const migration of SCHEMA_QUERIES.migrations) {
+    for (const table of oldTables) {
       try {
-        await db.execute(migration);
-      } catch (migrationError: any) {
-        // Ignore "duplicate column" errors - column already exists
-        if (!migrationError?.message?.includes('duplicate column')) {
-          console.warn('Migration warning:', migrationError?.message);
-        }
+        await db.execute(`DROP TABLE IF EXISTS ${table};`);
+      } catch (e) {
+        // Ignore errors
       }
     }
+    console.log('Cleaned up legacy tables');
 
-    console.log('TARAI local database initialized successfully');
+    // Create nodes table and indexes
+    await db.execute(SCHEMA_QUERIES.createNodesTable);
+    for (const indexQuery of SCHEMA_QUERIES.createNodesIndexes) {
+      await db.execute(indexQuery);
+    }
+    console.log('Created nodes table');
+
+    // Create people table and indexes
+    await db.execute(SCHEMA_QUERIES.createPeopleTable);
+    for (const indexQuery of SCHEMA_QUERIES.createPeopleIndexes) {
+      await db.execute(indexQuery);
+    }
+    console.log('Created people table');
+
+    // Create tasks table and indexes
+    await db.execute(SCHEMA_QUERIES.createTasksTable);
+    for (const indexQuery of SCHEMA_QUERIES.createTasksIndexes) {
+      await db.execute(indexQuery);
+    }
+    console.log('Created tasks table');
+
+    console.log('TARAI database initialized successfully (3 tables)');
   } catch (error) {
     console.error('Failed to initialize TARAI database:', error);
     throw error;

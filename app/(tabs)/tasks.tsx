@@ -459,4 +459,11 @@ const createStyles = (colors: any, spacing: any, radius: any, typography: any) =
       ...typography.body,
       color: colors.textSecondary,
     },
+    listContainer: {
+      backgroundColor: colors.surface,
+      borderRadius: radius.lg,
+      paddingHorizontal: spacing.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
   });

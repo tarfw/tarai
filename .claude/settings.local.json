@@ -26,7 +26,19 @@
       "Bash(rm:*)",
       "WebFetch(domain:docs.bsky.app)",
       "Bash(wc:*)",
-      "Bash(bun start)"
+      "Bash(bun start)",
+      "Bash(xargs:*)",
+      "Bash(tree:*)",
+      "Bash(bun run prebuild:*)",
+      "Bash(npx expo:*)",
+      "Bash(npx tsc:*)",
+      "Bash(bun android)",
+      "Bash(timeout 60 bash:*)",
+      "Bash(npm install:*)",
+      "Bash(head:*)",
+      "Bash(npm ls:*)",
+      "Bash(node:*)",
+      "Bash(timeout 30 npx expo start:*)"
     ]
   }
 }

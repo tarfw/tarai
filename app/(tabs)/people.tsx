@@ -7,126 +7,122 @@ import {
   TouchableOpacity,
   View,
   ScrollView,
-  Dimensions,
+  FlatList,
+  ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, router } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
-import {
-  getAllPeople,
-  getPersonWithRoles,
-  searchPeople,
-  getPeopleStats,
-} from '@/services/peopleService';
-import { getNodeById } from '@/services/nodeService';
-import { getTasksByPerson } from '@/services/taskService';
-import { ROLE_CATEGORIES } from '@/services/vectorStores/nodeVectorStore';
-import type { PersonRole, NodeRecord, TaskRecord } from '@/types/node';
+import { useBlueskyAuth } from '@/contexts/BlueskyAuthContext';
+import { getConversations, searchUsers } from '@/services/blueskyService';
+import type { BlueskyConversation } from '@/services/blueskyService';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-
-export default function PeopleScreen() {
+export default function DMsScreen() {
   const insets = useSafeAreaInsets();
   const { colors, spacing, radius, typography } = useTheme();
+  const { isAuthenticated, agent, handle, logout } = useBlueskyAuth();
+
   const [searchQuery, setSearchQuery] = useState('');
-  const [people, setPeople] = useState<string[]>([]);
-  const [filteredPeople, setFilteredPeople] = useState<string[]>([]);
+  const [conversations, setConversations] = useState<BlueskyConversation[]>([]);
+  const [searchResults, setSearchResults] = useState<BlueskyConversation[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
-  const [stats, setStats] = useState<{ total: number; byRole: Record<string, number> }>({
-    total: 0,
-    byRole: {},
-  });
-  const [activeFilter, setActiveFilter] = useState<PersonRole | 'all'>('all');
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useFocusEffect(
     useCallback(() => {
-      loadPeople();
-      loadStats();
-    }, [])
+      if (isAuthenticated && agent) {
+        loadConversations();
+      } else if (!isAuthenticated) {
+        router.replace('/bluesky-login');
+      }
+    }, [isAuthenticated, agent])
   );
 
-  const loadPeople = async () => {
+  const loadConversations = async () => {
+    if (!agent) return;
     try {
-      const allPeople = await getAllPeople();
-      setPeople(allPeople);
-      setFilteredPeople(allPeople);
+      setIsLoading(true);
+      const convos = await getConversations(agent);
+      setConversations(convos);
     } catch (e) {
-      console.error('Failed to load people', e);
-    }
-  };
-
-  const loadStats = async () => {
-    try {
-      const peopleStats = await getPeopleStats();
-      setStats(peopleStats);
-    } catch (e) {
-      console.error('Failed to load people stats', e);
+      console.error('Failed to load conversations', e);
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const handleSearch = (query: string) => {
     setSearchQuery(query);
 
-    // Clear previous timeout to debounce
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current);
     }
 
     if (query.trim().length === 0) {
+      setSearchResults([]);
       setIsSearching(false);
-      applyFilter(activeFilter, people);
       return;
     }
 
-    // Debounce search by 300ms to avoid concurrent model calls
+    setIsSearching(true);
     searchTimeoutRef.current = setTimeout(async () => {
-      setIsSearching(true);
-      try {
-        const results = await searchPeople(query);
-        const uniqueIds = [...new Set(results.map((r) => r.personid))];
-        setFilteredPeople(uniqueIds);
-      } catch (e) {
-        console.error('Search failed', e);
+      if (agent) {
+        try {
+          const results = await searchUsers(agent, query, 20);
+          setSearchResults(results);
+        } catch (e) {
+          console.error('Search failed', e);
+          setSearchResults([]);
+        }
       }
     }, 300);
   };
 
   const handleClearSearch = () => {
     setSearchQuery('');
+    setSearchResults([]);
     setIsSearching(false);
-    applyFilter(activeFilter, people);
   };
 
-  const applyFilter = async (filter: PersonRole | 'all', peopleList: string[] = people) => {
-    setActiveFilter(filter);
-    if (filter === 'all') {
-      setFilteredPeople(peopleList);
-    } else {
-      // Need to filter by role - search people with specific role
-      try {
-        const results = await searchPeople('');
-        const filtered = results.filter((r) => r.role === filter);
-        const uniqueIds = [...new Set(filtered.map((r) => r.personid))];
-        setFilteredPeople(uniqueIds);
-      } catch (e) {
-        setFilteredPeople(peopleList);
-      }
-    }
+  const handleLogout = async () => {
+    await logout();
+    router.replace('/bluesky-login');
+  };
+
+  const handleSelectConversation = (conversation: BlueskyConversation) => {
+    // Navigate to conversation detail screen
+    router.push({
+      pathname: '/bluesky-dm-detail',
+      params: { did: conversation.did, handle: conversation.handle },
+    });
   };
 
   const styles = createStyles(colors, spacing, radius, typography);
-
-  const roleFilters: (PersonRole | 'all')[] = ['all', 'seller', 'buyer', 'driver', 'staff'];
+  const displayList = searchQuery.trim().length > 0 ? searchResults : conversations;
 
   return (
     <View style={[styles.container, { paddingTop: insets.top + spacing.md }]}>
+      {/* Header with logout */}
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Bluesky Messages</Text>
+        <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
+          <FontAwesome6 name="sign-out" size={20} color={colors.error} />
+        </TouchableOpacity>
+      </View>
+
       {/* Search Bar */}
       <View style={styles.searchWrapper}>
-        <View style={[styles.searchBar, isFocused && styles.searchBarFocused]}>
-        <TextInput
-            placeholder="Search people..."
+        <View
+          style={[
+            styles.searchBar,
+            isFocused && styles.searchBarFocused,
+          ]}
+        >
+          <FontAwesome6 name="magnifying-glass" size={16} color={colors.textTertiary} />
+          <TextInput
+            placeholder="Search users..."
             value={searchQuery}
             onChangeText={handleSearch}
             onFocus={() => setIsFocused(true)}
@@ -137,122 +133,87 @@ export default function PeopleScreen() {
           />
           {searchQuery.length > 0 && (
             <TouchableOpacity onPress={handleClearSearch} style={styles.clearButton}>
-              <FontAwesome6 name="xmark" size={18} color={colors.textSecondary} />
+              <FontAwesome6 name="xmark" size={16} color={colors.textSecondary} />
             </TouchableOpacity>
           )}
         </View>
       </View>
 
-      {/* Role Filter Chips */}
-      <View style={styles.filtersWrapper}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.filtersContainer}
-        >
-          {roleFilters.map((role) => {
-            const roleInfo = role === 'all' ? null : ROLE_CATEGORIES[role];
-            const count = role === 'all' ? stats.total : stats.byRole[role] || 0;
-            const isActive = activeFilter === role;
-
-            return (
-              <TouchableOpacity
-                key={role}
-                style={[styles.filterChip, isActive && styles.filterChipActive]}
-                onPress={() => applyFilter(role)}
-              >
-                {roleInfo && <Text style={styles.filterIcon}>{roleInfo.icon}</Text>}
-                <Text style={[styles.filterLabel, isActive && styles.filterLabelActive]}>
-                  {role === 'all' ? 'All' : roleInfo?.label || role}
-                </Text>
-                <Text style={[styles.filterCount, isActive && styles.filterCountActive]}>{count}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-      </View>
-
-      {/* People List */}
-      <ScrollView
-      style={styles.content}
-      contentContainerStyle={[styles.contentContainer, { paddingBottom: 80 + insets.bottom }]}
-      showsVerticalScrollIndicator={false}
-      >
-      {filteredPeople.length === 0 ? (
-      <View style={styles.emptyState}>
-      <View style={styles.emptyIconContainer}>
-      <FontAwesome6 name="users" size={32} color={colors.textTertiary} />
-      </View>
-      <Text style={styles.emptyTitle}>No people</Text>
-      <Text style={styles.emptySubtitle}>People from nodes will appear here</Text>
-      </View>
+      {/* Content */}
+      {isLoading && displayList.length === 0 ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.accent} />
+          <Text style={[styles.emptyTitle, { marginTop: spacing.md }]}>Loading conversations...</Text>
+        </View>
+      ) : displayList.length === 0 ? (
+        <View style={styles.emptyState}>
+          <View style={styles.emptyIconContainer}>
+            <FontAwesome6 name="message" size={32} color={colors.textTertiary} />
+          </View>
+          <Text style={styles.emptyTitle}>
+            {searchQuery.trim().length > 0 ? 'No users found' : 'No conversations yet'}
+          </Text>
+          <Text style={styles.emptySubtitle}>
+            {searchQuery.trim().length > 0
+              ? 'Try searching for a different handle'
+              : 'Search for users to start a conversation'}
+          </Text>
+        </View>
       ) : (
-      <View style={styles.listContainer}>
-      {filteredPeople.map((personId, index) => (
-      <PersonRow
-        key={personId}
-        personId={personId}
-        colors={colors}
-        spacing={spacing}
-        radius={radius}
-        typography={typography}
-        isLast={index === filteredPeople.length - 1}
-      />
-      ))}
-      </View>
+        <FlatList
+          data={displayList}
+          keyExtractor={(item) => item.did}
+          renderItem={({ item }) => (
+            <ConversationRow
+              conversation={item}
+              colors={colors}
+              spacing={spacing}
+              radius={radius}
+              typography={typography}
+              onPress={() => handleSelectConversation(item)}
+            />
+          )}
+          scrollEnabled={false}
+          contentContainerStyle={[styles.contentContainer, { paddingBottom: 80 + insets.bottom }]}
+        />
       )}
-      </ScrollView>
     </View>
   );
 }
 
-function PersonRow({
-  personId,
+function ConversationRow({
+  conversation,
   colors,
   spacing,
   radius,
   typography,
-  isLast,
+  onPress,
 }: {
-  personId: string;
+  conversation: BlueskyConversation;
   colors: any;
   spacing: any;
   radius: any;
   typography: any;
-  isLast: boolean;
+  onPress: () => void;
 }) {
-  const displayName = personId.replace('person_', '').replace(/_/g, ' ');
-  const initials = displayName
-    .split(' ')
-    .map((n) => n[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2);
-
-  const [roleCount, setRoleCount] = useState(0);
-  const [taskCount, setTaskCount] = useState(0);
-
-  // Load role and task counts on mount
-  useEffect(() => {
-    (async () => {
-      try {
-        const details = await getPersonWithRoles(personId);
-        const tasks = await getTasksByPerson(personId);
-        setRoleCount(new Set(details.roles.map((r) => r.role)).size);
-        setTaskCount(tasks.filter((t) => t.status === 'pending' || t.status === 'progress').length);
-      } catch (e) {
-        console.error('Failed to load person data', e);
-      }
-    })();
-  }, []);
+  const initials = conversation.displayName
+    ? conversation.displayName
+        .split(' ')
+        .map((n) => n[0])
+        .join('')
+        .toUpperCase()
+        .slice(0, 2)
+    : conversation.handle.slice(0, 2).toUpperCase();
 
   return (
-    <View
+    <TouchableOpacity
+      onPress={onPress}
       style={{
         flexDirection: 'row',
         alignItems: 'center',
         paddingVertical: spacing.md,
-        borderBottomWidth: isLast ? 0 : 1,
+        paddingHorizontal: spacing.lg,
+        borderBottomWidth: 1,
         borderBottomColor: colors.border,
         gap: spacing.md,
       }}
@@ -260,9 +221,9 @@ function PersonRow({
       {/* Avatar */}
       <View
         style={{
-          width: 40,
-          height: 40,
-          borderRadius: 20,
+          width: 48,
+          height: 48,
+          borderRadius: 24,
           backgroundColor: colors.accentSubtle,
           justifyContent: 'center',
           alignItems: 'center',
@@ -279,36 +240,56 @@ function PersonRow({
         <Text
           style={{
             fontSize: 16,
-            fontWeight: '500',
+            fontWeight: '600',
             color: colors.textPrimary,
           }}
           numberOfLines={1}
         >
-          {displayName}
+          {conversation.displayName || conversation.handle}
         </Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
-          <Text style={{ fontSize: 13, fontWeight: '400', color: colors.textTertiary }}>
-            👤 {roleCount} {roleCount === 1 ? 'role' : 'roles'}
+        {conversation.lastMessage && (
+          <Text
+            style={{
+              fontSize: 13,
+              fontWeight: '400',
+              color: colors.textSecondary,
+            }}
+            numberOfLines={1}
+          >
+            {conversation.lastMessage}
           </Text>
-        </View>
+        )}
+        {!conversation.lastMessage && (
+          <Text
+            style={{
+              fontSize: 13,
+              fontWeight: '400',
+              color: colors.textTertiary,
+            }}
+          >
+            @{conversation.handle}
+          </Text>
+        )}
       </View>
 
-      {/* Task count */}
-      {taskCount > 0 && (
+      {/* Unread indicator */}
+      {conversation.unreadCount && conversation.unreadCount > 0 && (
         <View
           style={{
-            backgroundColor: '#f59e0b20',
-            paddingHorizontal: spacing.sm,
-            paddingVertical: spacing.xs,
-            borderRadius: radius.sm,
+            backgroundColor: colors.error,
+            minWidth: 20,
+            height: 20,
+            borderRadius: 10,
+            justifyContent: 'center',
+            alignItems: 'center',
           }}
         >
-          <Text style={{ ...typography.caption, color: '#f59e0b', fontWeight: '600' }}>
-            {taskCount}
+          <Text style={{ ...typography.caption, color: '#FFFFFF', fontWeight: '600' }}>
+            {conversation.unreadCount > 99 ? '99+' : conversation.unreadCount}
           </Text>
         </View>
       )}
-    </View>
+    </TouchableOpacity>
   );
 }
 
@@ -318,87 +299,61 @@ const createStyles = (colors: any, spacing: any, radius: any, typography: any) =
       flex: 1,
       backgroundColor: colors.background,
     },
+    header: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingHorizontal: spacing.lg,
+      paddingBottom: spacing.md,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    headerTitle: {
+      ...typography.largeTitle,
+      color: colors.textPrimary,
+    },
+    logoutButton: {
+      padding: spacing.sm,
+    },
     searchWrapper: {
       paddingHorizontal: spacing.lg,
-      marginBottom: spacing.md,
+      paddingVertical: spacing.md,
     },
     searchBar: {
       flexDirection: 'row',
       alignItems: 'center',
-      backgroundColor: 'transparent',
-      paddingHorizontal: spacing.xs,
-      paddingVertical: spacing.sm,
+      backgroundColor: colors.surface,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingHorizontal: spacing.md,
+      height: 40,
+      gap: spacing.sm,
     },
-    searchBarFocused: {},
-
+    searchBarFocused: {
+      borderColor: colors.accent,
+      borderWidth: 2,
+    },
     searchInput: {
       flex: 1,
-      fontSize: 28,
-      fontWeight: '700',
+      ...typography.body,
       color: colors.textPrimary,
       padding: 0,
     },
     clearButton: {
-      width: 32,
-      height: 32,
-      borderRadius: radius.md,
+      padding: spacing.sm,
+    },
+    loadingContainer: {
+      flex: 1,
       justifyContent: 'center',
       alignItems: 'center',
-      backgroundColor: colors.surface,
-      marginLeft: spacing.sm,
     },
-    filtersWrapper: {
-      marginBottom: spacing.md,
-    },
-    filtersContainer: {
-      paddingHorizontal: spacing.lg,
-      gap: spacing.sm,
-    },
-    filterChip: {
-      height: 36,
-      flexDirection: 'row',
-      alignItems: 'center',
-      backgroundColor: colors.surface,
-      borderRadius: radius.full,
-      borderWidth: 1,
-      borderColor: colors.border,
-      paddingHorizontal: spacing.md,
-      gap: spacing.xs,
-    },
-    filterChipActive: {
-      backgroundColor: colors.accentSubtle,
-      borderColor: colors.accent,
-    },
-    filterIcon: {
-      fontSize: 14,
-    },
-    filterLabel: {
-      ...typography.caption,
-      color: colors.textPrimary,
-    },
-    filterLabelActive: {
-      color: colors.accent,
-    },
-    filterCount: {
-      ...typography.small,
-      color: colors.textTertiary,
-    },
-    filterCountActive: {
-      color: colors.accent,
-    },
-    content: {
-      flex: 1,
-    },
-    contentContainer: {
-      paddingHorizontal: spacing.lg,
-    },
-    listContainer: {
-      width: '100%',
-    },
+    contentContainer: {},
     emptyState: {
       alignItems: 'center',
       justifyContent: 'center',
       paddingVertical: spacing.xxl * 2,
+      paddingHorizontal: spacing.lg,
       gap: spacing.md,
     },
     emptyIconContainer: {
@@ -417,5 +372,6 @@ const createStyles = (colors: any, spacing: any, radius: any, typography: any) =
     emptySubtitle: {
       ...typography.body,
       color: colors.textSecondary,
+      textAlign: 'center',
     },
   });

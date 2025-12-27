@@ -1,522 +1,370 @@
 // TARAI Node Service
-// Handles local node operations with vector embeddings
+// Handles node operations with vector embeddings for semantic search
 
-import type { Node, CachedNode, BrowsedNode, SearchQuery } from "@/types/node";
+import type { NodeRecord, NodeType, NodeStatus } from '@/types/node';
 import {
+  nodeVectorStore,
   nodeSplitter,
   nodeToString,
-  nodeVectorStore,
-  generateQueryEmbedding,
-  COMMERCE_CATEGORIES
-} from "@/services/vectorStores/nodeVectorStore";
-import { open } from "@op-engineering/op-sqlite";
+  COMMERCE_CATEGORIES,
+} from '@/services/vectorStores/nodeVectorStore';
+import { getDb } from '@/services/database/db';
 
-// Initialize local database
-const db = open({
-  name: "tarai.db",
-  location: "default"
-});
+const generateId = () => `node_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
 // ========== CRUD OPERATIONS ==========
 
 export async function createNode(data: {
+  id?: string; // Allow providing custom ID for demo data
+  type: NodeType;
   title: string;
-  type: string;
-  price: number;
-  description?: string;
-  category?: string;
-  tags?: string;
+  parent?: string;
+  data?: string;
+  quantity?: number;
+  value?: number;
   location?: string;
+  status?: NodeStatus;
 }): Promise<string> {
-  try {
-    const id = `node_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    const now = Date.now();
+  const database = getDb();
+  const id = data.id || generateId();
+  const now = Date.now();
 
-    // Save to mycache table with all fields
-    await db.execute(
-      `INSERT INTO mycache (id, title, type, price, description, category, tags, location, thumbnail, status, cached)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        id,
-        data.title,
-        data.type,
-        data.price,
-        data.description || '',
-        data.category || '',
-        data.tags || '',
-        data.location || '',
-        '',
-        'active',
-        now
-      ]
-    );
+  await database.execute(
+    `INSERT INTO nodes (id, type, title, parent, data, quantity, value, location, status, created, updated)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      id,
+      data.type,
+      data.title,
+      data.parent || null,
+      data.data || null,
+      data.quantity || 1,
+      data.value || 0,
+      data.location || null,
+      data.status || 'active',
+      now,
+      now,
+    ]
+  );
 
-    // Try to add to vector store for semantic search
-    try {
-      const searchText = `${data.type}: ${data.title}. ${data.description || ''} ${data.category || ''} ${data.tags || ''}`;
-      await nodeVectorStore.add({
-        document: searchText,
-        metadata: { nodeId: id, type: data.type }
-      });
-    } catch (vectorError) {
-      console.warn(`Vector indexing failed for ${id}, text search will be used`);
-    }
-
-    console.log(`Created node: ${id}`);
-    return id;
-  } catch (error) {
-    console.error('Failed to create node:', error);
-    throw error;
+  // Index in vector store for semantic search (with chunking for long content)
+  const searchText = nodeToString({ title: data.title, type: data.type, data: data.data });
+  console.log(`[NodeService] Indexing node ${id}: "${searchText.substring(0, 50)}..."`);
+  const chunks = await nodeSplitter.splitText(searchText);
+  console.log(`[NodeService] Split into ${chunks.length} chunks`);
+  for (let i = 0; i < chunks.length; i++) {
+    console.log(`[NodeService] Adding chunk ${i + 1}/${chunks.length} to vector store...`);
+    await nodeVectorStore.add({
+      document: chunks[i],
+      metadata: { nodeId: id, type: data.type },
+    });
+    console.log(`[NodeService] Chunk ${i + 1} added successfully`);
   }
+
+  return id;
 }
 
-export async function updateNode(id: string, data: {
-  title?: string;
-  type?: string;
-  price?: number;
-  description?: string;
-  category?: string;
-  tags?: string;
-  location?: string;
-}): Promise<void> {
-  try {
-    const updates: string[] = [];
-    const values: any[] = [];
+export async function updateNode(
+  id: string,
+  updates: Partial<Omit<NodeRecord, 'id' | 'created'>>
+): Promise<void> {
+  const database = getDb();
+  const fields: string[] = [];
+  const values: any[] = [];
 
-    if (data.title !== undefined) {
-      updates.push('title = ?');
-      values.push(data.title);
-    }
-    if (data.type !== undefined) {
-      updates.push('type = ?');
-      values.push(data.type);
-    }
-    if (data.price !== undefined) {
-      updates.push('price = ?');
-      values.push(data.price);
-    }
-    if (data.description !== undefined) {
-      updates.push('description = ?');
-      values.push(data.description);
-    }
-    if (data.category !== undefined) {
-      updates.push('category = ?');
-      values.push(data.category);
-    }
-    if (data.tags !== undefined) {
-      updates.push('tags = ?');
-      values.push(data.tags);
-    }
-    if (data.location !== undefined) {
-      updates.push('location = ?');
-      values.push(data.location);
-    }
+  if (updates.type !== undefined) {
+    fields.push('type = ?');
+    values.push(updates.type);
+  }
+  if (updates.title !== undefined) {
+    fields.push('title = ?');
+    values.push(updates.title);
+  }
+  if (updates.parent !== undefined) {
+    fields.push('parent = ?');
+    values.push(updates.parent);
+  }
+  if (updates.data !== undefined) {
+    fields.push('data = ?');
+    values.push(updates.data);
+  }
+  if (updates.quantity !== undefined) {
+    fields.push('quantity = ?');
+    values.push(updates.quantity);
+  }
+  if (updates.value !== undefined) {
+    fields.push('value = ?');
+    values.push(updates.value);
+  }
+  if (updates.location !== undefined) {
+    fields.push('location = ?');
+    values.push(updates.location);
+  }
+  if (updates.status !== undefined) {
+    fields.push('status = ?');
+    values.push(updates.status);
+  }
 
-    updates.push('cached = ?');
-    values.push(Date.now());
-    values.push(id);
+  fields.push('updated = ?');
+  values.push(Date.now());
+  values.push(id);
 
-    await db.execute(
-      `UPDATE mycache SET ${updates.join(', ')} WHERE id = ?`,
-      values
-    );
+  await database.execute(
+    `UPDATE nodes SET ${fields.join(', ')} WHERE id = ?`,
+    values
+  );
 
-    // Update vector store
-    try {
-      // Remove old vector entry
-      await nodeVectorStore.delete({
-        predicate: (doc) => doc.metadata?.nodeId === id
-      });
-
-      // Add new vector entry
-      const searchText = `${data.type}: ${data.title}. ${data.description || ''} ${data.category || ''} ${data.tags || ''}`;
-      await nodeVectorStore.add({
-        document: searchText,
-        metadata: { nodeId: id, type: data.type }
-      });
-    } catch (vectorError) {
-      console.warn(`Vector update failed for ${id}`);
+  // Update vector store (delete old chunks, re-index with new content)
+  await nodeVectorStore.delete({
+    predicate: (doc) => doc.metadata?.nodeId === id,
+  });
+  if (updates.title || updates.data) {
+    const node = await getNodeById(id);
+    if (node) {
+      const searchText = nodeToString({ title: node.title, type: node.type, data: node.data });
+      const chunks = await nodeSplitter.splitText(searchText);
+      for (const chunk of chunks) {
+        await nodeVectorStore.add({
+          document: chunk,
+          metadata: { nodeId: id, type: node.type },
+        });
+      }
     }
-
-    console.log(`Updated node: ${id}`);
-  } catch (error) {
-    console.error('Failed to update node:', error);
-    throw error;
   }
 }
 
 export async function deleteNode(id: string): Promise<void> {
-  try {
-    await db.execute('DELETE FROM mycache WHERE id = ?', [id]);
-
-    // Remove from vector store
-    try {
-      await nodeVectorStore.delete({
-        predicate: (doc) => doc.metadata?.nodeId === id
-      });
-    } catch (vectorError) {
-      console.warn(`Vector deletion failed for ${id}`);
-    }
-
-    console.log(`Deleted node: ${id}`);
-  } catch (error) {
-    console.error('Failed to delete node:', error);
-    throw error;
-  }
+  const database = getDb();
+  await database.execute('DELETE FROM nodes WHERE id = ?', [id]);
+  // Cascade deletes handled by FK, also clean vector store
+  await nodeVectorStore.delete({
+    predicate: (doc) => doc.metadata?.nodeId === id,
+  });
 }
 
-export async function getNodeById(id: string): Promise<CachedNode | null> {
-  try {
-    const result = await db.execute(
-      'SELECT * FROM mycache WHERE id = ?',
-      [id]
-    );
-
-    const rows = result.rows?._array || result.rows || [];
-    const rowsArray = Array.isArray(rows) ? rows : [];
-    return rowsArray.length > 0 ? rowsArray[0] : null;
-  } catch (error) {
-    console.error('Failed to get node:', error);
-    return null;
-  }
+export async function getNodeById(id: string): Promise<NodeRecord | null> {
+  const database = getDb();
+  const result = await database.execute('SELECT * FROM nodes WHERE id = ?', [id]);
+  return (result.rows?.[0] as NodeRecord) || null;
 }
 
-// ========== LOCAL CACHE OPERATIONS ==========
+// ========== QUERY OPERATIONS ==========
 
-export async function cacheUserNodes(nodes: CachedNode[]): Promise<void> {
-  try {
-    for (const node of nodes) {
-      // Save to database (required)
-      await db.execute(
-        `INSERT OR REPLACE INTO mycache (id, title, type, price, thumbnail, cached)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        [node.id, node.title, node.type, node.price, node.thumbnail, Date.now()]
-      );
+export async function getAllNodes(
+  type?: NodeType,
+  status?: NodeStatus,
+  limit: number = 100
+): Promise<NodeRecord[]> {
+  const database = getDb();
+  let query = 'SELECT * FROM nodes WHERE 1=1';
+  const params: (string | number)[] = [];
 
-      // Try to add to vector store (optional - may fail if model not loaded)
-      try {
-        const searchText = `${node.type}: ${node.title}`;
-        await nodeVectorStore.add({
-          document: searchText,
-          metadata: { nodeId: node.id, type: node.type }
-        });
-      } catch (vectorError) {
-        // Vector store failed, but data is still in database
-        console.warn(`Vector indexing failed for ${node.id}, text search will be used`);
-      }
-    }
-  } catch (error) {
-    console.error('Failed to cache user nodes:', error);
-    throw error;
+  if (type) {
+    query += ' AND type = ?';
+    params.push(type);
   }
+  if (status) {
+    query += ' AND status = ?';
+    params.push(status);
+  }
+
+  query += ' ORDER BY updated DESC LIMIT ?';
+  params.push(limit);
+
+  const result = await database.execute(query, params);
+  return (result.rows || []) as NodeRecord[];
 }
 
-export async function getCachedNodes(): Promise<CachedNode[]> {
-  try {
-    const result = await db.execute(
-      'SELECT * FROM mycache ORDER BY cached DESC'
-    );
-
-    // Handle both old and new OP-SQLite row formats
-    const rows = result.rows?._array || result.rows || [];
-    return Array.isArray(rows) ? rows : [];
-  } catch (error) {
-    console.error('Failed to get cached nodes:', error);
-    return [];
-  }
+export async function getNodesByType(type: NodeType): Promise<NodeRecord[]> {
+  const database = getDb();
+  const result = await database.execute(
+    'SELECT * FROM nodes WHERE type = ? ORDER BY updated DESC',
+    [type]
+  );
+  return (result.rows || []) as NodeRecord[];
 }
 
-export async function clearCache(): Promise<void> {
-  try {
-    await db.execute('DELETE FROM mycache');
-    // Try to clear vector store, but don't fail if table doesn't exist
-    try {
-      await nodeVectorStore.delete({ predicate: () => true });
-    } catch (vectorError) {
-      // Vector table may not exist yet, that's ok
-    }
-  } catch (error) {
-    console.error('Failed to clear cache:', error);
-    throw error;
-  }
+export async function getChildNodes(parentId: string): Promise<NodeRecord[]> {
+  const database = getDb();
+  const result = await database.execute(
+    'SELECT * FROM nodes WHERE parent = ? ORDER BY created ASC',
+    [parentId]
+  );
+  return (result.rows || []) as NodeRecord[];
 }
 
-// ========== BROWSING HISTORY ==========
+export async function getRootNodes(types?: NodeType[]): Promise<NodeRecord[]> {
+  const database = getDb();
+  let query = 'SELECT * FROM nodes WHERE parent IS NULL';
+  const params: string[] = [];
 
-export async function addToBrowsed(node: BrowsedNode): Promise<void> {
-  try {
-    await db.execute(
-      `INSERT OR REPLACE INTO browsed (id, title, type, price, seller, thumbnail, cached)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [node.id, node.title, node.type, node.price, node.seller, node.thumbnail, Date.now()]
-    );
-
-    // Keep only last 50 browsed items
-    await db.execute(
-      `DELETE FROM browsed WHERE id NOT IN (
-        SELECT id FROM browsed ORDER BY cached DESC LIMIT 50
-      )`
-    );
-  } catch (error) {
-    console.error('Failed to add to browsed:', error);
+  if (types && types.length > 0) {
+    query += ` AND type IN (${types.map(() => '?').join(',')})`;
+    params.push(...types);
   }
+
+  query += ' ORDER BY updated DESC';
+
+  const result = await database.execute(query, params);
+  return (result.rows || []) as NodeRecord[];
 }
 
-export async function getBrowsedNodes(limit: number = 20): Promise<BrowsedNode[]> {
-  try {
-    const result = await db.execute(
-      'SELECT * FROM browsed ORDER BY cached DESC LIMIT ?',
-      [limit]
-    );
+// ========== SEARCH OPERATIONS ==========
 
-    const rows = result.rows?._array || result.rows || [];
-    return Array.isArray(rows) ? rows : [];
-  } catch (error) {
-    console.error('Failed to get browsed nodes:', error);
-    return [];
-  }
-}
-
-// ========== SEARCH HISTORY ==========
-
-export async function saveSearchQuery(query: string): Promise<void> {
-  try {
-    const id = `search_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    await db.execute(
-      'INSERT INTO searches (id, query, created) VALUES (?, ?, ?)',
-      [id, query, Date.now()]
-    );
-
-    // Keep only last 100 searches
-    await db.execute(
-      `DELETE FROM searches WHERE id NOT IN (
-        SELECT id FROM searches ORDER BY created DESC LIMIT 100
-      )`
-    );
-  } catch (error) {
-    console.error('Failed to save search query:', error);
-  }
-}
-
-export async function getSearchHistory(limit: number = 10): Promise<SearchQuery[]> {
-  try {
-    const result = await db.execute(
-      'SELECT * FROM searches ORDER BY created DESC LIMIT ?',
-      [limit]
-    );
-
-    const rows = result.rows?._array || result.rows || [];
-    return Array.isArray(rows) ? rows : [];
-  } catch (error) {
-    console.error('Failed to get search history:', error);
-    return [];
-  }
-}
-
-// ========== VECTOR SEARCH ==========
-
-export async function searchNodesByText(
+export async function searchNodes(
   query: string,
-  filters?: { type?: string },
+  filters?: { type?: NodeType; status?: NodeStatus },
   limit: number = 20
-): Promise<Array<{ nodeId: string; similarity: number; type: string }>> {
-  try {
-    await saveSearchQuery(query);
+): Promise<NodeRecord[]> {
+  const database = getDb();
 
-    // Try vector search first
-    try {
-      const results = await nodeVectorStore.query({
-        queryText: query.trim(),
-        nResults: limit * 3  // Get more results to account for duplicates
-      });
+  console.log(`[Search] Starting semantic search for: "${query}"`);
+  console.log(`[Search] Filters:`, filters);
 
-      // Filter by type if specified
-      let filteredResults = results;
-      if (filters?.type) {
-        filteredResults = results.filter(r => r.metadata?.type === filters.type);
-      }
+  // Semantic vector search
+  console.log(`[Search] Calling nodeVectorStore.query()...`);
+  const results = await nodeVectorStore.query({
+    queryText: query.trim(),
+    nResults: limit * 3,
+  });
+  console.log(`[Search] Vector store returned ${results.length} results`);
 
-      // Deduplicate by nodeId and keep highest similarity
-      const uniqueResults = new Map<string, { nodeId: string; similarity: number; type: string }>();
-      for (const r of filteredResults) {
-        const nodeId = r.metadata?.nodeId as string;
-        const existing = uniqueResults.get(nodeId);
-        if (!existing || r.similarity > existing.similarity) {
-          uniqueResults.set(nodeId, {
-            nodeId,
-            similarity: r.similarity,
-            type: r.metadata?.type as string
-          });
-        }
-      }
+  // Filter by type if specified
+  let filteredResults = results;
+  if (filters?.type) {
+    filteredResults = results.filter((r) => r.metadata?.type === filters.type);
+    console.log(`[Search] After type filter: ${filteredResults.length} results`);
+  }
 
-      // Sort by similarity and limit
-      return Array.from(uniqueResults.values())
-        .sort((a, b) => b.similarity - a.similarity)
-        .slice(0, limit);
-    } catch (vectorError) {
-      console.warn('Vector search failed, falling back to text search:', vectorError);
-
-      // Fallback to simple text search in database
-      const queryLower = query.toLowerCase();
-      const result = await db.execute(
-        `SELECT * FROM mycache WHERE LOWER(title) LIKE ? OR LOWER(type) LIKE ? LIMIT ?`,
-        [`%${queryLower}%`, `%${queryLower}%`, limit]
-      );
-
-      const rows = result.rows?._array || result.rows || [];
-      const rowsArray = Array.isArray(rows) ? rows : [];
-
-      return rowsArray.map(r => ({
-        nodeId: r.id,
-        similarity: 0.5,
-        type: r.type
-      }));
+  // Deduplicate by nodeId and track max similarity per node
+  const nodeIds = [...new Set(filteredResults.map((r) => r.metadata?.nodeId as string))];
+  const similarityMap = new Map<string, number>();
+  filteredResults.forEach((r) => {
+    const nodeId = r.metadata?.nodeId as string;
+    if (!similarityMap.has(nodeId) || r.similarity > similarityMap.get(nodeId)!) {
+      similarityMap.set(nodeId, r.similarity);
     }
-  } catch (error) {
-    console.error('Failed to search nodes by text:', error);
+  });
+
+  console.log(`[Search] Unique node IDs found: ${nodeIds.length}`);
+
+  if (nodeIds.length === 0) {
+    console.log(`[Search] No results found`);
     return [];
   }
-}
 
-// ========== SEMANTIC SUGGESTIONS ==========
+  // Fetch full node records from DB
+  const placeholders = nodeIds.map(() => '?').join(',');
+  let sql = `SELECT * FROM nodes WHERE id IN (${placeholders})`;
+  const params: string[] = [...nodeIds];
+
+  if (filters?.status) {
+    sql += ' AND status = ?';
+    params.push(filters.status);
+  }
+
+  const result = await database.execute(sql, params);
+  const nodes = (result.rows || []) as NodeRecord[];
+
+  console.log(`[Search] Fetched ${nodes.length} nodes from DB`);
+
+  // Add similarity and sort by relevance
+  const sortedNodes = nodes
+    .map((n) => ({ ...n, similarity: similarityMap.get(n.id) || 0 }))
+    .sort((a, b) => (b.similarity || 0) - (a.similarity || 0))
+    .slice(0, limit);
+
+  console.log(`[Search] Returning ${sortedNodes.length} results`);
+  sortedNodes.forEach((n, i) => {
+    console.log(`[Search] ${i + 1}. ${n.title} (${Math.round((n.similarity || 0) * 100)}%)`);
+  });
+
+  return sortedNodes;
+}
 
 export async function getSemanticSuggestions(
   partialQuery: string
 ): Promise<Array<{ text: string; type: string; icon: string }>> {
-  try {
-    if (partialQuery.trim().length === 0) {
-      // Return popular categories
-      return Object.entries(COMMERCE_CATEGORIES).map(([type, info]) => ({
-        text: info.label,
-        type,
-        icon: info.icon
-      }));
-    }
-
-    // Generate embedding for partial query
-    const queryLower = partialQuery.toLowerCase();
-
-    // Match against commerce categories and examples
-    const suggestions: Array<{ text: string; type: string; icon: string }> = [];
-
-    for (const [type, info] of Object.entries(COMMERCE_CATEGORIES)) {
-      // Check if label or examples match
-      if (info.label.toLowerCase().includes(queryLower)) {
-        suggestions.push({
-          text: info.label,
-          type,
-          icon: info.icon
-        });
-      } else {
-        // Check examples
-        const matchingExamples = info.examples.filter(ex =>
-          ex.toLowerCase().includes(queryLower)
-        );
-        suggestions.push(...matchingExamples.map(ex => ({
-          text: ex,
-          type,
-          icon: info.icon
-        })));
-      }
-    }
-
-    return suggestions.slice(0, 10);
-  } catch (error) {
-    console.error('Failed to get semantic suggestions:', error);
-    return [];
-  }
-}
-
-// ========== OFFLINE QUEUE ==========
-
-export async function addToOfflineQueue(transactionData: any): Promise<void> {
-  try {
-    const id = `tx_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    await db.execute(
-      'INSERT INTO offlinequeue (id, transactiondata, status, retries, created) VALUES (?, ?, ?, ?, ?)',
-      [id, JSON.stringify(transactionData), 'pending', 0, Date.now()]
-    );
-  } catch (error) {
-    console.error('Failed to add to offline queue:', error);
-  }
-}
-
-export async function getOfflineQueue(): Promise<any[]> {
-  try {
-    const result = await db.execute(
-      "SELECT * FROM offlinequeue WHERE status = 'pending' ORDER BY created ASC"
-    );
-
-    const rows = result.rows?._array || result.rows || [];
-    const rowsArray = Array.isArray(rows) ? rows : [];
-    return rowsArray.map(row => ({
-      ...row,
-      transactiondata: JSON.parse(row.transactiondata)
+  if (partialQuery.trim().length === 0) {
+    return Object.entries(COMMERCE_CATEGORIES).map(([type, info]) => ({
+      text: info.label,
+      type,
+      icon: info.icon,
     }));
-  } catch (error) {
-    console.error('Failed to get offline queue:', error);
-    return [];
   }
+
+  const queryLower = partialQuery.toLowerCase();
+  const suggestions: Array<{ text: string; type: string; icon: string }> = [];
+
+  for (const [type, info] of Object.entries(COMMERCE_CATEGORIES)) {
+    if (info.label.toLowerCase().includes(queryLower)) {
+      suggestions.push({ text: info.label, type, icon: info.icon });
+    } else {
+      const matchingExamples = info.examples.filter((ex) =>
+        ex.toLowerCase().includes(queryLower)
+      );
+      suggestions.push(
+        ...matchingExamples.map((ex) => ({ text: ex, type, icon: info.icon }))
+      );
+    }
+  }
+
+  return suggestions.slice(0, 10);
 }
 
-export async function markQueueItemSynced(id: string): Promise<void> {
-  try {
-    await db.execute(
-      "UPDATE offlinequeue SET status = 'synced', synced = ? WHERE id = ?",
-      [Date.now(), id]
-    );
-  } catch (error) {
-    console.error('Failed to mark queue item as synced:', error);
-  }
+// ========== STATS ==========
+
+export async function getNodeStats(): Promise<{
+  total: number;
+  byType: Record<string, number>;
+  byStatus: Record<string, number>;
+}> {
+  const database = getDb();
+
+  const totalResult = await database.execute('SELECT COUNT(*) as total FROM nodes');
+  const total = totalResult.rows?.[0]?.total || 0;
+
+  const byTypeResult = await database.execute(
+    'SELECT type, COUNT(*) as count FROM nodes GROUP BY type'
+  );
+  const byType: Record<string, number> = {};
+  (byTypeResult.rows || []).forEach((row: any) => {
+    byType[row.type] = row.count;
+  });
+
+  const byStatusResult = await database.execute(
+    'SELECT status, COUNT(*) as count FROM nodes GROUP BY status'
+  );
+  const byStatus: Record<string, number> = {};
+  (byStatusResult.rows || []).forEach((row: any) => {
+    byStatus[row.status] = row.count;
+  });
+
+  return { total, byType, byStatus };
 }
 
 // ========== INITIALIZATION ==========
 
 export async function initializeNodeService(): Promise<void> {
-  try {
-    console.log('Initializing TARAI node service...');
-
-    // Import schema initialization
-    const { initializeDatabase } = await import('./database/schema');
-    await initializeDatabase(db);
-
-    console.log('TARAI node service initialized');
-  } catch (error) {
-    console.error('Failed to initialize node service:', error);
-    throw error;
-  }
+  console.log('Initializing TARAI node service...');
+  const { initializeDatabase } = await import('./database/schema');
+  await initializeDatabase(getDb());
+  console.log('TARAI node service initialized');
 }
 
+// ========== EXPORTS ==========
+
 export const nodeService = {
-  // CRUD operations
   createNode,
   updateNode,
   deleteNode,
   getNodeById,
-
-  // Cache operations
-  cacheUserNodes,
-  getCachedNodes,
-  clearCache,
-
-  // Browsing history
-  addToBrowsed,
-  getBrowsedNodes,
-
-  // Search operations
-  searchNodesByText,
+  getAllNodes,
+  getNodesByType,
+  getChildNodes,
+  getRootNodes,
+  searchNodes,
   getSemanticSuggestions,
-
-  // Search history
-  saveSearchQuery,
-  getSearchHistory,
-
-  // Offline queue
-  addToOfflineQueue,
-  getOfflineQueue,
-  markQueueItemSynced,
-
-  // Initialization
+  getNodeStats,
   initialize: initializeNodeService,
 };
