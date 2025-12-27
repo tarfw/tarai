@@ -23,7 +23,7 @@ import type { BlueskyMessage } from '@/services/blueskyService';
 export default function DMDetailScreen() {
   const insets = useSafeAreaInsets();
   const { colors, spacing, radius, typography } = useTheme();
-  const { agent, handle: currentHandle } = useBlueskyAuth();
+  const { agent, did: currentDid } = useBlueskyAuth();
   const { convoId, did, handle } = useLocalSearchParams<{ convoId: string; did: string; handle: string }>();
 
   const [messages, setMessages] = useState<BlueskyMessage[]>([]);
@@ -72,7 +72,7 @@ export default function DMDetailScreen() {
         const newMessage: BlueskyMessage = {
           id: Date.now().toString(),
           text: textToSend,
-          sender: currentHandle || '',
+          sender: currentDid || '',
           timestamp: Date.now(),
         };
         setMessages([...messages, newMessage]);
@@ -128,7 +128,7 @@ export default function DMDetailScreen() {
             <View>
               <MessageBubble
                 message={item}
-                isOwn={item.sender === currentHandle}
+                isOwn={item.sender === currentDid}
                 colors={colors}
                 spacing={spacing}
                 radius={radius}
