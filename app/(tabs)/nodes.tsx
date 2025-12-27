@@ -215,34 +215,32 @@ export default function NodesScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Filter Chips */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.filtersContainer}
-      >
+      {/* Filter Tabs */}
+      <View style={{ paddingHorizontal: 20, paddingVertical: 12, flexDirection: 'row', gap: 24 }}>
         {filterTypes.map((type) => {
           const isActive = selectedFilter === type;
 
           return (
             <TouchableOpacity
               key={type}
-              style={[
-                styles.filterChip,
-                {
-                  backgroundColor: isActive ? colors.accent : colors.surface,
-                  borderColor: isActive ? colors.accent : colors.border,
-                },
-              ]}
               onPress={() => applyFilter(type)}
             >
-              <Text style={{ fontSize: 14, fontWeight: '600', color: isActive ? '#FFFFFF' : colors.textPrimary }}>
+              <Text
+                style={{
+                  fontSize: 14,
+                  fontWeight: isActive ? '600' : '400',
+                  color: isActive ? colors.accent : colors.textSecondary,
+                  borderBottomWidth: isActive ? 2 : 0,
+                  borderBottomColor: colors.accent,
+                  paddingBottom: 4,
+                }}
+              >
                 {type === 'all' ? 'All' : type}
               </Text>
             </TouchableOpacity>
           );
         })}
-      </ScrollView>
+      </View>
 
       {/* Nodes List */}
       <View style={styles.listWrapper}>
@@ -437,15 +435,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     backgroundColor: 'transparent',
   },
-  filterChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 22,
-    borderWidth: 1,
-  },
+
   listWrapper: {
     flex: 1,
   },

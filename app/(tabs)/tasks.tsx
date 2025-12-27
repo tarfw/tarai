@@ -138,72 +138,68 @@ export default function TasksScreen() {
         </View>
       </View>
 
-      {/* Filter Chips */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.filtersContainer}
-      >
-        <TouchableOpacity
-          style={[
-            styles.filterChip,
-            {
-              backgroundColor: activeFilter === 'all' ? colors.accent : colors.surface,
-              borderColor: activeFilter === 'all' ? colors.accent : colors.border,
-            },
-          ]}
-          onPress={() => applyFilter('all')}
-        >
-          <Text style={{ fontSize: 14, fontWeight: '600', color: activeFilter === 'all' ? '#FFFFFF' : colors.textPrimary }}>
-            All ({stats.total})
+      {/* Filter Tabs */}
+      <View style={{ paddingHorizontal: 20, paddingVertical: 12, flexDirection: 'row', gap: 24 }}>
+        <TouchableOpacity onPress={() => applyFilter('all')}>
+          <Text
+            style={{
+              fontSize: 14,
+              fontWeight: activeFilter === 'all' ? '600' : '400',
+              color: activeFilter === 'all' ? colors.accent : colors.textSecondary,
+              borderBottomWidth: activeFilter === 'all' ? 2 : 0,
+              borderBottomColor: colors.accent,
+              paddingBottom: 4,
+            }}
+          >
+            All
           </Text>
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[
-            styles.filterChip,
-            {
-              backgroundColor: activeFilter === 'pending' ? colors.accent : colors.surface,
-              borderColor: activeFilter === 'pending' ? colors.accent : colors.border,
-            },
-          ]}
-          onPress={() => applyFilter('pending')}
-        >
-          <Text style={{ fontSize: 14, fontWeight: '600', color: activeFilter === 'pending' ? '#FFFFFF' : colors.textPrimary }}>
-            Pending ({stats.pending})
+        <TouchableOpacity onPress={() => applyFilter('pending')}>
+          <Text
+            style={{
+              fontSize: 14,
+              fontWeight: activeFilter === 'pending' ? '600' : '400',
+              color: activeFilter === 'pending' ? colors.accent : colors.textSecondary,
+              borderBottomWidth: activeFilter === 'pending' ? 2 : 0,
+              borderBottomColor: colors.accent,
+              paddingBottom: 4,
+            }}
+          >
+            Pending
           </Text>
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[
-            styles.filterChip,
-            {
-              backgroundColor: activeFilter === 'progress' ? colors.accent : colors.surface,
-              borderColor: activeFilter === 'progress' ? colors.accent : colors.border,
-            },
-          ]}
-          onPress={() => applyFilter('progress')}
-        >
-          <Text style={{ fontSize: 14, fontWeight: '600', color: activeFilter === 'progress' ? '#FFFFFF' : colors.textPrimary }}>
-            In progress ({stats.progress})
+        <TouchableOpacity onPress={() => applyFilter('progress')}>
+          <Text
+            style={{
+              fontSize: 14,
+              fontWeight: activeFilter === 'progress' ? '600' : '400',
+              color: activeFilter === 'progress' ? colors.accent : colors.textSecondary,
+              borderBottomWidth: activeFilter === 'progress' ? 2 : 0,
+              borderBottomColor: colors.accent,
+              paddingBottom: 4,
+            }}
+          >
+            In progress
           </Text>
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[
-            styles.filterChip,
-            {
-              backgroundColor: activeFilter === 'completed' ? colors.accent : colors.surface,
-              borderColor: activeFilter === 'completed' ? colors.accent : colors.border,
-            },
-          ]}
-          onPress={() => applyFilter('completed')}
-        >
-          <Text style={{ fontSize: 14, fontWeight: '600', color: activeFilter === 'completed' ? '#FFFFFF' : colors.textPrimary }}>
-            Done ({stats.completed})
+        <TouchableOpacity onPress={() => applyFilter('completed')}>
+          <Text
+            style={{
+              fontSize: 14,
+              fontWeight: activeFilter === 'completed' ? '600' : '400',
+              color: activeFilter === 'completed' ? colors.accent : colors.textSecondary,
+              borderBottomWidth: activeFilter === 'completed' ? 2 : 0,
+              borderBottomColor: colors.accent,
+              paddingBottom: 4,
+            }}
+          >
+            Done
           </Text>
         </TouchableOpacity>
-      </ScrollView>
+      </View>
 
       {/* Task List */}
       <View style={styles.listWrapper}>
@@ -377,20 +373,7 @@ const styles = StyleSheet.create({
   clearButton: {
     padding: 4,
   },
-  filtersContainer: {
-    paddingHorizontal: 20,
-    gap: 8,
-    paddingVertical: 12,
-  },
-  filterChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 22,
-    borderWidth: 1,
-  },
+
   listWrapper: {
     flex: 1,
   },
