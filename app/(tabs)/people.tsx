@@ -148,16 +148,24 @@ export default function DMsScreen() {
       ) : displayList.length === 0 ? (
         <View style={styles.emptyState}>
           <View style={styles.emptyIconContainer}>
-            <FontAwesome6 name="message" size={32} color={colors.textTertiary} />
+            <FontAwesome6 name="butterfly" size={40} color={colors.accent} />
           </View>
           <Text style={styles.emptyTitle}>
-            {searchQuery.trim().length > 0 ? 'No users found' : 'No conversations yet'}
+            {searchQuery.trim().length > 0 ? 'No users found' : 'Bluesky Messages'}
           </Text>
           <Text style={styles.emptySubtitle}>
             {searchQuery.trim().length > 0
               ? 'Try searching for a different handle'
-              : 'Search for users to start a conversation'}
+              : 'Search for users to send direct messages on Bluesky'}
           </Text>
+          {!searchQuery && (
+            <View style={[styles.infoBox, { marginTop: spacing.lg }]}>
+              <FontAwesome6 name="circle-info" size={16} color={colors.accent} style={{ marginRight: spacing.sm }} />
+              <Text style={styles.infoText}>
+                Note: Bluesky DMs require both users to have DM features enabled on Bluesky. Try searching for a Bluesky handle to start a conversation.
+              </Text>
+            </View>
+          )}
         </View>
       ) : (
         <FlatList
@@ -373,5 +381,19 @@ const createStyles = (colors: any, spacing: any, radius: any, typography: any) =
       ...typography.body,
       color: colors.textSecondary,
       textAlign: 'center',
+    },
+    infoBox: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      backgroundColor: colors.accentSubtle,
+      borderRadius: radius.md,
+      padding: spacing.md,
+      borderWidth: 1,
+      borderColor: colors.accent + '30',
+    },
+    infoText: {
+      flex: 1,
+      ...typography.caption,
+      color: colors.textPrimary,
     },
   });

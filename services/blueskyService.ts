@@ -20,27 +20,68 @@ export interface BlueskyMessage {
 
 /**
  * Get list of user's conversations
- * Note: Bluesky DMs are in beta and use chat.bsky.com service
+ * Note: Bluesky DMs are in beta and may not be available on all accounts
  */
 export async function getConversations(agent: BskyAgent): Promise<BlueskyConversation[]> {
   try {
-    // Try to fetch conversations from the chat service
-    // This uses the getConvoList endpoint from chat.bsky.com
-    const response = await agent.api.chat.bsky.convo.listConvos();
-
-    if (!response.success || !response.data.convos) {
-      return [];
+    // Check if agent has a session
+    if (!agent.session) {
+      throw new Error("Not authenticated - session missing");
     }
 
-    return response.data.convos.map((convo: any) => ({
-      did: convo.members?.[0]?.did || "",
-      handle: convo.members?.[0]?.handle || "",
-      displayName: convo.members?.[0]?.displayName,
-      avatar: convo.members?.[0]?.avatar,
-      lastMessage: convo.lastMessage?.text,
-      lastMessageTime: convo.lastMessage?.sentAt ? new Date(convo.lastMessage.sentAt).getTime() : undefined,
-      unreadCount: convo.unreadCount,
-    }));
+    // Try to fetch conversations from the chat service
+    try {
+      // First, ensure we're using the right service URL
+      const chatUrl = "https://api.bsky.chat";
+
+      // Make a direct API call to get conversations
+      const response = await fetch(`${chatUrl}/xrpc/chat.bsky.convo.listConvos`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${agent.session.accessJwt}`,
+        },
+      });
+
+      if (!response.ok) {
+        console.warn(`Conversations API returned ${response.status}: ${response.statusText}`);
+        // Return empty array instead of crashing
+        return [];
+      }
+
+      const data = await response.json();
+
+      if (!data.convos) {
+        return [];
+      }
+
+      return data.convos.map((convo: any) => ({
+        did: convo.members?.[0]?.did || "",
+        handle: convo.members?.[0]?.handle || "",
+        displayName: convo.members?.[0]?.displayName,
+        avatar: convo.members?.[0]?.avatar,
+        lastMessage: convo.lastMessage?.text,
+        lastMessageTime: convo.lastMessage?.sentAt ? new Date(convo.lastMessage.sentAt).getTime() : undefined,
+        unreadCount: convo.unreadCount,
+      }));
+    } catch (apiError) {
+      console.error("Direct chat API failed:", apiError);
+      // Try the agent method as fallback
+      const response = await (agent.api as any).chat?.bsky?.convo?.listConvos?.();
+
+      if (!response?.success || !response?.data?.convos) {
+        return [];
+      }
+
+      return response.data.convos.map((convo: any) => ({
+        did: convo.members?.[0]?.did || "",
+        handle: convo.members?.[0]?.handle || "",
+        displayName: convo.members?.[0]?.displayName,
+        avatar: convo.members?.[0]?.avatar,
+        lastMessage: convo.lastMessage?.text,
+        lastMessageTime: convo.lastMessage?.sentAt ? new Date(convo.lastMessage.sentAt).getTime() : undefined,
+        unreadCount: convo.unreadCount,
+      }));
+    }
   } catch (e) {
     console.error("Failed to fetch conversations", e);
     return [];

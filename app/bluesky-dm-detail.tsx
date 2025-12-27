@@ -109,6 +109,13 @@ export default function DMDetailScreen() {
       {isLoading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.accent} />
+          <Text style={[styles.emptyTitle, { marginTop: spacing.md }]}>Loading messages...</Text>
+        </View>
+      ) : messages.length === 0 ? (
+        <View style={styles.emptyMessagesContainer}>
+          <FontAwesome6 name="message" size={40} color={colors.textTertiary} />
+          <Text style={styles.emptyTitle}>No messages yet</Text>
+          <Text style={styles.emptySubtitle}>Start the conversation by sending a message</Text>
         </View>
       ) : (
         <FlatList
@@ -278,6 +285,23 @@ const createStyles = (colors: any, spacing: any, radius: any, typography: any) =
       flex: 1,
       justifyContent: 'center',
       alignItems: 'center',
+    },
+    emptyMessagesContainer: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingHorizontal: spacing.lg,
+      gap: spacing.md,
+    },
+    emptyTitle: {
+      ...typography.headline,
+      color: colors.textPrimary,
+      textAlign: 'center',
+    },
+    emptySubtitle: {
+      ...typography.body,
+      color: colors.textSecondary,
+      textAlign: 'center',
     },
     messagesList: {
       paddingHorizontal: spacing.lg,
