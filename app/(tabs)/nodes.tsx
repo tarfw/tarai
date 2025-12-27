@@ -7,34 +7,28 @@ import {
   TouchableOpacity,
   View,
   ScrollView,
-  Pressable,
+  FlatList,
   Alert,
   Modal,
-  Dimensions,
+  Pressable,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
 import { getAllNodes, searchNodes, deleteNode, getNodeStats } from '@/services/nodeService';
 import { COMMERCE_CATEGORIES } from '@/services/vectorStores/nodeVectorStore';
 import type { NodeRecord, NodeType, NodeStatus } from '@/types/node';
 import { useFocusEffect, router } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const CARD_GAP = 12;
-const CARD_PADDING = 16;
-const CARD_WIDTH = (SCREEN_WIDTH - CARD_PADDING * 2 - CARD_GAP) / 2;
-
-const STATUS_COLORS: Record<NodeStatus, string> = {
-  active: '#22c55e',
-  pending: '#f59e0b',
-  completed: '#3b82f6',
-  cancelled: '#ef4444',
+const STATUS_CONFIG: Record<NodeStatus, { color: string }> = {
+  active: { color: '#22c55e' },
+  pending: { color: '#f59e0b' },
+  completed: { color: '#3b82f6' },
+  cancelled: { color: '#ef4444' },
 };
 
 export default function NodesScreen() {
   const insets = useSafeAreaInsets();
-  const { colors, spacing, radius, typography, toggleTheme, isDark } = useTheme();
+  const { colors } = useTheme();
   const [nodes, setNodes] = useState<NodeRecord[]>([]);
   const [filteredNodes, setFilteredNodes] = useState<NodeRecord[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -46,21 +40,6 @@ export default function NodesScreen() {
   const [stats, setStats] = useState({ total: 0, byType: {} as Record<string, number>, byStatus: {} as Record<string, number> });
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const categoryColors: Record<string, string> = {
-    transport: colors.blue,
-    food: colors.orange,
-    service: colors.green,
-    booking: colors.purple,
-    product: colors.teal,
-    education: colors.pink,
-    event: colors.warning,
-    rental: colors.accent,
-    digital: colors.success,
-    subscription: colors.error,
-    healthcare: '#ec4899',
-    realestate: '#8b5cf6',
-  };
-
   useFocusEffect(
     useCallback(() => {
       loadNodes();
@@ -71,7 +50,6 @@ export default function NodesScreen() {
   const loadNodes = async () => {
     try {
       const allNodes = await getAllNodes();
-      // Filter out structural types for main view
       const commerceNodes = allNodes.filter(
         (n) => !['variant', 'inventory', 'store', 'cart', 'search'].includes(n.type)
       );
@@ -93,11 +71,7 @@ export default function NodesScreen() {
 
   const handleSearch = (query: string) => {
     setSearchQuery(query);
-
-    // Clear previous timeout to debounce
-    if (searchTimeoutRef.current) {
-      clearTimeout(searchTimeoutRef.current);
-    }
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
 
     if (query.trim().length === 0) {
       setIsSearching(false);
@@ -105,7 +79,6 @@ export default function NodesScreen() {
       return;
     }
 
-    // Debounce search by 300ms to avoid concurrent model calls
     searchTimeoutRef.current = setTimeout(async () => {
       setIsSearching(true);
       try {
@@ -174,136 +147,131 @@ export default function NodesScreen() {
     }
   };
 
-  const styles = createStyles(colors, spacing, radius, typography);
-
   const filterTypes: (NodeType | 'all')[] = ['all', 'product', 'food', 'service', 'booking', 'transport', 'event'];
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top + spacing.md }]}>
+    <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top + 16 }]}>
+      {/* Header */}
+      <View style={styles.header}>
+        <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Nodes</Text>
+        <TouchableOpacity style={[styles.addButton, { backgroundColor: colors.accent }]} onPress={handleAddPress}>
+          <FontAwesome6 name="plus" size={18} color="#FFFFFF" />
+        </TouchableOpacity>
+      </View>
+
       {/* Search Bar */}
       <View style={styles.searchWrapper}>
-        <View style={[styles.searchBar, isFocused && styles.searchBarFocused]}>
-        <TextInput
+        <View style={[styles.searchBar, { backgroundColor: colors.surface, borderColor: isFocused ? colors.accent : colors.border }]}>
+          <FontAwesome6 name="magnifying-glass" size={16} color={colors.textTertiary} />
+          <TextInput
             placeholder="Search nodes..."
             value={searchQuery}
             onChangeText={handleSearch}
             onFocus={() => setIsFocused(true)}
             onBlur={() => setIsFocused(false)}
-            style={styles.searchInput}
+            style={[styles.searchInput, { color: colors.textPrimary }]}
             placeholderTextColor={colors.textTertiary}
             selectionColor={colors.accent}
           />
           {searchQuery.length > 0 && (
             <TouchableOpacity onPress={handleClearSearch} style={styles.clearButton}>
-              <FontAwesome6 name="xmark" size={18} color={colors.textSecondary} />
+              <FontAwesome6 name="xmark" size={14} color={colors.textSecondary} />
             </TouchableOpacity>
           )}
-          <TouchableOpacity style={styles.addButton} onPress={handleAddPress}>
-            <LinearGradient
-              colors={[colors.accent, colors.purple]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.addButtonGradient}
-            >
-              <FontAwesome6 name="plus" size={16} color="#FFFFFF" />
-            </LinearGradient>
-          </TouchableOpacity>
         </View>
       </View>
 
-      {/* Stats Row */}
-      <View style={styles.statsContainer}>
-        <View style={styles.statItem}>
-          <Text style={styles.statValue}>{stats.total}</Text>
-          <Text style={styles.statLabel}>Total</Text>
-        </View>
-        <View style={styles.statDivider} />
-        <View style={styles.statItem}>
-          <Text style={[styles.statValue, { color: STATUS_COLORS.active }]}>
-            {stats.byStatus.active || 0}
-          </Text>
-          <Text style={styles.statLabel}>Active</Text>
-        </View>
-        <View style={styles.statDivider} />
-        <View style={styles.statItem}>
-          <Text style={[styles.statValue, { color: STATUS_COLORS.pending }]}>
-            {stats.byStatus.pending || 0}
-          </Text>
-          <Text style={styles.statLabel}>Pending</Text>
-        </View>
+      {/* Stats Filters */}
+      <View style={styles.statsRow}>
+        <TouchableOpacity
+          style={[styles.filterItem, selectedFilter === 'all' && styles.filterItemActive]}
+          onPress={() => applyFilter('all')}
+        >
+          <FontAwesome6 name="list" size={14} color={selectedFilter === 'all' ? colors.accent : colors.textSecondary} />
+          <View style={styles.filterContent}>
+            <Text style={[styles.filterLabel, { color: selectedFilter === 'all' ? colors.textPrimary : colors.textSecondary }]}>All</Text>
+            <Text style={[styles.filterCount, { color: selectedFilter === 'all' ? colors.accent : colors.textPrimary }]}>{stats.total}</Text>
+          </View>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.filterItem}
+          onPress={() => applyFilter('active')}
+        >
+          <FontAwesome6 name="circle" size={14} color={colors.textSecondary} />
+          <View style={styles.filterContent}>
+            <Text style={[styles.filterLabel, { color: colors.textSecondary }]}>Active</Text>
+            <Text style={[styles.filterCount, { color: colors.textPrimary }]}>{stats.byStatus.active || 0}</Text>
+          </View>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.filterItem}
+          onPress={() => applyFilter('pending')}
+        >
+          <FontAwesome6 name="clock" size={14} color={colors.textSecondary} />
+          <View style={styles.filterContent}>
+            <Text style={[styles.filterLabel, { color: colors.textSecondary }]}>Pending</Text>
+            <Text style={[styles.filterCount, { color: colors.textPrimary }]}>{stats.byStatus.pending || 0}</Text>
+          </View>
+        </TouchableOpacity>
       </View>
 
       {/* Filter Chips */}
-      <View style={styles.filtersWrapper}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.filtersContainer}
-        >
-          {filterTypes.map((type) => {
-            const category = type === 'all' ? null : COMMERCE_CATEGORIES[type];
-            const isActive = selectedFilter === type;
-
-            return (
-              <TouchableOpacity
-                key={type}
-                style={[styles.filterChip, isActive && styles.filterChipActive]}
-                onPress={() => applyFilter(type)}
-              >
-                {category && <Text style={styles.filterIcon}>{category.icon}</Text>}
-                <Text style={[styles.filterLabel, isActive && styles.filterLabelActive]}>
-                  {type === 'all' ? 'All' : category?.label || type}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-      </View>
-
-      {/* Node Grid */}
       <ScrollView
-        style={styles.content}
-        contentContainerStyle={[styles.contentContainer, { paddingBottom: 80 + insets.bottom }]}
-        showsVerticalScrollIndicator={false}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.filtersContainer}
       >
+        {filterTypes.map((type) => {
+          const isActive = selectedFilter === type;
+
+          return (
+            <TouchableOpacity
+              key={type}
+              style={[styles.filterChip, isActive && styles.filterChipActive]}
+              onPress={() => applyFilter(type)}
+            >
+              <Text style={[styles.filterChipText, isActive && styles.filterChipTextActive]}>
+                {type === 'all' ? 'All' : type}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+
+      {/* Nodes List */}
+      <View style={styles.listWrapper}>
         {filteredNodes.length === 0 ? (
           <View style={styles.emptyState}>
-            <View style={styles.emptyIconContainer}>
-              <FontAwesome6 name="cube" size={32} color={colors.textTertiary} />
+            <View style={[styles.emptyIconContainer, { backgroundColor: colors.surface }]}>
+              <FontAwesome6 name="cube" size={40} color={colors.textTertiary} />
             </View>
-            <Text style={styles.emptyTitle}>No nodes</Text>
-            <Text style={styles.emptySubtitle}>Create your first node</Text>
-            <TouchableOpacity style={styles.emptyButton} onPress={handleAddPress}>
-              <LinearGradient
-                colors={[colors.accent, colors.purple]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.emptyButtonGradient}
-              >
-                <FontAwesome6 name="plus" size={14} color="#FFFFFF" />
-                <Text style={styles.emptyButtonText}>Create node</Text>
-              </LinearGradient>
+            <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>No nodes found</Text>
+            <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
+              {selectedFilter === 'all' ? 'Create your first node' : `No ${selectedFilter} nodes`}
+            </Text>
+            <TouchableOpacity style={[styles.emptyButton, { backgroundColor: colors.accent }]} onPress={handleAddPress}>
+              <FontAwesome6 name="plus" size={14} color="#FFFFFF" />
+              <Text style={styles.emptyButtonText}>Create Node</Text>
             </TouchableOpacity>
           </View>
         ) : (
-          <View style={styles.nodesGrid}>
-            {filteredNodes.map((item) => (
+          <FlatList
+            data={filteredNodes}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) => (
               <NodeCard
-                key={item.id}
                 item={item}
                 colors={colors}
-                categoryColors={categoryColors}
-                spacing={spacing}
-                radius={radius}
-                typography={typography}
                 onPress={() => handleItemPress(item)}
                 onMore={() => handleMorePress(item)}
                 showSimilarity={isSearching}
               />
-            ))}
-          </View>
+            )}
+            contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 80 }]}
+            showsVerticalScrollIndicator={false}
+          />
         )}
-      </ScrollView>
+      </View>
 
       {/* Context Menu Modal */}
       <Modal
@@ -313,25 +281,22 @@ export default function NodesScreen() {
         onRequestClose={() => setMenuVisible(false)}
       >
         <Pressable style={styles.modalOverlay} onPress={() => setMenuVisible(false)}>
-          <View style={styles.menuContainer}>
-            <View style={styles.menuHeader}>
-              <Text style={styles.menuTitle} numberOfLines={1}>
+          <View style={[styles.menuContainer, { backgroundColor: colors.surface }]}>
+            <View style={[styles.menuHeader, { borderBottomColor: colors.border }]}>
+              <Text style={[styles.menuTitle, { color: colors.textPrimary }]} numberOfLines={1}>
                 {selectedItem?.title}
               </Text>
             </View>
-            <TouchableOpacity style={styles.menuItem} onPress={handleEdit}>
+            <TouchableOpacity style={[styles.menuItem, { borderBottomColor: colors.border }]} onPress={handleEdit}>
               <FontAwesome6 name="pen" size={16} color={colors.textPrimary} />
-              <Text style={styles.menuItemText}>Edit</Text>
+              <Text style={[styles.menuItemText, { color: colors.textPrimary }]}>Edit</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.menuItem} onPress={handleDelete}>
               <FontAwesome6 name="trash" size={16} color={colors.error} />
               <Text style={[styles.menuItemText, { color: colors.error }]}>Delete</Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.menuItem, styles.menuCancel]}
-              onPress={() => setMenuVisible(false)}
-            >
-              <Text style={styles.menuCancelText}>Cancel</Text>
+            <TouchableOpacity style={styles.menuCancel} onPress={() => setMenuVisible(false)}>
+              <Text style={[styles.menuCancelText, { color: colors.textSecondary }]}>Cancel</Text>
             </TouchableOpacity>
           </View>
         </Pressable>
@@ -343,339 +308,309 @@ export default function NodesScreen() {
 function NodeCard({
   item,
   colors,
-  categoryColors,
-  spacing,
-  radius,
-  typography,
   onPress,
   onMore,
   showSimilarity,
 }: {
   item: NodeRecord;
   colors: any;
-  categoryColors: Record<string, string>;
-  spacing: any;
-  radius: any;
-  typography: any;
   onPress: () => void;
   onMore: () => void;
   showSimilarity?: boolean;
 }) {
-  const categoryColor = categoryColors[item.type] || colors.accent;
   const category = COMMERCE_CATEGORIES[item.type as keyof typeof COMMERCE_CATEGORIES];
-  const statusColor = STATUS_COLORS[item.status] || colors.textTertiary;
+  const statusConfig = STATUS_CONFIG[item.status] || STATUS_CONFIG.active;
+  const statusColor = statusConfig?.color || '#22c55e';
   const similarityPercent = item.similarity ? Math.round(item.similarity * 100) : null;
 
   return (
-    <Pressable
+    <TouchableOpacity
       onPress={onPress}
-      style={({ pressed }) => [
-        {
-          width: CARD_WIDTH,
-          backgroundColor: colors.surface,
-          borderRadius: radius.lg,
-          borderWidth: 1,
-          borderColor: colors.border,
-          overflow: 'hidden',
-        },
-        pressed && { opacity: 0.8 },
-      ]}
+      style={[styles.nodeCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
+      activeOpacity={0.7}
     >
-      {/* Icon Header */}
-      <View
-        style={{
-          height: 80,
-          backgroundColor: `${categoryColor}15`,
-          justifyContent: 'center',
-          alignItems: 'center',
-          position: 'relative',
-        }}
-      >
-        <Text style={{ fontSize: 36 }}>{category?.icon || '📦'}</Text>
-        {/* Similarity Badge */}
-        {showSimilarity && similarityPercent !== null && (
-          <View
-            style={{
-              position: 'absolute',
-              top: spacing.sm,
-              left: spacing.sm,
-              backgroundColor: colors.accent,
-              paddingHorizontal: spacing.sm,
-              paddingVertical: 2,
-              borderRadius: radius.sm,
-            }}
-          >
-            <Text style={{ ...typography.small, color: '#FFFFFF', fontWeight: '700' }}>
-              {similarityPercent}%
+      <View style={styles.nodeHeader}>
+        <View style={styles.nodeHeaderLeft}>
+          <Text style={styles.nodeIcon}>{category?.icon || '📦'}</Text>
+          <View style={styles.nodeHeaderInfo}>
+            <Text style={[styles.nodeTitle, { color: colors.textPrimary }]} numberOfLines={1}>
+              {item.title || 'Untitled'}
             </Text>
+            <View style={styles.nodeMeta}>
+              <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
+              <Text style={[styles.nodeStatus, { color: statusColor }]}>
+                {item.status || 'active'}
+              </Text>
+            </View>
           </View>
-        )}
-        <TouchableOpacity
-          style={{
-            position: 'absolute',
-            top: spacing.sm,
-            right: spacing.sm,
-            padding: spacing.xs,
-          }}
-          onPress={onMore}
-        >
-          <FontAwesome6 name="ellipsis" size={14} color={colors.textTertiary} />
+        </View>
+        <TouchableOpacity style={styles.moreButton} onPress={onMore}>
+          <FontAwesome6 name="ellipsis-vertical" size={16} color={colors.textTertiary} />
         </TouchableOpacity>
       </View>
 
-      {/* Content */}
-      <View style={{ padding: spacing.md, gap: spacing.sm }}>
-        <Text style={{ ...typography.headline, color: colors.textPrimary }} numberOfLines={2}>
-          {item.title}
+      <View style={styles.nodeFooter}>
+        <Text style={[styles.categoryText, { color: colors.textSecondary }]}>
+          {category?.label || item.type}
         </Text>
-
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-          <View
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: spacing.xs,
-            }}
-          >
-            <View
-              style={{
-                width: 8,
-                height: 8,
-                borderRadius: 4,
-                backgroundColor: statusColor,
-              }}
-            />
-            <Text
-              style={{
-                ...typography.small,
-                color: statusColor,
-                textTransform: 'capitalize',
-              }}
-            >
-              {item.status}
-            </Text>
-          </View>
-          <Text style={{ ...typography.headline, color: colors.textPrimary }}>
-            {item.value > 0 ? `₹${item.value}` : 'Free'}
-          </Text>
-        </View>
-
-        <View
-          style={{
-            backgroundColor: `${categoryColor}20`,
-            paddingHorizontal: spacing.sm,
-            paddingVertical: spacing.xs,
-            borderRadius: radius.sm,
-            alignSelf: 'flex-start',
-          }}
-        >
-          <Text style={{ ...typography.small, color: categoryColor, fontWeight: '600' }}>
-            {category?.label || item.type}
-          </Text>
-        </View>
+        <Text style={[styles.nodeValue, { color: colors.textPrimary }]}>
+          {item.value > 0 ? `₹${item.value}` : 'Free'}
+        </Text>
       </View>
-    </Pressable>
+
+      {showSimilarity && similarityPercent !== null && (
+        <View style={[styles.similarityBadge, { backgroundColor: colors.accent }]}>
+          <Text style={styles.similarityText}>{similarityPercent}%</Text>
+        </View>
+      )}
+    </TouchableOpacity>
   );
 }
 
-const createStyles = (colors: any, spacing: any, radius: any, typography: any) =>
-  StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: colors.background,
-    },
-    searchWrapper: {
-      paddingHorizontal: spacing.lg,
-      marginBottom: spacing.md,
-    },
-    searchBar: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      backgroundColor: 'transparent',
-      paddingHorizontal: spacing.xs,
-      paddingVertical: spacing.sm,
-    },
-    searchBarFocused: {},
-
-    searchInput: {
-      flex: 1,
-      fontSize: 28,
-      fontWeight: '700',
-      color: colors.textPrimary,
-      padding: 0,
-    },
-    clearButton: {
-      width: 32,
-      height: 32,
-      borderRadius: radius.md,
-      justifyContent: 'center',
-      alignItems: 'center',
-      backgroundColor: colors.surface,
-      marginLeft: spacing.sm,
-    },
-    addButton: {
-      borderRadius: radius.md,
-      overflow: 'hidden',
-      marginLeft: spacing.sm,
-    },
-    addButtonGradient: {
-      width: 40,
-      height: 40,
-      justifyContent: 'center',
-      alignItems: 'center',
-    },
-    statsContainer: {
-      flexDirection: 'row',
-      marginHorizontal: spacing.lg,
-      backgroundColor: colors.surface,
-      borderRadius: radius.lg,
-      padding: spacing.md,
-      borderWidth: 1,
-      borderColor: colors.border,
-      marginBottom: spacing.md,
-    },
-    statItem: {
-      flex: 1,
-      alignItems: 'center',
-      gap: spacing.xs,
-    },
-    statValue: {
-      ...typography.title,
-      color: colors.textPrimary,
-    },
-    statLabel: {
-      ...typography.small,
-      color: colors.textTertiary,
-    },
-    statDivider: {
-      width: 1,
-      backgroundColor: colors.border,
-      marginHorizontal: spacing.md,
-    },
-    filtersWrapper: {
-      marginBottom: spacing.md,
-    },
-    filtersContainer: {
-      paddingHorizontal: spacing.lg,
-      gap: spacing.sm,
-    },
-    filterChip: {
-      height: 36,
-      flexDirection: 'row',
-      alignItems: 'center',
-      backgroundColor: colors.surface,
-      borderRadius: radius.full,
-      borderWidth: 1,
-      borderColor: colors.border,
-      paddingHorizontal: spacing.md,
-      gap: spacing.xs,
-    },
-    filterChipActive: {
-      backgroundColor: colors.accentSubtle,
-      borderColor: colors.accent,
-    },
-    filterIcon: {
-      fontSize: 14,
-    },
-    filterLabel: {
-      ...typography.caption,
-      color: colors.textPrimary,
-    },
-    filterLabelActive: {
-      color: colors.accent,
-    },
-    content: {
-      flex: 1,
-    },
-    contentContainer: {
-      paddingHorizontal: spacing.lg,
-    },
-    nodesGrid: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: CARD_GAP,
-    },
-    emptyState: {
-      alignItems: 'center',
-      justifyContent: 'center',
-      paddingVertical: spacing.xxl * 2,
-      gap: spacing.md,
-    },
-    emptyIconContainer: {
-      width: 80,
-      height: 80,
-      borderRadius: radius.xl,
-      backgroundColor: colors.surface,
-      justifyContent: 'center',
-      alignItems: 'center',
-      marginBottom: spacing.md,
-    },
-    emptyTitle: {
-      ...typography.title,
-      color: colors.textPrimary,
-    },
-    emptySubtitle: {
-      ...typography.body,
-      color: colors.textSecondary,
-      textAlign: 'center',
-    },
-    emptyButton: {
-      marginTop: spacing.md,
-      borderRadius: radius.md,
-      overflow: 'hidden',
-    },
-    emptyButtonGradient: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.sm,
-      paddingHorizontal: spacing.lg,
-      paddingVertical: spacing.md,
-    },
-    emptyButtonText: {
-      ...typography.headline,
-      color: '#FFFFFF',
-    },
-    modalOverlay: {
-      flex: 1,
-      backgroundColor: 'rgba(0, 0, 0, 0.5)',
-      justifyContent: 'flex-end',
-    },
-    menuContainer: {
-      backgroundColor: colors.surface,
-      borderTopLeftRadius: radius.xl,
-      borderTopRightRadius: radius.xl,
-      paddingBottom: spacing.xxl,
-    },
-    menuHeader: {
-      padding: spacing.lg,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border,
-    },
-    menuTitle: {
-      ...typography.headline,
-      color: colors.textPrimary,
-      textAlign: 'center',
-    },
-    menuItem: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.md,
-      padding: spacing.lg,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border,
-    },
-    menuItemText: {
-      ...typography.body,
-      color: colors.textPrimary,
-    },
-    menuCancel: {
-      justifyContent: 'center',
-      borderBottomWidth: 0,
-      marginTop: spacing.sm,
-    },
-    menuCancelText: {
-      ...typography.headline,
-      color: colors.textSecondary,
-      textAlign: 'center',
-    },
-  });
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+  },
+  headerTitle: {
+    fontSize: 32,
+    fontWeight: '700',
+    letterSpacing: -0.5,
+  },
+  addButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  searchWrapper: {
+    paddingHorizontal: 20,
+    marginBottom: 16,
+  },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    height: 48,
+    gap: 12,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 15,
+    padding: 0,
+  },
+  clearButton: {
+    padding: 4,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    marginHorizontal: 20,
+    marginBottom: 12,
+  },
+  filtersContainer: {
+    paddingHorizontal: 20,
+    gap: 10,
+    marginBottom: 16,
+  },
+  filtersWrapper: {
+    marginBottom: 16,
+  },
+  filterItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: 'transparent',
+  },
+  filterChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: colors.surface,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  filterChipActive: {
+    backgroundColor: colors.accent,
+    borderColor: colors.accent,
+  },
+  filterChipText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: colors.textPrimary,
+  },
+  filterChipTextActive: {
+    color: '#FFFFFF',
+  },
+  listWrapper: {
+    flex: 1,
+  },
+  emptyState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+    gap: 12,
+  },
+  emptyIconContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+  },
+  emptySubtitle: {
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  emptyButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 12,
+    marginTop: 8,
+  },
+  emptyButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  listContent: {
+    paddingHorizontal: 20,
+  },
+  nodeCard: {
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 16,
+    marginBottom: 12,
+    position: 'relative',
+  },
+  nodeHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  nodeHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  nodeIcon: {
+    fontSize: 32,
+  },
+  nodeHeaderInfo: {
+    flex: 1,
+    gap: 4,
+  },
+  nodeTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  nodeMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  nodeStatus: {
+    fontSize: 12,
+    fontWeight: '500',
+    textTransform: 'capitalize',
+  },
+  moreButton: {
+    padding: 4,
+  },
+  nodeFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  categoryText: {
+    fontSize: 13,
+    fontWeight: '500',
+    textTransform: 'capitalize',
+  },
+  nodeValue: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  similarityBadge: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  similarityText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  menuContainer: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: 32,
+  },
+  menuHeader: {
+    padding: 20,
+    borderBottomWidth: 1,
+  },
+  menuTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+  },
+  menuItemText: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  menuCancel: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 16,
+    marginTop: 8,
+  },
+  menuCancelText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+});

@@ -7,8 +7,7 @@ import {
   TouchableOpacity,
   View,
   ScrollView,
-  Pressable,
-  Dimensions,
+  FlatList,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
@@ -17,28 +16,25 @@ import { getAllTasks, searchTasks, getTaskStats, updateTaskStatus } from '@/serv
 import { TASK_CATEGORIES } from '@/services/vectorStores/nodeVectorStore';
 import type { TaskRecord, TaskStatus } from '@/types/node';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-
-const STATUS_COLORS: Record<TaskStatus, string> = {
-  pending: '#f59e0b',
-  progress: '#3b82f6',
-  completed: '#22c55e',
-  cancelled: '#ef4444',
+const STATUS_CONFIG: Record<TaskStatus, { color: string; icon: string }> = {
+  pending: { color: '#f59e0b', icon: 'clock' },
+  progress: { color: '#3b82f6', icon: 'spinner' },
+  completed: { color: '#22c55e', icon: 'circle-check' },
+  cancelled: { color: '#ef4444', icon: 'circle-xmark' },
 };
 
-const PRIORITY_LABELS: Record<number, { label: string; color: string }> = {
-  0: { label: 'Normal', color: '#64748b' },
-  1: { label: 'High', color: '#f59e0b' },
-  2: { label: 'Urgent', color: '#ef4444' },
+const PRIORITY_COLORS: Record<number, string> = {
+  0: '#64748b',
+  1: '#f59e0b',
+  2: '#ef4444',
 };
 
 export default function TasksScreen() {
   const insets = useSafeAreaInsets();
-  const { colors, spacing, radius, typography } = useTheme();
+  const { colors, spacing, radius } = useTheme();
   const [searchQuery, setSearchQuery] = useState('');
   const [tasks, setTasks] = useState<TaskRecord[]>([]);
   const [filteredTasks, setFilteredTasks] = useState<TaskRecord[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
   const [stats, setStats] = useState({ total: 0, pending: 0, progress: 0, completed: 0, cancelled: 0, overdue: 0 });
   const [activeFilter, setActiveFilter] = useState<TaskStatus | 'all'>('all');
@@ -72,21 +68,14 @@ export default function TasksScreen() {
 
   const handleSearch = (query: string) => {
     setSearchQuery(query);
-
-    // Clear previous timeout to debounce
-    if (searchTimeoutRef.current) {
-      clearTimeout(searchTimeoutRef.current);
-    }
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
 
     if (query.trim().length === 0) {
-      setIsSearching(false);
       applyFilter(activeFilter, tasks);
       return;
     }
 
-    // Debounce search by 300ms to avoid concurrent model calls
     searchTimeoutRef.current = setTimeout(async () => {
-      setIsSearching(true);
       try {
         const results = await searchTasks(query);
         setFilteredTasks(results);
@@ -98,7 +87,6 @@ export default function TasksScreen() {
 
   const handleClearSearch = () => {
     setSearchQuery('');
-    setIsSearching(false);
     applyFilter(activeFilter, tasks);
   };
 
@@ -121,102 +109,118 @@ export default function TasksScreen() {
     }
   };
 
-  const styles = createStyles(colors, spacing, radius, typography);
-
   return (
-    <View style={[styles.container, { paddingTop: insets.top + spacing.md }]}>
+    <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top + 16 }]}>
+      {/* Header */}
+      <View style={styles.header}>
+        <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Tasks</Text>
+      </View>
+
       {/* Search Bar */}
       <View style={styles.searchWrapper}>
-        <View style={[styles.searchBar, isFocused && styles.searchBarFocused]}>
-        <TextInput
+        <View style={[styles.searchBar, { backgroundColor: colors.surface, borderColor: isFocused ? colors.accent : colors.border }]}>
+          <FontAwesome6 name="magnifying-glass" size={16} color={colors.textTertiary} />
+          <TextInput
             placeholder="Search tasks..."
             value={searchQuery}
             onChangeText={handleSearch}
             onFocus={() => setIsFocused(true)}
             onBlur={() => setIsFocused(false)}
-            style={styles.searchInput}
+            style={[styles.searchInput, { color: colors.textPrimary }]}
             placeholderTextColor={colors.textTertiary}
             selectionColor={colors.accent}
           />
           {searchQuery.length > 0 && (
             <TouchableOpacity onPress={handleClearSearch} style={styles.clearButton}>
-              <FontAwesome6 name="xmark" size={18} color={colors.textSecondary} />
+              <FontAwesome6 name="xmark" size={14} color={colors.textSecondary} />
             </TouchableOpacity>
           )}
         </View>
       </View>
 
       {/* Filter Chips */}
-      <View style={styles.filtersWrapper}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.statsContainer}
-        >
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.filtersContainer}
+      >
         <TouchableOpacity
-          style={[styles.statChip, activeFilter === 'all' && styles.statChipActive]}
+          style={[styles.filterChip, activeFilter === 'all' && styles.filterChipActive]}
           onPress={() => applyFilter('all')}
         >
-          <Text style={[styles.statLabel, activeFilter === 'all' && styles.statLabelActive]}>All</Text>
-          <Text style={[styles.statNumber, activeFilter === 'all' && styles.statNumberActive]}>
+          <Text style={[styles.filterChipText, activeFilter === 'all' && styles.filterChipTextActive]}>
+            All
+          </Text>
+          <Text style={[styles.filterChipCount, activeFilter === 'all' && styles.filterChipCountActive]}>
             {stats.total}
           </Text>
         </TouchableOpacity>
+
         <TouchableOpacity
-          style={[styles.statChip, activeFilter === 'pending' && styles.statChipActive]}
+          style={[styles.filterChip, activeFilter === 'pending' && styles.filterChipActive]}
           onPress={() => applyFilter('pending')}
         >
-          <Text style={[styles.statLabel, activeFilter === 'pending' && styles.statLabelActive]}>Pending</Text>
-          <Text style={[styles.statNumber, activeFilter === 'pending' && styles.statNumberActive, { color: STATUS_COLORS.pending }]}>{stats.pending}</Text>
+          <Text style={[styles.filterChipText, activeFilter === 'pending' && styles.filterChipTextActive]}>
+            Pending
+          </Text>
+          <Text style={[styles.filterChipCount, activeFilter === 'pending' && styles.filterChipCountActive]}>
+            {stats.pending}
+          </Text>
         </TouchableOpacity>
+
         <TouchableOpacity
-          style={[styles.statChip, activeFilter === 'progress' && styles.statChipActive]}
+          style={[styles.filterChip, activeFilter === 'progress' && styles.filterChipActive]}
           onPress={() => applyFilter('progress')}
         >
-          <Text style={[styles.statLabel, activeFilter === 'progress' && styles.statLabelActive]}>In Progress</Text>
-          <Text style={[styles.statNumber, activeFilter === 'progress' && styles.statNumberActive, { color: STATUS_COLORS.progress }]}>{stats.progress}</Text>
+          <Text style={[styles.filterChipText, activeFilter === 'progress' && styles.filterChipTextActive]}>
+            In progress
+          </Text>
+          <Text style={[styles.filterChipCount, activeFilter === 'progress' && styles.filterChipCountActive]}>
+            {stats.progress}
+          </Text>
         </TouchableOpacity>
+
         <TouchableOpacity
-          style={[styles.statChip, activeFilter === 'completed' && styles.statChipActive]}
+          style={[styles.filterChip, activeFilter === 'completed' && styles.filterChipActive]}
           onPress={() => applyFilter('completed')}
         >
-          <Text style={[styles.statLabel, activeFilter === 'completed' && styles.statLabelActive]}>Done</Text>
-          <Text style={[styles.statNumber, activeFilter === 'completed' && styles.statNumberActive, { color: STATUS_COLORS.completed }]}>{stats.completed}</Text>
+          <Text style={[styles.filterChipText, activeFilter === 'completed' && styles.filterChipTextActive]}>
+            Done
+          </Text>
+          <Text style={[styles.filterChipCount, activeFilter === 'completed' && styles.filterChipCountActive]}>
+            {stats.completed}
+          </Text>
         </TouchableOpacity>
-        </ScrollView>
-      </View>
+      </ScrollView>
 
       {/* Task List */}
-      <ScrollView
-        style={styles.content}
-        contentContainerStyle={[styles.contentContainer, { paddingBottom: 80 + insets.bottom }]}
-        showsVerticalScrollIndicator={false}
-      >
+      <View style={styles.listWrapper}>
         {filteredTasks.length === 0 ? (
           <View style={styles.emptyState}>
-            <View style={styles.emptyIconContainer}>
-              <FontAwesome6 name="clipboard-check" size={32} color={colors.textTertiary} />
+            <View style={[styles.emptyIconContainer, { backgroundColor: colors.surface }]}>
+              <FontAwesome6 name="clipboard-list" size={40} color={colors.textTertiary} />
             </View>
-            <Text style={styles.emptyTitle}>No tasks</Text>
-            <Text style={styles.emptySubtitle}>Tasks from orders will appear here</Text>
+            <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>No tasks found</Text>
+            <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
+              {activeFilter === 'all' ? 'Tasks from orders will appear here' : `No ${activeFilter} tasks`}
+            </Text>
           </View>
         ) : (
-          <View style={styles.listContainer}>
-            {filteredTasks.map((task, index) => (
+          <FlatList
+            data={filteredTasks}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) => (
               <TaskRow
-                key={task.id}
-                task={task}
+                task={item}
                 colors={colors}
-                spacing={spacing}
-                radius={radius}
-                typography={typography}
                 onAction={handleTaskAction}
-                isLast={index === filteredTasks.length - 1}
               />
-            ))}
-          </View>
+            )}
+            contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 80 }]}
+            showsVerticalScrollIndicator={false}
+          />
         )}
-      </ScrollView>
+      </View>
     </View>
   );
 }
@@ -224,23 +228,15 @@ export default function TasksScreen() {
 function TaskRow({
   task,
   colors,
-  spacing,
-  radius,
-  typography,
   onAction,
-  isLast,
 }: {
   task: TaskRecord;
   colors: any;
-  spacing: any;
-  radius: any;
-  typography: any;
   onAction: (id: string, status: TaskStatus) => void;
-  isLast: boolean;
 }) {
-  const statusColor = STATUS_COLORS[task.status];
-  const priorityInfo = PRIORITY_LABELS[task.priority] || PRIORITY_LABELS[0];
+  const statusConfig = STATUS_CONFIG[task.status];
   const taskCategory = TASK_CATEGORIES[task.type];
+  const priorityColor = PRIORITY_COLORS[task.priority] || PRIORITY_COLORS[0];
 
   const formatDue = (timestamp?: number) => {
     if (!timestamp) return null;
@@ -260,210 +256,238 @@ function TaskRow({
   const isActionable = task.status !== 'completed' && task.status !== 'cancelled';
 
   return (
-    <View
-      style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingVertical: spacing.md,
-        borderBottomWidth: isLast ? 0 : 1,
-        borderBottomColor: colors.border,
-        gap: spacing.md,
-      }}
-    >
-      {/* Status indicator / Action button */}
+    <View style={[styles.taskRow, { borderBottomColor: colors.border }]}>
+      {/* Status Button */}
       <TouchableOpacity
         onPress={() => {
           if (task.status === 'pending') onAction(task.id, 'progress');
           else if (task.status === 'progress') onAction(task.id, 'completed');
         }}
         disabled={!isActionable}
-        style={{
-          width: 28,
-          height: 28,
-          borderRadius: 14,
-          borderWidth: 2,
-          borderColor: statusColor,
-          backgroundColor: task.status === 'completed' ? statusColor : 'transparent',
-          justifyContent: 'center',
-          alignItems: 'center',
-        }}
+        style={[
+          styles.statusButton,
+          { borderColor: statusConfig.color, backgroundColor: task.status === 'completed' ? statusConfig.color : 'transparent' }
+        ]}
       >
         {task.status === 'completed' && (
-          <FontAwesome6 name="check" size={12} color="#FFFFFF" />
+          <FontAwesome6 name="check" size={14} color="#FFFFFF" />
         )}
         {task.status === 'progress' && (
-          <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: statusColor }} />
+          <View style={[styles.statusDot, { backgroundColor: statusConfig.color }]} />
         )}
       </TouchableOpacity>
 
       {/* Content */}
-      <View style={{ flex: 1, gap: 4 }}>
+      <View style={styles.taskContent}>
         <Text
-          style={{
-            fontSize: 16,
-            fontWeight: '500',
-            color: task.status === 'completed' ? colors.textTertiary : colors.textPrimary,
-            textDecorationLine: task.status === 'completed' ? 'line-through' : 'none',
-          }}
+          style={[
+            styles.taskTitle,
+            { color: task.status === 'completed' ? colors.textTertiary : colors.textPrimary },
+            task.status === 'completed' && styles.taskTitleCompleted
+          ]}
           numberOfLines={1}
         >
           {task.title}
         </Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
-          <Text style={{ fontSize: 13, fontWeight: '400', color: colors.textTertiary }}>
-            {taskCategory?.icon} {task.type}
+        <View style={styles.taskMeta}>
+          <Text style={[styles.taskMetaText, { color: colors.textTertiary }]}>
+            {taskCategory?.icon || '📋'} {task.type}
           </Text>
-          <Text style={{ fontSize: 13, fontWeight: '400', color: colors.textTertiary }}>
-            · {task.personid.replace('person_', '').replace(/_/g, ' ')}
+          <Text style={[styles.taskMetaText, { color: colors.textTertiary }]}>•</Text>
+          <Text style={[styles.taskMetaText, { color: colors.textTertiary }]} numberOfLines={1}>
+            {task.personid.replace('person_', '').replace(/_/g, ' ')}
           </Text>
         </View>
       </View>
 
-      {/* Right side: priority & due */}
-      <View style={{ alignItems: 'flex-end', gap: 2 }}>
+      {/* Right Side */}
+      <View style={styles.taskRight}>
         {task.priority > 0 && (
-          <View
-            style={{
-              width: 8,
-              height: 8,
-              borderRadius: 4,
-              backgroundColor: priorityInfo.color,
-            }}
-          />
+          <View style={[styles.priorityDot, { backgroundColor: priorityColor }]} />
         )}
         {dueText && (
-        <Text
-        style={{
-        fontSize: 12,
-        color: isOverdue ? '#ef4444' : colors.textTertiary,
-        fontWeight: isOverdue ? '600' : '400',
-        }}
-        >
-        {dueText}
-        </Text>
+          <Text
+            style={[
+              styles.dueText,
+              { color: isOverdue ? '#ef4444' : colors.textTertiary },
+              isOverdue && styles.dueTextOverdue
+            ]}
+          >
+            {dueText}
+          </Text>
         )}
       </View>
 
-      {/* Cancel action for active tasks */}
+      {/* Cancel Button */}
       {isActionable && (
         <TouchableOpacity
           onPress={() => onAction(task.id, 'cancelled')}
-          style={{ padding: spacing.xs }}
+          style={styles.cancelButton}
         >
-          <FontAwesome6 name="xmark" size={14} color={colors.textTertiary} />
+          <FontAwesome6 name="xmark" size={16} color={colors.textTertiary} />
         </TouchableOpacity>
       )}
     </View>
   );
 }
 
-const createStyles = (colors: any, spacing: any, radius: any, typography: any) =>
-  StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: colors.background,
-    },
-    searchWrapper: {
-      paddingHorizontal: spacing.lg,
-      marginBottom: spacing.md,
-    },
-    searchBar: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      backgroundColor: 'transparent',
-      paddingHorizontal: spacing.xs,
-      paddingVertical: spacing.sm,
-    },
-    searchBarFocused: {},
-
-    searchInput: {
-      flex: 1,
-      fontSize: 28,
-      fontWeight: '700',
-      color: colors.textPrimary,
-      padding: 0,
-    },
-    clearButton: {
-      width: 32,
-      height: 32,
-      borderRadius: radius.md,
-      justifyContent: 'center',
-      alignItems: 'center',
-      backgroundColor: colors.surface,
-      marginLeft: spacing.sm,
-    },
-    filtersWrapper: {
-      marginBottom: spacing.md,
-    },
-    statsContainer: {
-      paddingHorizontal: spacing.lg,
-      gap: spacing.sm,
-    },
-    statChip: {
-      height: 36,
-      backgroundColor: colors.surface,
-      borderRadius: radius.full,
-      borderWidth: 1,
-      borderColor: colors.border,
-      paddingHorizontal: spacing.md,
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: spacing.xs,
-    },
-    statChipActive: {
-      backgroundColor: colors.accentSubtle,
-      borderColor: colors.accent,
-    },
-    statNumber: {
-      ...typography.caption,
-      color: colors.textTertiary,
-      fontWeight: '600',
-    },
-    statNumberActive: {
-      color: colors.accent,
-    },
-    statLabel: {
-      ...typography.caption,
-      color: colors.textPrimary,
-    },
-    statLabelActive: {
-      color: colors.accent,
-    },
-    content: {
-      flex: 1,
-    },
-    contentContainer: {
-      paddingHorizontal: spacing.lg,
-    },
-    emptyState: {
-      alignItems: 'center',
-      justifyContent: 'center',
-      paddingVertical: spacing.xxl * 2,
-      gap: spacing.md,
-    },
-    emptyIconContainer: {
-      width: 80,
-      height: 80,
-      borderRadius: radius.xl,
-      backgroundColor: colors.surface,
-      justifyContent: 'center',
-      alignItems: 'center',
-      marginBottom: spacing.md,
-    },
-    emptyTitle: {
-      ...typography.title,
-      color: colors.textPrimary,
-    },
-    emptySubtitle: {
-      ...typography.body,
-      color: colors.textSecondary,
-    },
-    listContainer: {
-      backgroundColor: colors.surface,
-      borderRadius: radius.lg,
-      paddingHorizontal: spacing.md,
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-  });
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  header: {
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+  },
+  headerTitle: {
+    fontSize: 32,
+    fontWeight: '700',
+    letterSpacing: -0.5,
+  },
+  searchWrapper: {
+    paddingHorizontal: 20,
+    marginBottom: 16,
+  },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    height: 48,
+    gap: 12,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 15,
+    padding: 0,
+  },
+  clearButton: {
+    padding: 4,
+  },
+  filtersContainer: {
+    paddingHorizontal: 20,
+    gap: 10,
+    paddingVertical: 8,
+  },
+  filterChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: colors.surface,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: 6,
+  },
+  filterChipActive: {
+    backgroundColor: colors.accent,
+    borderColor: colors.accent,
+  },
+  filterChipText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: colors.textPrimary,
+  },
+  filterChipTextActive: {
+    color: '#FFFFFF',
+  },
+  filterChipCount: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  filterChipCountActive: {
+    color: '#FFFFFF',
+  },
+  listWrapper: {
+    flex: 1,
+  },
+  emptyState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+    gap: 12,
+  },
+  emptyIconContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+  },
+  emptySubtitle: {
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  listContent: {
+    paddingHorizontal: 20,
+  },
+  taskRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    gap: 12,
+  },
+  statusButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  statusDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+  },
+  taskContent: {
+    flex: 1,
+    gap: 4,
+  },
+  taskTitle: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  taskTitleCompleted: {
+    textDecorationLine: 'line-through',
+  },
+  taskMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flex: 1,
+  },
+  taskMetaText: {
+    fontSize: 13,
+  },
+  taskRight: {
+    alignItems: 'flex-end',
+    gap: 4,
+  },
+  priorityDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  dueText: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  dueTextOverdue: {
+    fontWeight: '600',
+  },
+  cancelButton: {
+    padding: 8,
+  },
+});
