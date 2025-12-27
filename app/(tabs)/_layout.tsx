@@ -85,9 +85,9 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-      name="people"
+      name="relay"
       options={{
-      title: 'messages',
+      title: 'relay',
       tabBarIcon: ({ color, focused }) => (
       <FontAwesome6 name="butterfly" size={22} color={focused ? colors.accent : color} />
           ),

@@ -106,8 +106,8 @@ export default function DMsScreen() {
     <View style={[styles.container, { paddingTop: insets.top + spacing.md }]}>
       {/* Header with logout */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Bluesky Messages</Text>
-        <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
+        <Text style={styles.headerTitle}>Relay</Text>
+        <TouchableOpacity onPress={handleLogout} style={styles.logoutButton} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
           <FontAwesome6 name="sign-out" size={20} color={colors.error} />
         </TouchableOpacity>
       </View>
@@ -151,12 +151,12 @@ export default function DMsScreen() {
             <FontAwesome6 name="butterfly" size={40} color={colors.accent} />
           </View>
           <Text style={styles.emptyTitle}>
-            {searchQuery.trim().length > 0 ? 'No users found' : 'Bluesky Messages'}
+            {searchQuery.trim().length > 0 ? 'No users found' : 'Relay'}
           </Text>
           <Text style={styles.emptySubtitle}>
             {searchQuery.trim().length > 0
               ? 'Try searching for a different handle'
-              : 'Search for users to send direct messages on Bluesky'}
+              : 'Search for users to send messages on Bluesky'}
           </Text>
           {!searchQuery && (
             <View style={[styles.infoBox, { marginTop: spacing.lg }]}>
