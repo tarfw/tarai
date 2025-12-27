@@ -18,9 +18,14 @@ export interface BlueskyMessage {
   uri?: string;
 }
 
+// The magic header that enables DM access
+const CHAT_PROXY_HEADERS = {
+  'atproto-proxy': 'did:web:api.bsky.chat#bsky_chat'
+};
+
 /**
  * Get list of user's conversations
- * Note: Bluesky DMs are in beta and may not be available on all accounts
+ * Note: Requires the atproto-proxy header to access the chat service
  */
 export async function getConversations(agent: BskyAgent): Promise<BlueskyConversation[]> {
   try {
@@ -29,59 +34,25 @@ export async function getConversations(agent: BskyAgent): Promise<BlueskyConvers
       throw new Error("Not authenticated - session missing");
     }
 
-    // Try to fetch conversations from the chat service
-    try {
-      // First, ensure we're using the right service URL
-      const chatUrl = "https://api.bsky.chat";
+    // Use the agent API with the chat proxy header
+    const response = await agent.api.chat.bsky.convo.listConvos(
+      { limit: 20 },
+      { headers: CHAT_PROXY_HEADERS }
+    );
 
-      // Make a direct API call to get conversations
-      const response = await fetch(`${chatUrl}/xrpc/chat.bsky.convo.listConvos`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${agent.session.accessJwt}`,
-        },
-      });
-
-      if (!response.ok) {
-        console.warn(`Conversations API returned ${response.status}: ${response.statusText}`);
-        // Return empty array instead of crashing
-        return [];
-      }
-
-      const data = await response.json();
-
-      if (!data.convos) {
-        return [];
-      }
-
-      return data.convos.map((convo: any) => ({
-        did: convo.members?.[0]?.did || "",
-        handle: convo.members?.[0]?.handle || "",
-        displayName: convo.members?.[0]?.displayName,
-        avatar: convo.members?.[0]?.avatar,
-        lastMessage: convo.lastMessage?.text,
-        lastMessageTime: convo.lastMessage?.sentAt ? new Date(convo.lastMessage.sentAt).getTime() : undefined,
-        unreadCount: convo.unreadCount,
-      }));
-    } catch (apiError) {
-      console.error("Direct chat API failed:", apiError);
-      // Try the agent method as fallback
-      const response = await (agent.api as any).chat?.bsky?.convo?.listConvos?.();
-
-      if (!response?.success || !response?.data?.convos) {
-        return [];
-      }
-
-      return response.data.convos.map((convo: any) => ({
-        did: convo.members?.[0]?.did || "",
-        handle: convo.members?.[0]?.handle || "",
-        displayName: convo.members?.[0]?.displayName,
-        avatar: convo.members?.[0]?.avatar,
-        lastMessage: convo.lastMessage?.text,
-        lastMessageTime: convo.lastMessage?.sentAt ? new Date(convo.lastMessage.sentAt).getTime() : undefined,
-        unreadCount: convo.unreadCount,
-      }));
+    if (!response.data?.convos) {
+      return [];
     }
+
+    return response.data.convos.map((convo: any) => ({
+      did: convo.members?.[0]?.did || "",
+      handle: convo.members?.[0]?.handle || "",
+      displayName: convo.members?.[0]?.displayName,
+      avatar: convo.members?.[0]?.avatar,
+      lastMessage: convo.lastMessage?.text,
+      lastMessageTime: convo.lastMessage?.sentAt ? new Date(convo.lastMessage.sentAt).getTime() : undefined,
+      unreadCount: convo.unreadCount,
+    }));
   } catch (e) {
     console.error("Failed to fetch conversations", e);
     return [];
@@ -97,12 +68,15 @@ export async function getMessages(
   limit: number = 50
 ): Promise<BlueskyMessage[]> {
   try {
-    const response = await agent.api.chat.bsky.convo.getMessages({
-      convoId: conversationId,
-      limit,
-    });
+    const response = await agent.api.chat.bsky.convo.getMessages(
+      {
+        convoId: conversationId,
+        limit,
+      },
+      { headers: CHAT_PROXY_HEADERS }
+    );
 
-    if (!response.success || !response.data.messages) {
+    if (!response.data?.messages) {
       return [];
     }
 
@@ -120,37 +94,51 @@ export async function getMessages(
 }
 
 /**
- * Send a message to a user
+ * Send a message to a user (or conversation)
  */
 export async function sendMessage(
   agent: BskyAgent,
-  recipientDid: string,
+  conversationIdOrRecipientDid: string,
   text: string
 ): Promise<boolean> {
   try {
-    // First, get or create conversation with the recipient
-    const convosResponse = await agent.api.chat.bsky.convo.listConvos();
+    let conversationId = conversationIdOrRecipientDid;
 
-    let conversationId: string | null = null;
-
-    if (convosResponse.success && convosResponse.data.convos) {
-      const existingConvo = convosResponse.data.convos.find(
-        (convo: any) => convo.members?.some((m: any) => m.did === recipientDid)
+    // If it looks like a DID (starts with 'did:'), get or create conversation first
+    if (conversationIdOrRecipientDid.startsWith('did:')) {
+      const convosResponse = await agent.api.chat.bsky.convo.listConvos(
+        {},
+        { headers: CHAT_PROXY_HEADERS }
       );
+
+      const existingConvo = convosResponse.data.convos?.find(
+        (convo: any) => convo.members?.some((m: any) => m.did === conversationIdOrRecipientDid)
+      );
+
       if (existingConvo) {
         conversationId = existingConvo.id;
+      } else {
+        // Need to create a conversation first
+        const newConvoResponse = await agent.api.chat.bsky.convo.getConvoForMembers(
+          { members: [conversationIdOrRecipientDid] },
+          { headers: CHAT_PROXY_HEADERS }
+        );
+        conversationId = newConvoResponse.data.convo.id;
       }
     }
 
-    // Send the message
-    const sendResponse = await agent.api.chat.bsky.convo.sendMessage({
-      convoId: conversationId || "",
-      message: {
-        text,
+    // Send the message with chat proxy header
+    const sendResponse = await agent.api.chat.bsky.convo.sendMessage(
+      {
+        convoId: conversationId,
+        message: {
+          text,
+        },
       },
-    });
+      { headers: CHAT_PROXY_HEADERS }
+    );
 
-    return sendResponse.success;
+    return true;
   } catch (e) {
     console.error("Failed to send message", e);
     return false;

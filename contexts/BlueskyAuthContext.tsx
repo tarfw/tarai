@@ -34,23 +34,36 @@ export function BlueskyAuthProvider({ children }: { children: React.ReactNode })
   const [error, setError] = useState<string | null>(null);
 
   // Initialize agent
-  const initializeAgent = (session: BlueskySession) => {
+  const initializeAgent = async (session: BlueskySession) => {
     const newAgent = new BskyAgent({
       service: "https://bsky.social",
     });
 
-    newAgent.session = {
-      accessJwt: session.accessJwt,
-      refreshJwt: session.refreshJwt,
-      handle: session.handle,
-      did: session.did,
-    };
+    try {
+      // Use resumeSession for proper session handling
+      await newAgent.resumeSession(session);
 
-    setAgent(newAgent);
-    setHandle(session.handle);
-    setDid(session.did);
-    setIsAuthenticated(true);
-    setError(null);
+      setAgent(newAgent);
+      setHandle(session.handle);
+      setDid(session.did);
+      setIsAuthenticated(true);
+      setError(null);
+    } catch (e) {
+      console.error("Failed to initialize agent session", e);
+      // Fallback to manual session setting
+      newAgent.session = {
+        accessJwt: session.accessJwt,
+        refreshJwt: session.refreshJwt,
+        handle: session.handle,
+        did: session.did,
+      };
+
+      setAgent(newAgent);
+      setHandle(session.handle);
+      setDid(session.did);
+      setIsAuthenticated(true);
+      setError(null);
+    }
   };
 
   // Load saved session on app start
