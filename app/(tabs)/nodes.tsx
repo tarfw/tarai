@@ -34,7 +34,6 @@ export default function NodesScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
-  const [selectedFilter, setSelectedFilter] = useState<NodeType | 'all'>('all');
   const [menuVisible, setMenuVisible] = useState(false);
   const [selectedItem, setSelectedItem] = useState<NodeRecord | null>(null);
   const [stats, setStats] = useState({ total: 0, byType: {} as Record<string, number>, byStatus: {} as Record<string, number> });
@@ -75,7 +74,7 @@ export default function NodesScreen() {
 
     if (query.trim().length === 0) {
       setIsSearching(false);
-      applyFilter(selectedFilter, nodes);
+      setFilteredNodes(nodes);
       return;
     }
 
@@ -93,16 +92,7 @@ export default function NodesScreen() {
   const handleClearSearch = () => {
     setSearchQuery('');
     setIsSearching(false);
-    applyFilter(selectedFilter, nodes);
-  };
-
-  const applyFilter = (filter: NodeType | 'all', nodeList: NodeRecord[] = nodes) => {
-    setSelectedFilter(filter);
-    if (filter === 'all') {
-      setFilteredNodes(nodeList);
-    } else {
-      setFilteredNodes(nodeList.filter((n) => n.type === filter));
-    }
+    setFilteredNodes(nodes);
   };
 
   const handleAddPress = () => {
@@ -181,66 +171,7 @@ export default function NodesScreen() {
         </View>
       </View>
 
-      {/* Stats Filters */}
-      <View style={styles.statsRow}>
-        <TouchableOpacity
-          style={[styles.filterItem, selectedFilter === 'all' && styles.filterItemActive]}
-          onPress={() => applyFilter('all')}
-        >
-          <FontAwesome6 name="list" size={14} color={selectedFilter === 'all' ? colors.accent : colors.textSecondary} />
-          <View style={styles.filterContent}>
-            <Text style={[styles.filterLabel, { color: selectedFilter === 'all' ? colors.textPrimary : colors.textSecondary }]}>All</Text>
-            <Text style={[styles.filterCount, { color: selectedFilter === 'all' ? colors.accent : colors.textPrimary }]}>{stats.total}</Text>
-          </View>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.filterItem}
-          onPress={() => applyFilter('active')}
-        >
-          <FontAwesome6 name="circle" size={14} color={colors.textSecondary} />
-          <View style={styles.filterContent}>
-            <Text style={[styles.filterLabel, { color: colors.textSecondary }]}>Active</Text>
-            <Text style={[styles.filterCount, { color: colors.textPrimary }]}>{stats.byStatus.active || 0}</Text>
-          </View>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.filterItem}
-          onPress={() => applyFilter('pending')}
-        >
-          <FontAwesome6 name="clock" size={14} color={colors.textSecondary} />
-          <View style={styles.filterContent}>
-            <Text style={[styles.filterLabel, { color: colors.textSecondary }]}>Pending</Text>
-            <Text style={[styles.filterCount, { color: colors.textPrimary }]}>{stats.byStatus.pending || 0}</Text>
-          </View>
-        </TouchableOpacity>
-      </View>
 
-      {/* Filter Tabs */}
-      <View style={{ paddingHorizontal: 20, paddingVertical: 12, flexDirection: 'row', gap: 24 }}>
-        {filterTypes.map((type) => {
-          const isActive = selectedFilter === type;
-
-          return (
-            <TouchableOpacity
-              key={type}
-              onPress={() => applyFilter(type)}
-            >
-              <Text
-                style={{
-                  fontSize: 14,
-                  fontWeight: isActive ? '600' : '400',
-                  color: isActive ? colors.accent : colors.textSecondary,
-                  borderBottomWidth: isActive ? 2 : 0,
-                  borderBottomColor: colors.accent,
-                  paddingBottom: 4,
-                }}
-              >
-                {type === 'all' ? 'All' : type}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
 
       {/* Nodes List */}
       <View style={styles.listWrapper}>
@@ -415,26 +346,7 @@ const styles = StyleSheet.create({
   clearButton: {
     padding: 4,
   },
-  statsRow: {
-    flexDirection: 'row',
-    marginHorizontal: 20,
-    marginBottom: 12,
-  },
-  filtersContainer: {
-    paddingHorizontal: 20,
-    gap: 10,
-    marginBottom: 16,
-  },
-  filtersWrapper: {
-    marginBottom: 16,
-  },
-  filterItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: 'transparent',
-  },
+
 
   listWrapper: {
     flex: 1,
