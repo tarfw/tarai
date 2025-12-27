@@ -1,6 +1,7 @@
 import { BskyAgent } from "@atproto/api";
 
 export interface BlueskyConversation {
+  id: string;  // Conversation ID - unique identifier
   did: string;
   handle: string;
   displayName?: string;
@@ -45,6 +46,7 @@ export async function getConversations(agent: BskyAgent): Promise<BlueskyConvers
     }
 
     return response.data.convos.map((convo: any) => ({
+      id: convo.id,  // Add conversation ID
       did: convo.members?.[0]?.did || "",
       handle: convo.members?.[0]?.handle || "",
       displayName: convo.members?.[0]?.displayName,

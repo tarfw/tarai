@@ -148,7 +148,7 @@ export default function DMsScreen() {
       ) : displayList.length === 0 ? (
         <View style={styles.emptyState}>
           <View style={styles.emptyIconContainer}>
-            <FontAwesome6 name="butterfly" size={40} color={colors.accent} />
+            <FontAwesome6 name="comments" size={40} color={colors.accent} />
           </View>
           <Text style={styles.emptyTitle}>
             {searchQuery.trim().length > 0 ? 'No users found' : 'Relay'}
@@ -170,7 +170,7 @@ export default function DMsScreen() {
       ) : (
         <FlatList
           data={displayList}
-          keyExtractor={(item) => item.did}
+          keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
             <ConversationRow
               conversation={item}
@@ -217,34 +217,38 @@ function ConversationRow({
     <TouchableOpacity
       onPress={onPress}
       style={{
-        flexDirection: 'row',
-        alignItems: 'center',
         paddingVertical: spacing.md,
         paddingHorizontal: spacing.lg,
         borderBottomWidth: 1,
         borderBottomColor: colors.border,
-        gap: spacing.md,
       }}
     >
-      {/* Avatar */}
       <View
         style={{
-          width: 48,
-          height: 48,
-          borderRadius: 24,
-          backgroundColor: colors.accentSubtle,
-          justifyContent: 'center',
+          flexDirection: 'row',
           alignItems: 'center',
-          flexShrink: 0,
+          gap: spacing.md,
         }}
       >
-        <Text style={{ ...typography.caption, color: colors.accent, fontWeight: '600' }}>
-          {initials}
-        </Text>
-      </View>
+        {/* Avatar */}
+        <View
+          style={{
+            width: 48,
+            height: 48,
+            borderRadius: 24,
+            backgroundColor: colors.accentSubtle,
+            justifyContent: 'center',
+            alignItems: 'center',
+            flexShrink: 0,
+          }}
+        >
+          <Text style={{ ...typography.caption, color: colors.accent, fontWeight: '600' }}>
+            {initials}
+          </Text>
+        </View>
 
-      {/* Content */}
-      <View style={{ flex: 1, gap: 4 }}>
+        {/* Content */}
+        <View style={{ flex: 1, gap: 4 }}>
         <Text
           style={{
             fontSize: 16,
@@ -278,25 +282,26 @@ function ConversationRow({
             @{conversation.handle}
           </Text>
         )}
-      </View>
-
-      {/* Unread indicator */}
-      {conversation.unreadCount && conversation.unreadCount > 0 && (
-        <View
-          style={{
-            backgroundColor: colors.error,
-            minWidth: 20,
-            height: 20,
-            borderRadius: 10,
-            justifyContent: 'center',
-            alignItems: 'center',
-          }}
-        >
-          <Text style={{ ...typography.caption, color: '#FFFFFF', fontWeight: '600' }}>
-            {conversation.unreadCount > 99 ? '99+' : conversation.unreadCount}
-          </Text>
         </View>
-      )}
+
+        {/* Unread indicator */}
+        {conversation.unreadCount && conversation.unreadCount > 0 && (
+          <View
+            style={{
+              backgroundColor: colors.error,
+              minWidth: 20,
+              height: 20,
+              borderRadius: 10,
+              justifyContent: 'center',
+              alignItems: 'center',
+            }}
+          >
+            <Text style={{ ...typography.caption, color: '#FFFFFF', fontWeight: '600' }}>
+              {conversation.unreadCount > 99 ? '99+' : conversation.unreadCount}
+            </Text>
+          </View>
+        )}
+      </View>
     </TouchableOpacity>
   );
 }
