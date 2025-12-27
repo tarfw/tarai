@@ -283,10 +283,11 @@ function PersonRow({
       </View>
 
       {/* Content */}
-      <View style={{ flex: 1, gap: 2 }}>
+      <View style={{ flex: 1, gap: 4 }}>
         <Text
           style={{
-            ...typography.body,
+            fontSize: 16,
+            fontWeight: '500',
             color: colors.textPrimary,
           }}
           numberOfLines={1}
@@ -294,7 +295,7 @@ function PersonRow({
           {displayName}
         </Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
-          <Text style={{ ...typography.small, color: colors.textTertiary }}>
+          <Text style={{ fontSize: 13, fontWeight: '400', color: colors.textTertiary }}>
             👤 {roleCount} {roleCount === 1 ? 'role' : 'roles'}
           </Text>
         </View>
