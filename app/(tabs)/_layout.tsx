@@ -1,31 +1,30 @@
-import { Tabs, useFocusEffect } from "expo-router";
-import { FontAwesome6 } from "@expo/vector-icons";
-import { View, StyleSheet, Pressable, Text } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { BlurView } from "expo-blur";
-import { useTheme } from "@/contexts/ThemeContext";
-import { useState, useCallback } from "react";
-import { cartService } from "@/services/cartService";
+import { Tabs, useFocusEffect } from 'expo-router';
+import { FontAwesome6 } from '@expo/vector-icons';
+import { View, StyleSheet, Pressable, Text } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { BlurView } from 'expo-blur';
+import { useTheme } from '@/contexts/ThemeContext';
+import { useState, useCallback } from 'react';
+import { getTaskStats } from '@/services/taskService';
 
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
-  const [cartCount, setCartCount] = useState(0);
+  const [pendingTaskCount, setPendingTaskCount] = useState(0);
 
-  // Refresh cart count when any tab gains focus
+  // Refresh pending task count
   useFocusEffect(
     useCallback(() => {
-      const loadCartCount = async () => {
+      const loadTaskCount = async () => {
         try {
-          const count = await cartService.getCartCount();
-          setCartCount(count);
+          const stats = await getTaskStats();
+          setPendingTaskCount(stats.pending + stats.progress);
         } catch (e) {
-          console.error("Failed to load cart count", e);
+          console.error('Failed to load task count', e);
         }
       };
-      loadCartCount();
-      // Set up interval to refresh cart count
-      const interval = setInterval(loadCartCount, 2000);
+      loadTaskCount();
+      const interval = setInterval(loadTaskCount, 5000);
       return () => clearInterval(interval);
     }, [])
   );
@@ -33,108 +32,43 @@ export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: colors.textPrimary,
+        tabBarActiveTintColor: colors.accent,
         tabBarInactiveTintColor: colors.textTertiary,
-        tabBarShowLabel: false,
+        tabBarShowLabel: true,
         tabBarButton: (props) => (
           <Pressable
             {...props}
             android_ripple={{ color: colors.accentSubtle, borderless: true, radius: 28 }}
-            style={({ pressed }) => [
-              props.style,
-              { opacity: pressed ? 0.7 : 1 }
-            ]}
+            style={({ pressed }) => [props.style, { opacity: pressed ? 0.7 : 1 }]}
           />
         ),
         tabBarStyle: {
-          position: "absolute",
-          backgroundColor: isDark ? "rgba(20, 20, 21, 0.85)" : "rgba(255, 255, 255, 0.85)",
+          position: 'absolute',
+          backgroundColor: colors.background,
           borderTopWidth: 0.5,
           borderTopColor: colors.border,
           height: 60 + insets.bottom,
-          paddingBottom: insets.bottom + 6,
+          paddingBottom: insets.bottom + 8,
           paddingTop: 8,
           elevation: 0,
         },
-        tabBarBackground: () => (
-          <BlurView
-            intensity={80}
-            tint={isDark ? "dark" : "light"}
-            style={StyleSheet.absoluteFill}
-          />
-        ),
-        tabBarLabelStyle: {
-          fontSize: 10,
-          fontWeight: "500",
-          marginTop: 2,
-        },
-        tabBarIconStyle: {
-          marginTop: 4,
+        tabBarItemStyle: {
+          justifyContent: 'center',
+          alignItems: 'center',
         },
         headerShown: false,
       }}
     >
       <Tabs.Screen
-        name="marketplace"
-        options={{
-          title: "Explore",
+      name="tasks"
+      options={{
+      title: 'tasks',
           tabBarIcon: ({ color, focused }) => (
-            <View style={focused ? [styles.activeIconContainer, { backgroundColor: colors.accentSubtle }] : undefined}>
-              <FontAwesome6
-                name="compass"
-                size={20}
-                color={focused ? colors.accent : color}
-              />
-            </View>
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="ai"
-        options={{
-          title: "AI",
-          tabBarIcon: ({ color, focused }) => (
-            <View style={focused ? [styles.activeIconContainer, { backgroundColor: colors.accentSubtle }] : undefined}>
-              <FontAwesome6
-                name="wand-magic-sparkles"
-                size={20}
-                color={focused ? colors.accent : color}
-              />
-            </View>
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="chat"
-        options={{
-          title: "Messages",
-          tabBarIcon: ({ color, focused }) => (
-            <View style={focused ? [styles.activeIconContainer, { backgroundColor: colors.accentSubtle }] : undefined}>
-              <FontAwesome6
-                name="message"
-                size={20}
-                color={focused ? colors.accent : color}
-              />
-            </View>
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="cart"
-        options={{
-          title: "Cart",
-          tabBarIcon: ({ color, focused }) => (
-            <View style={focused ? [styles.activeIconContainer, { backgroundColor: colors.accentSubtle }] : undefined}>
-              <FontAwesome6
-                name="cart-shopping"
-                size={20}
-                color={focused ? colors.accent : color}
-              />
-              {cartCount > 0 && (
+            <View style={styles.iconContainer}>
+              <FontAwesome6 name="square-check" size={22} color={focused ? colors.accent : color} />
+              {pendingTaskCount > 0 && (
                 <View style={[styles.badge, { backgroundColor: colors.error }]}>
-                  <Text style={styles.badgeText}>
-                    {cartCount > 99 ? "99+" : cartCount}
-                  </Text>
+                  <Text style={styles.badgeText}>{pendingTaskCount > 99 ? '99+' : pendingTaskCount}</Text>
                 </View>
               )}
             </View>
@@ -142,44 +76,50 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="nodes"
-        options={{
-          title: "My Items",
+      name="nodes"
+      options={{
+      title: 'agents',
           tabBarIcon: ({ color, focused }) => (
-            <View style={focused ? [styles.activeIconContainer, { backgroundColor: colors.accentSubtle }] : undefined}>
-              <FontAwesome6
-                name="cube"
-                size={20}
-                color={focused ? colors.accent : color}
-              />
-            </View>
+            <FontAwesome6 name="cube" size={22} color={focused ? colors.accent : color} />
           ),
         }}
       />
+      <Tabs.Screen
+      name="people"
+      options={{
+      title: 'relays',
+          tabBarIcon: ({ color, focused }) => (
+            <FontAwesome6 name="circle-user" size={22} color={focused ? colors.accent : color} />
+          ),
+        }}
+      />
+      {/* Hidden tabs */}
+      <Tabs.Screen name="marketplace" options={{ href: null }} />
+      <Tabs.Screen name="ai" options={{ href: null }} />
+      <Tabs.Screen name="chat" options={{ href: null }} />
+      <Tabs.Screen name="cart" options={{ href: null }} />
     </Tabs>
   );
 }
 
 const styles = StyleSheet.create({
-  activeIconContainer: {
-    borderRadius: 8,
-    padding: 6,
-    marginTop: -6,
+  iconContainer: {
+    position: 'relative',
   },
   badge: {
-    position: "absolute",
+    position: 'absolute',
     top: -4,
     right: -8,
     minWidth: 18,
     height: 18,
     borderRadius: 9,
-    justifyContent: "center",
-    alignItems: "center",
+    justifyContent: 'center',
+    alignItems: 'center',
     paddingHorizontal: 4,
   },
   badgeText: {
-    color: "#FFFFFF",
+    color: '#FFFFFF',
     fontSize: 10,
-    fontWeight: "700",
+    fontWeight: '700',
   },
 });
