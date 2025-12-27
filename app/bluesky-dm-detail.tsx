@@ -123,14 +123,16 @@ export default function DMDetailScreen() {
           data={messages}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
-            <MessageBubble
-              message={item}
-              isOwn={item.sender === currentHandle}
-              colors={colors}
-              spacing={spacing}
-              radius={radius}
-              typography={typography}
-            />
+            <View>
+              <MessageBubble
+                message={item}
+                isOwn={item.sender === currentHandle}
+                colors={colors}
+                spacing={spacing}
+                radius={radius}
+                typography={typography}
+              />
+            </View>
           )}
           contentContainerStyle={styles.messagesList}
           scrollEnabled={true}
