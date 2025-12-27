@@ -125,15 +125,7 @@ export default function PeopleScreen() {
       {/* Search Bar */}
       <View style={styles.searchWrapper}>
         <View style={[styles.searchBar, isFocused && styles.searchBarFocused]}>
-          {!isFocused && searchQuery.length === 0 && (
-            <FontAwesome6
-              name="magnifying-glass"
-              size={24}
-              color={colors.textTertiary}
-              style={styles.searchIcon}
-            />
-          )}
-          <TextInput
+        <TextInput
             placeholder="Search people..."
             value={searchQuery}
             onChangeText={handleSearch}
@@ -338,10 +330,7 @@ const createStyles = (colors: any, spacing: any, radius: any, typography: any) =
       paddingVertical: spacing.sm,
     },
     searchBarFocused: {},
-    searchIcon: {
-      marginRight: spacing.md,
-      opacity: 0.4,
-    },
+
     searchInput: {
       flex: 1,
       fontSize: 28,

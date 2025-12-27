@@ -1,74 +1,146 @@
-import { FontAwesome6 } from "@expo/vector-icons";
-import { useState, useCallback } from "react";
+import { FontAwesome6 } from '@expo/vector-icons';
+import { useState, useCallback, useRef } from 'react';
 import {
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
   ScrollView,
   Pressable,
   Alert,
   Modal,
-} from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { LinearGradient } from "expo-linear-gradient";
-import { nodeService } from "@/services/nodeService";
-import { COMMERCE_CATEGORIES } from "@/services/vectorStores/nodeVectorStore";
-import type { CachedNode } from "@/types/node";
-import { useFocusEffect, router } from "expo-router";
-import { useTheme } from "@/contexts/ThemeContext";
+  Dimensions,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
+import { getAllNodes, searchNodes, deleteNode, getNodeStats } from '@/services/nodeService';
+import { COMMERCE_CATEGORIES } from '@/services/vectorStores/nodeVectorStore';
+import type { NodeRecord, NodeType, NodeStatus } from '@/types/node';
+import { useFocusEffect, router } from 'expo-router';
+import { useTheme } from '@/contexts/ThemeContext';
 
-export default function Nodes() {
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const CARD_GAP = 12;
+const CARD_PADDING = 16;
+const CARD_WIDTH = (SCREEN_WIDTH - CARD_PADDING * 2 - CARD_GAP) / 2;
+
+const STATUS_COLORS: Record<NodeStatus, string> = {
+  active: '#22c55e',
+  pending: '#f59e0b',
+  completed: '#3b82f6',
+  cancelled: '#ef4444',
+};
+
+export default function NodesScreen() {
   const insets = useSafeAreaInsets();
   const { colors, spacing, radius, typography, toggleTheme, isDark } = useTheme();
-  const [nodes, setNodes] = useState<CachedNode[]>([]);
-  const [selectedFilter, setSelectedFilter] = useState("all");
+  const [nodes, setNodes] = useState<NodeRecord[]>([]);
+  const [filteredNodes, setFilteredNodes] = useState<NodeRecord[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
+  const [selectedFilter, setSelectedFilter] = useState<NodeType | 'all'>('all');
   const [menuVisible, setMenuVisible] = useState(false);
-  const [selectedItem, setSelectedItem] = useState<CachedNode | null>(null);
+  const [selectedItem, setSelectedItem] = useState<NodeRecord | null>(null);
+  const [stats, setStats] = useState({ total: 0, byType: {} as Record<string, number>, byStatus: {} as Record<string, number> });
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const categoryColors: Record<string, string> = {
-    transportation: colors.blue,
-    food_delivery: colors.orange,
+    transport: colors.blue,
+    food: colors.orange,
     service: colors.green,
     booking: colors.purple,
-    physical_product: colors.teal,
-    educational: colors.pink,
+    product: colors.teal,
+    education: colors.pink,
     event: colors.warning,
     rental: colors.accent,
-    digital_product: colors.success,
-    recurring_service: colors.error,
-  };
-
-  const STATUS_CONFIG = {
-    active: { label: "Active", color: colors.success },
-    draft: { label: "Draft", color: colors.textTertiary },
-    paused: { label: "Paused", color: colors.warning },
+    digital: colors.success,
+    subscription: colors.error,
+    healthcare: '#ec4899',
+    realestate: '#8b5cf6',
   };
 
   useFocusEffect(
     useCallback(() => {
       loadNodes();
+      loadStats();
     }, [])
   );
 
   const loadNodes = async () => {
     try {
-      const cachedNodes = await nodeService.getCachedNodes();
-      setNodes(cachedNodes);
+      const allNodes = await getAllNodes();
+      // Filter out structural types for main view
+      const commerceNodes = allNodes.filter(
+        (n) => !['variant', 'inventory', 'store', 'cart', 'search'].includes(n.type)
+      );
+      setNodes(commerceNodes);
+      setFilteredNodes(commerceNodes);
     } catch (e) {
-      console.error("Failed to load nodes", e);
+      console.error('Failed to load nodes', e);
+    }
+  };
+
+  const loadStats = async () => {
+    try {
+      const nodeStats = await getNodeStats();
+      setStats(nodeStats);
+    } catch (e) {
+      console.error('Failed to load stats', e);
+    }
+  };
+
+  const handleSearch = (query: string) => {
+    setSearchQuery(query);
+
+    // Clear previous timeout to debounce
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+
+    if (query.trim().length === 0) {
+      setIsSearching(false);
+      applyFilter(selectedFilter, nodes);
+      return;
+    }
+
+    // Debounce search by 300ms to avoid concurrent model calls
+    searchTimeoutRef.current = setTimeout(async () => {
+      setIsSearching(true);
+      try {
+        const results = await searchNodes(query, {}, 30);
+        setFilteredNodes(results);
+      } catch (e) {
+        console.error('Search failed', e);
+      }
+    }, 300);
+  };
+
+  const handleClearSearch = () => {
+    setSearchQuery('');
+    setIsSearching(false);
+    applyFilter(selectedFilter, nodes);
+  };
+
+  const applyFilter = (filter: NodeType | 'all', nodeList: NodeRecord[] = nodes) => {
+    setSelectedFilter(filter);
+    if (filter === 'all') {
+      setFilteredNodes(nodeList);
+    } else {
+      setFilteredNodes(nodeList.filter((n) => n.type === filter));
     }
   };
 
   const handleAddPress = () => {
-    router.push("/node/add");
+    router.push('/node/add');
   };
 
-  const handleItemPress = (item: CachedNode) => {
+  const handleItemPress = (item: NodeRecord) => {
     router.push(`/node/add?id=${item.id}&mode=edit`);
   };
 
-  const handleMorePress = (item: CachedNode) => {
+  const handleMorePress = (item: NodeRecord) => {
     setSelectedItem(item);
     setMenuVisible(true);
   };
@@ -83,49 +155,49 @@ export default function Nodes() {
   const handleDelete = () => {
     setMenuVisible(false);
     if (selectedItem) {
-      Alert.alert(
-        "Delete Node",
-        `Are you sure you want to delete "${selectedItem.title}"?`,
-        [
-          { text: "Cancel", style: "cancel" },
-          {
-            text: "Delete",
-            style: "destructive",
-            onPress: async () => {
-              try {
-                await nodeService.deleteNode(selectedItem.id);
-                loadNodes();
-              } catch (error) {
-                Alert.alert("Error", "Failed to delete node.");
-              }
-            },
+      Alert.alert('Delete Node', `Are you sure you want to delete "${selectedItem.title}"?`, [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteNode(selectedItem.id);
+              loadNodes();
+              loadStats();
+            } catch (error) {
+              Alert.alert('Error', 'Failed to delete node.');
+            }
           },
-        ]
-      );
+        },
+      ]);
     }
-  };
-
-  const stats = {
-    total: nodes.length,
-    active: nodes.length,
-    views: nodes.length * 42,
   };
 
   const styles = createStyles(colors, spacing, radius, typography);
 
+  const filterTypes: (NodeType | 'all')[] = ['all', 'product', 'food', 'service', 'booking', 'transport', 'event'];
+
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>My Items</Text>
-        <View style={styles.headerActions}>
-          <TouchableOpacity style={styles.headerButton} onPress={toggleTheme}>
-            <FontAwesome6
-              name={isDark ? "moon" : "sun"}
-              size={18}
-              color={colors.textTertiary}
-            />
-          </TouchableOpacity>
+    <View style={[styles.container, { paddingTop: insets.top + spacing.md }]}>
+      {/* Search Bar */}
+      <View style={styles.searchWrapper}>
+        <View style={[styles.searchBar, isFocused && styles.searchBarFocused]}>
+        <TextInput
+            placeholder="Search nodes..."
+            value={searchQuery}
+            onChangeText={handleSearch}
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => setIsFocused(false)}
+            style={styles.searchInput}
+            placeholderTextColor={colors.textTertiary}
+            selectionColor={colors.accent}
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={handleClearSearch} style={styles.clearButton}>
+              <FontAwesome6 name="xmark" size={18} color={colors.textSecondary} />
+            </TouchableOpacity>
+          )}
           <TouchableOpacity style={styles.addButton} onPress={handleAddPress}>
             <LinearGradient
               colors={[colors.accent, colors.purple]}
@@ -139,7 +211,7 @@ export default function Nodes() {
         </View>
       </View>
 
-      {/* Stats */}
+      {/* Stats Row */}
       <View style={styles.statsContainer}>
         <View style={styles.statItem}>
           <Text style={styles.statValue}>{stats.total}</Text>
@@ -147,43 +219,60 @@ export default function Nodes() {
         </View>
         <View style={styles.statDivider} />
         <View style={styles.statItem}>
-          <Text style={styles.statValue}>{stats.active}</Text>
+          <Text style={[styles.statValue, { color: STATUS_COLORS.active }]}>
+            {stats.byStatus.active || 0}
+          </Text>
           <Text style={styles.statLabel}>Active</Text>
         </View>
         <View style={styles.statDivider} />
         <View style={styles.statItem}>
-          <Text style={styles.statValue}>{stats.views}</Text>
-          <Text style={styles.statLabel}>Views</Text>
+          <Text style={[styles.statValue, { color: STATUS_COLORS.pending }]}>
+            {stats.byStatus.pending || 0}
+          </Text>
+          <Text style={styles.statLabel}>Pending</Text>
         </View>
       </View>
 
-      {/* Filter Tabs */}
-      <View style={styles.filterContainer}>
-        {["all", "active", "draft"].map((filter) => (
-          <TouchableOpacity
-            key={filter}
-            style={[styles.filterTab, selectedFilter === filter && styles.filterTabActive]}
-            onPress={() => setSelectedFilter(filter)}
-          >
-            <Text style={[styles.filterText, selectedFilter === filter && styles.filterTextActive]}>
-              {filter.charAt(0).toUpperCase() + filter.slice(1)}
-            </Text>
-          </TouchableOpacity>
-        ))}
+      {/* Filter Chips */}
+      <View style={styles.filtersWrapper}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filtersContainer}
+        >
+          {filterTypes.map((type) => {
+            const category = type === 'all' ? null : COMMERCE_CATEGORIES[type];
+            const isActive = selectedFilter === type;
+
+            return (
+              <TouchableOpacity
+                key={type}
+                style={[styles.filterChip, isActive && styles.filterChipActive]}
+                onPress={() => applyFilter(type)}
+              >
+                {category && <Text style={styles.filterIcon}>{category.icon}</Text>}
+                <Text style={[styles.filterLabel, isActive && styles.filterLabelActive]}>
+                  {type === 'all' ? 'All' : category?.label || type}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
       </View>
 
+      {/* Node Grid */}
       <ScrollView
         style={styles.content}
         contentContainerStyle={[styles.contentContainer, { paddingBottom: 80 + insets.bottom }]}
         showsVerticalScrollIndicator={false}
       >
-        {nodes.length === 0 ? (
+        {filteredNodes.length === 0 ? (
           <View style={styles.emptyState}>
             <View style={styles.emptyIconContainer}>
               <FontAwesome6 name="cube" size={32} color={colors.textTertiary} />
             </View>
-            <Text style={styles.emptyTitle}>No items yet</Text>
-            <Text style={styles.emptySubtitle}>Create your first node and start selling</Text>
+            <Text style={styles.emptyTitle}>No nodes</Text>
+            <Text style={styles.emptySubtitle}>Create your first node</Text>
             <TouchableOpacity style={styles.emptyButton} onPress={handleAddPress}>
               <LinearGradient
                 colors={[colors.accent, colors.purple]}
@@ -197,52 +286,32 @@ export default function Nodes() {
             </TouchableOpacity>
           </View>
         ) : (
-          <View style={styles.nodesContainer}>
-            {nodes.map((item) => {
-              const categoryColor = categoryColors[item.type] || colors.accent;
-              const category = COMMERCE_CATEGORIES[item.type as keyof typeof COMMERCE_CATEGORIES];
-              const status = STATUS_CONFIG.active;
-
-              return (
-                <Pressable
-                  key={item.id}
-                  style={({ pressed }) => [styles.nodeItem, pressed && styles.nodeItemPressed]}
-                  onPress={() => handleItemPress(item)}
-                >
-                  <View style={[styles.nodeIcon, { backgroundColor: `${categoryColor}20` }]}>
-                    <Text style={styles.nodeIconEmoji}>{category?.icon || "📦"}</Text>
-                  </View>
-                  <View style={styles.nodeContent}>
-                    <Text style={styles.nodeTitle} numberOfLines={1}>
-                      {item.title}
-                    </Text>
-                    <View style={styles.nodeMeta}>
-                      <View style={[styles.statusBadge, { backgroundColor: `${status.color}20` }]}>
-                        <View style={[styles.statusDot, { backgroundColor: status.color }]} />
-                        <Text style={[styles.statusText, { color: status.color }]}>{status.label}</Text>
-                      </View>
-                      <Text style={styles.nodeType}>{category?.label || item.type}</Text>
-                    </View>
-                  </View>
-                  <View style={styles.nodeRight}>
-                    <Text style={styles.nodePrice}>₹{item.price}</Text>
-                    <TouchableOpacity
-                      style={styles.moreButton}
-                      onPress={() => handleMorePress(item)}
-                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                    >
-                      <FontAwesome6 name="ellipsis" size={16} color={colors.textTertiary} />
-                    </TouchableOpacity>
-                  </View>
-                </Pressable>
-              );
-            })}
+          <View style={styles.nodesGrid}>
+            {filteredNodes.map((item) => (
+              <NodeCard
+                key={item.id}
+                item={item}
+                colors={colors}
+                categoryColors={categoryColors}
+                spacing={spacing}
+                radius={radius}
+                typography={typography}
+                onPress={() => handleItemPress(item)}
+                onMore={() => handleMorePress(item)}
+                showSimilarity={isSearching}
+              />
+            ))}
           </View>
         )}
       </ScrollView>
 
       {/* Context Menu Modal */}
-      <Modal visible={menuVisible} transparent animationType="fade" onRequestClose={() => setMenuVisible(false)}>
+      <Modal
+        visible={menuVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setMenuVisible(false)}
+      >
         <Pressable style={styles.modalOverlay} onPress={() => setMenuVisible(false)}>
           <View style={styles.menuContainer}>
             <View style={styles.menuHeader}>
@@ -258,7 +327,10 @@ export default function Nodes() {
               <FontAwesome6 name="trash" size={16} color={colors.error} />
               <Text style={[styles.menuItemText, { color: colors.error }]}>Delete</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.menuItem, styles.menuCancel]} onPress={() => setMenuVisible(false)}>
+            <TouchableOpacity
+              style={[styles.menuItem, styles.menuCancel]}
+              onPress={() => setMenuVisible(false)}
+            >
               <Text style={styles.menuCancelText}>Cancel</Text>
             </TouchableOpacity>
           </View>
@@ -268,61 +340,203 @@ export default function Nodes() {
   );
 }
 
+function NodeCard({
+  item,
+  colors,
+  categoryColors,
+  spacing,
+  radius,
+  typography,
+  onPress,
+  onMore,
+  showSimilarity,
+}: {
+  item: NodeRecord;
+  colors: any;
+  categoryColors: Record<string, string>;
+  spacing: any;
+  radius: any;
+  typography: any;
+  onPress: () => void;
+  onMore: () => void;
+  showSimilarity?: boolean;
+}) {
+  const categoryColor = categoryColors[item.type] || colors.accent;
+  const category = COMMERCE_CATEGORIES[item.type as keyof typeof COMMERCE_CATEGORIES];
+  const statusColor = STATUS_COLORS[item.status] || colors.textTertiary;
+  const similarityPercent = item.similarity ? Math.round(item.similarity * 100) : null;
+
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        {
+          width: CARD_WIDTH,
+          backgroundColor: colors.surface,
+          borderRadius: radius.lg,
+          borderWidth: 1,
+          borderColor: colors.border,
+          overflow: 'hidden',
+        },
+        pressed && { opacity: 0.8 },
+      ]}
+    >
+      {/* Icon Header */}
+      <View
+        style={{
+          height: 80,
+          backgroundColor: `${categoryColor}15`,
+          justifyContent: 'center',
+          alignItems: 'center',
+          position: 'relative',
+        }}
+      >
+        <Text style={{ fontSize: 36 }}>{category?.icon || '📦'}</Text>
+        {/* Similarity Badge */}
+        {showSimilarity && similarityPercent !== null && (
+          <View
+            style={{
+              position: 'absolute',
+              top: spacing.sm,
+              left: spacing.sm,
+              backgroundColor: colors.accent,
+              paddingHorizontal: spacing.sm,
+              paddingVertical: 2,
+              borderRadius: radius.sm,
+            }}
+          >
+            <Text style={{ ...typography.small, color: '#FFFFFF', fontWeight: '700' }}>
+              {similarityPercent}%
+            </Text>
+          </View>
+        )}
+        <TouchableOpacity
+          style={{
+            position: 'absolute',
+            top: spacing.sm,
+            right: spacing.sm,
+            padding: spacing.xs,
+          }}
+          onPress={onMore}
+        >
+          <FontAwesome6 name="ellipsis" size={14} color={colors.textTertiary} />
+        </TouchableOpacity>
+      </View>
+
+      {/* Content */}
+      <View style={{ padding: spacing.md, gap: spacing.sm }}>
+        <Text style={{ ...typography.headline, color: colors.textPrimary }} numberOfLines={2}>
+          {item.title}
+        </Text>
+
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: spacing.xs,
+            }}
+          >
+            <View
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: 4,
+                backgroundColor: statusColor,
+              }}
+            />
+            <Text
+              style={{
+                ...typography.small,
+                color: statusColor,
+                textTransform: 'capitalize',
+              }}
+            >
+              {item.status}
+            </Text>
+          </View>
+          <Text style={{ ...typography.headline, color: colors.textPrimary }}>
+            {item.value > 0 ? `₹${item.value}` : 'Free'}
+          </Text>
+        </View>
+
+        <View
+          style={{
+            backgroundColor: `${categoryColor}20`,
+            paddingHorizontal: spacing.sm,
+            paddingVertical: spacing.xs,
+            borderRadius: radius.sm,
+            alignSelf: 'flex-start',
+          }}
+        >
+          <Text style={{ ...typography.small, color: categoryColor, fontWeight: '600' }}>
+            {category?.label || item.type}
+          </Text>
+        </View>
+      </View>
+    </Pressable>
+  );
+}
+
 const createStyles = (colors: any, spacing: any, radius: any, typography: any) =>
   StyleSheet.create({
     container: {
       flex: 1,
       backgroundColor: colors.background,
     },
-    header: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
+    searchWrapper: {
       paddingHorizontal: spacing.lg,
-      paddingVertical: spacing.md,
+      marginBottom: spacing.md,
     },
-    headerTitle: {
-      ...typography.largeTitle,
+    searchBar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: 'transparent',
+      paddingHorizontal: spacing.xs,
+      paddingVertical: spacing.sm,
+    },
+    searchBarFocused: {},
+
+    searchInput: {
+      flex: 1,
+      fontSize: 28,
+      fontWeight: '700',
       color: colors.textPrimary,
+      padding: 0,
     },
-    headerActions: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: spacing.sm,
-    },
-    headerButton: {
-      width: 40,
-      height: 40,
+    clearButton: {
+      width: 32,
+      height: 32,
       borderRadius: radius.md,
+      justifyContent: 'center',
+      alignItems: 'center',
       backgroundColor: colors.surface,
-      justifyContent: "center",
-      alignItems: "center",
-      borderWidth: 1,
-      borderColor: colors.border,
+      marginLeft: spacing.sm,
     },
     addButton: {
       borderRadius: radius.md,
-      overflow: "hidden",
+      overflow: 'hidden',
+      marginLeft: spacing.sm,
     },
     addButtonGradient: {
       width: 40,
       height: 40,
-      justifyContent: "center",
-      alignItems: "center",
+      justifyContent: 'center',
+      alignItems: 'center',
     },
     statsContainer: {
-      flexDirection: "row",
+      flexDirection: 'row',
       marginHorizontal: spacing.lg,
       backgroundColor: colors.surface,
       borderRadius: radius.lg,
-      padding: spacing.lg,
+      padding: spacing.md,
       borderWidth: 1,
       borderColor: colors.border,
       marginBottom: spacing.md,
     },
     statItem: {
       flex: 1,
-      alignItems: "center",
+      alignItems: 'center',
       gap: spacing.xs,
     },
     statValue: {
@@ -330,7 +544,7 @@ const createStyles = (colors: any, spacing: any, radius: any, typography: any) =
       color: colors.textPrimary,
     },
     statLabel: {
-      ...typography.caption,
+      ...typography.small,
       color: colors.textTertiary,
     },
     statDivider: {
@@ -338,30 +552,37 @@ const createStyles = (colors: any, spacing: any, radius: any, typography: any) =
       backgroundColor: colors.border,
       marginHorizontal: spacing.md,
     },
-    filterContainer: {
-      flexDirection: "row",
-      paddingHorizontal: spacing.lg,
-      gap: spacing.sm,
+    filtersWrapper: {
       marginBottom: spacing.md,
     },
-    filterTab: {
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.sm,
-      borderRadius: radius.full,
+    filtersContainer: {
+      paddingHorizontal: spacing.lg,
+      gap: spacing.sm,
+    },
+    filterChip: {
+      height: 36,
+      flexDirection: 'row',
+      alignItems: 'center',
       backgroundColor: colors.surface,
+      borderRadius: radius.full,
       borderWidth: 1,
       borderColor: colors.border,
+      paddingHorizontal: spacing.md,
+      gap: spacing.xs,
     },
-    filterTabActive: {
-      backgroundColor: colors.textPrimary,
-      borderColor: colors.textPrimary,
+    filterChipActive: {
+      backgroundColor: colors.accentSubtle,
+      borderColor: colors.accent,
     },
-    filterText: {
+    filterIcon: {
+      fontSize: 14,
+    },
+    filterLabel: {
       ...typography.caption,
-      color: colors.textSecondary,
+      color: colors.textPrimary,
     },
-    filterTextActive: {
-      color: colors.background,
+    filterLabelActive: {
+      color: colors.accent,
     },
     content: {
       flex: 1,
@@ -369,80 +590,14 @@ const createStyles = (colors: any, spacing: any, radius: any, typography: any) =
     contentContainer: {
       paddingHorizontal: spacing.lg,
     },
-    nodesContainer: {
-      gap: spacing.sm,
-    },
-    nodeItem: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: spacing.md,
-      padding: spacing.md,
-      backgroundColor: colors.surface,
-      borderRadius: radius.lg,
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    nodeItemPressed: {
-      backgroundColor: colors.surfaceHover,
-    },
-    nodeIcon: {
-      width: 48,
-      height: 48,
-      borderRadius: radius.md,
-      justifyContent: "center",
-      alignItems: "center",
-    },
-    nodeIconEmoji: {
-      fontSize: 24,
-    },
-    nodeContent: {
-      flex: 1,
-      gap: spacing.xs,
-    },
-    nodeTitle: {
-      ...typography.headline,
-      color: colors.textPrimary,
-    },
-    nodeMeta: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: spacing.sm,
-    },
-    statusBadge: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: spacing.xs,
-      paddingHorizontal: spacing.sm,
-      paddingVertical: 2,
-      borderRadius: radius.sm,
-    },
-    statusDot: {
-      width: 6,
-      height: 6,
-      borderRadius: 3,
-    },
-    statusText: {
-      ...typography.small,
-      fontWeight: "600",
-    },
-    nodeType: {
-      ...typography.small,
-      color: colors.textTertiary,
-    },
-    nodeRight: {
-      alignItems: "flex-end",
-      gap: spacing.sm,
-    },
-    nodePrice: {
-      ...typography.headline,
-      color: colors.textPrimary,
-    },
-    moreButton: {
-      padding: spacing.xs,
+    nodesGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: CARD_GAP,
     },
     emptyState: {
-      alignItems: "center",
-      justifyContent: "center",
+      alignItems: 'center',
+      justifyContent: 'center',
       paddingVertical: spacing.xxl * 2,
       gap: spacing.md,
     },
@@ -451,8 +606,8 @@ const createStyles = (colors: any, spacing: any, radius: any, typography: any) =
       height: 80,
       borderRadius: radius.xl,
       backgroundColor: colors.surface,
-      justifyContent: "center",
-      alignItems: "center",
+      justifyContent: 'center',
+      alignItems: 'center',
       marginBottom: spacing.md,
     },
     emptyTitle: {
@@ -462,29 +617,28 @@ const createStyles = (colors: any, spacing: any, radius: any, typography: any) =
     emptySubtitle: {
       ...typography.body,
       color: colors.textSecondary,
-      textAlign: "center",
+      textAlign: 'center',
     },
     emptyButton: {
       marginTop: spacing.md,
       borderRadius: radius.md,
-      overflow: "hidden",
+      overflow: 'hidden',
     },
     emptyButtonGradient: {
-      flexDirection: "row",
-      alignItems: "center",
+      flexDirection: 'row',
+      alignItems: 'center',
       gap: spacing.sm,
       paddingHorizontal: spacing.lg,
       paddingVertical: spacing.md,
     },
     emptyButtonText: {
       ...typography.headline,
-      color: "#FFFFFF",
+      color: '#FFFFFF',
     },
-    // Modal styles
     modalOverlay: {
       flex: 1,
-      backgroundColor: "rgba(0, 0, 0, 0.5)",
-      justifyContent: "flex-end",
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      justifyContent: 'flex-end',
     },
     menuContainer: {
       backgroundColor: colors.surface,
@@ -500,11 +654,11 @@ const createStyles = (colors: any, spacing: any, radius: any, typography: any) =
     menuTitle: {
       ...typography.headline,
       color: colors.textPrimary,
-      textAlign: "center",
+      textAlign: 'center',
     },
     menuItem: {
-      flexDirection: "row",
-      alignItems: "center",
+      flexDirection: 'row',
+      alignItems: 'center',
       gap: spacing.md,
       padding: spacing.lg,
       borderBottomWidth: 1,
@@ -515,13 +669,13 @@ const createStyles = (colors: any, spacing: any, radius: any, typography: any) =
       color: colors.textPrimary,
     },
     menuCancel: {
-      justifyContent: "center",
+      justifyContent: 'center',
       borderBottomWidth: 0,
       marginTop: spacing.sm,
     },
     menuCancelText: {
       ...typography.headline,
       color: colors.textSecondary,
-      textAlign: "center",
+      textAlign: 'center',
     },
   });
