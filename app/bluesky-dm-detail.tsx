@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  Keyboard,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -27,7 +28,7 @@ export default function DMDetailScreen() {
 
   const [messages, setMessages] = useState<BlueskyMessage[]>([]);
   const [messageText, setMessageText] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
   const flatListRef = useRef<FlatList>(null);
 
@@ -45,9 +46,9 @@ export default function DMDetailScreen() {
       setIsLoading(true);
       const msgs = await getMessages(agent, convoId, 50);
       setMessages(msgs);
-      // Scroll to bottom
+      // Auto scroll to bottom after loading
       setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
+        flatListRef.current?.scrollToEnd({ animated: false });
       }, 100);
     } catch (e) {
       console.error('Failed to load messages', e);
@@ -75,7 +76,10 @@ export default function DMDetailScreen() {
           timestamp: Date.now(),
         };
         setMessages([...messages, newMessage]);
-        flatListRef.current?.scrollToEnd({ animated: true });
+        // Auto scroll to bottom after sending
+        setTimeout(() => {
+          flatListRef.current?.scrollToEnd({ animated: true });
+        }, 50);
       } else {
         setMessageText(textToSend);
       }
@@ -91,17 +95,12 @@ export default function DMDetailScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right', 'bottom']}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.keyboardView}
-        keyboardVerticalOffset={0}
-      >
-        {/* Header */}
-        <View style={styles.header}>
+      {/* Header */}
+      <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <FontAwesome6 name="chevron-left" size={20} color={colors.accent} />
+          <FontAwesome6 name="chevron-left" size={24} color={colors.accent} />
         </TouchableOpacity>
-        <View style={styles.headerContent}>
+        <View style={styles.headerInfo}>
           <Text style={styles.headerTitle}>{handle}</Text>
           <Text style={styles.headerSubtitle}>@{handle}</Text>
         </View>
@@ -111,11 +110,12 @@ export default function DMDetailScreen() {
       {isLoading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.accent} />
-          <Text style={[styles.emptyTitle, { marginTop: spacing.md }]}>Loading messages...</Text>
         </View>
       ) : messages.length === 0 ? (
-        <View style={styles.emptyMessagesContainer}>
-          <FontAwesome6 name="message" size={40} color={colors.textTertiary} />
+        <View style={styles.emptyContainer}>
+          <View style={styles.emptyIconWrapper}>
+            <FontAwesome6 name="comments" size={48} color={colors.textTertiary} />
+          </View>
           <Text style={styles.emptyTitle}>No messages yet</Text>
           <Text style={styles.emptySubtitle}>Start the conversation by sending a message</Text>
         </View>
@@ -142,15 +142,15 @@ export default function DMDetailScreen() {
         />
       )}
 
-      {/* Message Input */}
-      <View style={[styles.inputArea, { paddingBottom: insets.bottom + spacing.sm }]}>
+      {/* Floating Input Area */}
+      <View style={[styles.inputWrapper, { paddingBottom: insets.bottom + spacing.md }]}>
         <View style={styles.inputContainer}>
           <TextInput
             style={styles.input}
-            placeholder="Type a message..."
+            placeholder="Message..."
+            placeholderTextColor={colors.textTertiary}
             value={messageText}
             onChangeText={setMessageText}
-            placeholderTextColor={colors.textTertiary}
             multiline
             maxLength={280}
             editable={!isSending}
@@ -166,13 +166,14 @@ export default function DMDetailScreen() {
             {isSending ? (
               <ActivityIndicator size="small" color="#FFFFFF" />
             ) : (
-              <FontAwesome6 name="paper-plane" size={18} color="#FFFFFF" />
+              <FontAwesome6 name="paper-plane" size={16} color="#FFFFFF" />
             )}
           </TouchableOpacity>
         </View>
-        <Text style={styles.charCount}>{messageText.length}/280</Text>
-        </View>
-      </KeyboardAvoidingView>
+        {messageText.length > 0 && (
+          <Text style={styles.charCount}>{messageText.length}/280</Text>
+        )}
+      </View>
     </SafeAreaView>
   );
 }
@@ -199,21 +200,21 @@ function MessageBubble({
     minute: '2-digit',
   });
 
-  const localStyles = createMessageBubbleStyles(colors, spacing, radius, typography);
-
   return (
-    <View style={[localStyles.messageBubbleContainer, isOwn && localStyles.messageBubbleContainerOwn]}>
+    <View style={[styles.messageBubbleRow, isOwn && styles.messageBubbleRowOwn]}>
       <View
         style={[
-          localStyles.messageBubble,
-          isOwn && localStyles.messageBubbleOwn,
-          { backgroundColor: isOwn ? colors.accent : colors.surface },
+          styles.messageBubble,
+          isOwn && styles.messageBubbleOwn,
+          {
+            backgroundColor: isOwn ? colors.accent : colors.surface,
+          },
         ]}
       >
-        <Text style={[localStyles.messageText, isOwn && localStyles.messageTextOwn]}>
+        <Text style={[styles.messageText, isOwn && styles.messageTextOwn]}>
           {message.text}
         </Text>
-        <Text style={[localStyles.messageTime, isOwn && localStyles.messageTimeOwn]}>
+        <Text style={[styles.messageTime, isOwn && styles.messageTimeOwn]}>
           {timeString}
         </Text>
       </View>
@@ -221,49 +222,45 @@ function MessageBubble({
   );
 }
 
-const createMessageBubbleStyles = (colors: any, spacing: any, radius: any, typography: any) =>
-  StyleSheet.create({
-    messageBubbleContainer: {
-      marginBottom: spacing.sm,
-      alignItems: 'flex-start',
-    },
-    messageBubbleContainerOwn: {
-      alignItems: 'flex-end',
-    },
-    messageBubble: {
-      maxWidth: '80%',
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.sm,
-      borderRadius: radius.lg,
-    },
-    messageBubbleOwn: {
-      backgroundColor: colors.accent,
-    },
-    messageText: {
-      ...typography.body,
-      color: colors.textPrimary,
-    },
-    messageTextOwn: {
-      color: '#FFFFFF',
-    },
-    messageTime: {
-      ...typography.caption,
-      color: colors.textSecondary,
-      marginTop: spacing.xs,
-    },
-    messageTimeOwn: {
-      color: 'rgba(255, 255, 255, 0.7)',
-    },
-  });
+const styles = StyleSheet.create({
+  messageBubbleRow: {
+    paddingHorizontal: 16,
+    paddingVertical: 4,
+    flexDirection: 'row',
+    justifyContent: 'flex-start',
+  },
+  messageBubbleRowOwn: {
+    justifyContent: 'flex-end',
+  },
+  messageBubble: {
+    maxWidth: '75%',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 18,
+  },
+  messageBubbleOwn: {},
+  messageText: {
+    fontSize: 15,
+    lineHeight: 20,
+  },
+  messageTextOwn: {
+    color: '#FFFFFF',
+  },
+  messageTime: {
+    fontSize: 12,
+    marginTop: 4,
+    opacity: 0.7,
+  },
+  messageTimeOwn: {
+    color: '#FFFFFF',
+  },
+});
 
 const createStyles = (colors: any, spacing: any, radius: any, typography: any) =>
   StyleSheet.create({
     container: {
       flex: 1,
       backgroundColor: colors.background,
-    },
-    keyboardView: {
-      flex: 1,
     },
     header: {
       flexDirection: 'row',
@@ -272,12 +269,17 @@ const createStyles = (colors: any, spacing: any, radius: any, typography: any) =
       paddingVertical: spacing.md,
       borderBottomWidth: 1,
       borderBottomColor: colors.border,
+      backgroundColor: colors.background,
       gap: spacing.md,
     },
     backButton: {
-      padding: spacing.sm,
+      width: 40,
+      height: 40,
+      borderRadius: radius.md,
+      justifyContent: 'center',
+      alignItems: 'center',
     },
-    headerContent: {
+    headerInfo: {
       flex: 1,
     },
     headerTitle: {
@@ -288,23 +290,32 @@ const createStyles = (colors: any, spacing: any, radius: any, typography: any) =
     headerSubtitle: {
       ...typography.caption,
       color: colors.textSecondary,
+      marginTop: 2,
     },
     loadingContainer: {
       flex: 1,
       justifyContent: 'center',
       alignItems: 'center',
     },
-    emptyMessagesContainer: {
+    emptyContainer: {
       flex: 1,
       justifyContent: 'center',
       alignItems: 'center',
       paddingHorizontal: spacing.lg,
-      gap: spacing.md,
+    },
+    emptyIconWrapper: {
+      width: 80,
+      height: 80,
+      borderRadius: radius.xl,
+      backgroundColor: colors.surface,
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginBottom: spacing.lg,
     },
     emptyTitle: {
       ...typography.headline,
       color: colors.textPrimary,
-      textAlign: 'center',
+      marginBottom: spacing.sm,
     },
     emptySubtitle: {
       ...typography.body,
@@ -312,70 +323,37 @@ const createStyles = (colors: any, spacing: any, radius: any, typography: any) =
       textAlign: 'center',
     },
     messagesList: {
-      paddingHorizontal: spacing.lg,
       paddingVertical: spacing.md,
       flexGrow: 1,
       justifyContent: 'flex-end',
     },
-    messageBubbleContainer: {
-      marginBottom: spacing.sm,
-      alignItems: 'flex-start',
-    },
-    messageBubbleContainerOwn: {
-      alignItems: 'flex-end',
-    },
-    messageBubble: {
-      maxWidth: '80%',
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.sm,
-      borderRadius: radius.lg,
-    },
-    messageBubbleOwn: {
-      backgroundColor: colors.accent,
-    },
-    messageText: {
-      ...typography.body,
-      color: colors.textPrimary,
-    },
-    messageTextOwn: {
-      color: '#FFFFFF',
-    },
-    messageTime: {
-      ...typography.caption,
-      color: colors.textSecondary,
-      marginTop: spacing.xs,
-    },
-    messageTimeOwn: {
-      color: 'rgba(255, 255, 255, 0.7)',
-    },
-    inputArea: {
+    inputWrapper: {
+      backgroundColor: colors.background,
       paddingHorizontal: spacing.lg,
       paddingTop: spacing.md,
-      backgroundColor: colors.background,
-      borderTopWidth: 1,
-      borderTopColor: colors.border,
     },
     inputContainer: {
       flexDirection: 'row',
       alignItems: 'flex-end',
       gap: spacing.sm,
+      backgroundColor: colors.surface,
+      borderRadius: radius.full,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+      borderWidth: 1,
+      borderColor: colors.border,
     },
     input: {
       flex: 1,
       ...typography.body,
       color: colors.textPrimary,
-      backgroundColor: colors.surface,
-      borderRadius: radius.md,
-      borderWidth: 1,
-      borderColor: colors.border,
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.sm,
       maxHeight: 100,
+      minHeight: 40,
     },
     sendButton: {
-      width: 40,
-      height: 40,
-      borderRadius: 20,
+      width: 36,
+      height: 36,
+      borderRadius: 18,
       backgroundColor: colors.accent,
       justifyContent: 'center',
       alignItems: 'center',
@@ -386,7 +364,7 @@ const createStyles = (colors: any, spacing: any, radius: any, typography: any) =
     charCount: {
       ...typography.caption,
       color: colors.textTertiary,
-      marginTop: spacing.xs,
       textAlign: 'right',
+      marginTop: spacing.xs,
     },
   });
