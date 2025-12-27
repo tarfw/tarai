@@ -236,7 +236,7 @@ export default function NodesScreen() {
               ]}
               onPress={() => applyFilter(type)}
             >
-              <Text style={[styles.filterChipText, { color: isActive ? '#FFFFFF' : colors.textPrimary }]}>
+              <Text style={{ fontSize: 14, fontWeight: '600', color: isActive ? '#FFFFFF' : colors.textPrimary }}>
                 {type === 'all' ? 'All' : type}
               </Text>
             </TouchableOpacity>
@@ -440,14 +440,11 @@ const styles = StyleSheet.create({
   filterChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 22,
     borderWidth: 1,
-  },
-  filterChipText: {
-    fontSize: 13,
-    fontWeight: '500',
   },
   listWrapper: {
     flex: 1,

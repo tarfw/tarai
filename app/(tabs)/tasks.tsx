@@ -154,11 +154,8 @@ export default function TasksScreen() {
           ]}
           onPress={() => applyFilter('all')}
         >
-          <Text style={[styles.filterChipText, { color: activeFilter === 'all' ? '#FFFFFF' : colors.textPrimary }]}>
-            All
-          </Text>
-          <Text style={[styles.filterChipCount, { color: activeFilter === 'all' ? '#FFFFFF' : colors.textSecondary }]}>
-            {stats.total}
+          <Text style={{ fontSize: 14, fontWeight: '600', color: activeFilter === 'all' ? '#FFFFFF' : colors.textPrimary }}>
+            All ({stats.total})
           </Text>
         </TouchableOpacity>
 
@@ -172,11 +169,8 @@ export default function TasksScreen() {
           ]}
           onPress={() => applyFilter('pending')}
         >
-          <Text style={[styles.filterChipText, { color: activeFilter === 'pending' ? '#FFFFFF' : colors.textPrimary }]}>
-            Pending
-          </Text>
-          <Text style={[styles.filterChipCount, { color: activeFilter === 'pending' ? '#FFFFFF' : colors.textSecondary }]}>
-            {stats.pending}
+          <Text style={{ fontSize: 14, fontWeight: '600', color: activeFilter === 'pending' ? '#FFFFFF' : colors.textPrimary }}>
+            Pending ({stats.pending})
           </Text>
         </TouchableOpacity>
 
@@ -190,11 +184,8 @@ export default function TasksScreen() {
           ]}
           onPress={() => applyFilter('progress')}
         >
-          <Text style={[styles.filterChipText, { color: activeFilter === 'progress' ? '#FFFFFF' : colors.textPrimary }]}>
-            In progress
-          </Text>
-          <Text style={[styles.filterChipCount, { color: activeFilter === 'progress' ? '#FFFFFF' : colors.textSecondary }]}>
-            {stats.progress}
+          <Text style={{ fontSize: 14, fontWeight: '600', color: activeFilter === 'progress' ? '#FFFFFF' : colors.textPrimary }}>
+            In progress ({stats.progress})
           </Text>
         </TouchableOpacity>
 
@@ -208,11 +199,8 @@ export default function TasksScreen() {
           ]}
           onPress={() => applyFilter('completed')}
         >
-          <Text style={[styles.filterChipText, { color: activeFilter === 'completed' ? '#FFFFFF' : colors.textPrimary }]}>
-            Done
-          </Text>
-          <Text style={[styles.filterChipCount, { color: activeFilter === 'completed' ? '#FFFFFF' : colors.textSecondary }]}>
-            {stats.completed}
+          <Text style={{ fontSize: 14, fontWeight: '600', color: activeFilter === 'completed' ? '#FFFFFF' : colors.textPrimary }}>
+            Done ({stats.completed})
           </Text>
         </TouchableOpacity>
       </ScrollView>
@@ -391,25 +379,17 @@ const styles = StyleSheet.create({
   },
   filtersContainer: {
     paddingHorizontal: 20,
-    gap: 10,
-    paddingVertical: 8,
+    gap: 8,
+    paddingVertical: 12,
   },
   filterChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 22,
     borderWidth: 1,
-    gap: 6,
-  },
-  filterChipText: {
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  filterChipCount: {
-    fontSize: 12,
-    fontWeight: '600',
   },
   listWrapper: {
     flex: 1,
