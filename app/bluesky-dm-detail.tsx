@@ -11,6 +11,7 @@ import {
   Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { FontAwesome6 } from '@expo/vector-icons';
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -22,7 +23,7 @@ export default function DMDetailScreen() {
   const insets = useSafeAreaInsets();
   const { colors, spacing, radius, typography } = useTheme();
   const { agent, handle: currentHandle } = useBlueskyAuth();
-  const { did, handle } = useLocalSearchParams<{ did: string; handle: string }>();
+  const { convoId, did, handle } = useLocalSearchParams<{ convoId: string; did: string; handle: string }>();
 
   const [messages, setMessages] = useState<BlueskyMessage[]>([]);
   const [messageText, setMessageText] = useState('');
@@ -32,17 +33,17 @@ export default function DMDetailScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      if (agent && did) {
+      if (agent && convoId) {
         loadMessages();
       }
-    }, [agent, did])
+    }, [agent, convoId])
   );
 
   const loadMessages = async () => {
-    if (!agent || !did) return;
+    if (!agent || !convoId) return;
     try {
       setIsLoading(true);
-      const msgs = await getMessages(agent, did, 50);
+      const msgs = await getMessages(agent, convoId, 50);
       setMessages(msgs);
       // Scroll to bottom
       setTimeout(() => {
@@ -56,14 +57,14 @@ export default function DMDetailScreen() {
   };
 
   const handleSendMessage = async () => {
-    if (!messageText.trim() || !agent || !did || isSending) return;
+    if (!messageText.trim() || !agent || !convoId || isSending) return;
 
     const textToSend = messageText.trim();
     setMessageText('');
 
     try {
       setIsSending(true);
-      const success = await sendMessage(agent, did, textToSend);
+      const success = await sendMessage(agent, convoId, textToSend);
 
       if (success) {
         // Add message optimistically
@@ -89,13 +90,14 @@ export default function DMDetailScreen() {
   const styles = createStyles(colors, spacing, radius, typography);
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={styles.container}
-      keyboardVerticalOffset={80}
-    >
-      {/* Header */}
-      <View style={styles.header}>
+    <SafeAreaView style={styles.container} edges={['left', 'right']}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.keyboardView}
+        keyboardVerticalOffset={0}
+      >
+        {/* Header */}
+        <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
           <FontAwesome6 name="chevron-left" size={20} color={colors.accent} />
         </TouchableOpacity>
@@ -169,8 +171,9 @@ export default function DMDetailScreen() {
           </TouchableOpacity>
         </View>
         <Text style={styles.charCount}>{messageText.length}/280</Text>
-      </View>
-    </KeyboardAvoidingView>
+        </View>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
@@ -258,6 +261,9 @@ const createStyles = (colors: any, spacing: any, radius: any, typography: any) =
     container: {
       flex: 1,
       backgroundColor: colors.background,
+    },
+    keyboardView: {
+      flex: 1,
     },
     header: {
       flexDirection: 'row',

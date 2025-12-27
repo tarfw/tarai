@@ -95,7 +95,7 @@ export default function DMsScreen() {
     // Navigate to conversation detail screen
     router.push({
       pathname: '/bluesky-dm-detail',
-      params: { did: conversation.did, handle: conversation.handle },
+      params: { convoId: conversation.id, did: conversation.did, handle: conversation.handle },
     });
   };
 
