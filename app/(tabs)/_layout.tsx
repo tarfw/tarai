@@ -64,8 +64,8 @@ export default function TabLayout() {
       options={{
       title: 'tasks',
           tabBarIcon: ({ color, focused }) => (
-            <View style={styles.iconContainer}>
-              <FontAwesome6 name="square-check" size={22} color={focused ? colors.accent : color} />
+          <View style={styles.iconContainer}>
+          <FontAwesome6 name="circle" size={22} color={focused ? colors.accent : color} />
               {pendingTaskCount > 0 && (
                 <View style={[styles.badge, { backgroundColor: colors.error }]}>
                   <Text style={styles.badgeText}>{pendingTaskCount > 99 ? '99+' : pendingTaskCount}</Text>
@@ -89,7 +89,7 @@ export default function TabLayout() {
       options={{
       title: 'relays',
       tabBarIcon: ({ color, focused }) => (
-      <FontAwesome6 name="circle" size={22} color={focused ? colors.accent : color} />
+      <FontAwesome6 name="square" size={22} color={focused ? colors.accent : color} />
           ),
         }}
       />
