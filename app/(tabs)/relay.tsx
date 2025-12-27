@@ -249,39 +249,39 @@ function ConversationRow({
 
         {/* Content */}
         <View style={{ flex: 1, gap: 4 }}>
-        <Text
-          style={{
-            fontSize: 16,
-            fontWeight: '600',
-            color: colors.textPrimary,
-          }}
-          numberOfLines={1}
-        >
-          {conversation.displayName || conversation.handle}
-        </Text>
-        {conversation.lastMessage && (
           <Text
             style={{
-              fontSize: 13,
-              fontWeight: '400',
-              color: colors.textSecondary,
+              fontSize: 16,
+              fontWeight: '600',
+              color: colors.textPrimary,
             }}
             numberOfLines={1}
           >
-            {conversation.lastMessage}
+            {conversation.displayName || conversation.handle}
           </Text>
-        )}
-        {!conversation.lastMessage && (
-          <Text
-            style={{
-              fontSize: 13,
-              fontWeight: '400',
-              color: colors.textTertiary,
-            }}
-          >
-            @{conversation.handle}
-          </Text>
-        )}
+          {conversation.lastMessage && (
+            <Text
+              style={{
+                fontSize: 13,
+                fontWeight: '400',
+                color: colors.textSecondary,
+              }}
+              numberOfLines={1}
+            >
+              {conversation.lastMessage}
+            </Text>
+          )}
+          {!conversation.lastMessage && (
+            <Text
+              style={{
+                fontSize: 13,
+                fontWeight: '400',
+                color: colors.textTertiary,
+              }}
+            >
+              @{conversation.handle}
+            </Text>
+          )}
         </View>
 
         {/* Unread indicator */}
