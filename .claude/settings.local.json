@@ -38,7 +38,8 @@
       "Bash(head:*)",
       "Bash(npm ls:*)",
       "Bash(node:*)",
-      "Bash(timeout 30 npx expo start:*)"
+      "Bash(timeout 30 npx expo start:*)",
+      "WebFetch(domain:github.com)"
     ]
   }
 }

@@ -233,3 +233,79 @@ export async function searchUsers(
     return [];
   }
 }
+
+/**
+ * Setup real-time polling for messages in a conversation
+ * Polls the server at regular intervals for new messages
+ */
+export function setupMessagePolling(
+  agent: BskyAgent,
+  conversationId: string,
+  onMessagesUpdate: (messages: BlueskyMessage[]) => void,
+  pollInterval: number = 1000 // Poll every 1 second
+): () => void {
+  let isActive = true;
+  let lastTimestamp = Date.now();
+
+  const poll = async () => {
+    if (!isActive) return;
+
+    try {
+      const messages = await getMessages(agent, conversationId, 50);
+      if (isActive) {
+        onMessagesUpdate(messages);
+      }
+    } catch (e) {
+      console.error("Message polling failed", e);
+    }
+
+    if (isActive) {
+      setTimeout(poll, pollInterval);
+    }
+  };
+
+  // Start polling
+  poll();
+
+  // Return cleanup function to stop polling
+  return () => {
+    isActive = false;
+  };
+}
+
+/**
+ * Setup real-time polling for conversations
+ * Polls the server at regular intervals for updated conversation list
+ */
+export function setupConversationPolling(
+  agent: BskyAgent,
+  onConversationsUpdate: (conversations: BlueskyConversation[]) => void,
+  pollInterval: number = 2000 // Poll every 2 seconds
+): () => void {
+  let isActive = true;
+
+  const poll = async () => {
+    if (!isActive) return;
+
+    try {
+      const conversations = await getConversations(agent);
+      if (isActive) {
+        onConversationsUpdate(conversations);
+      }
+    } catch (e) {
+      console.error("Conversation polling failed", e);
+    }
+
+    if (isActive) {
+      setTimeout(poll, pollInterval);
+    }
+  };
+
+  // Start polling
+  poll();
+
+  // Return cleanup function to stop polling
+  return () => {
+    isActive = false;
+  };
+}

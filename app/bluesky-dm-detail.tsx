@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,7 +9,6 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  Keyboard,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -17,7 +16,7 @@ import { FontAwesome6 } from '@expo/vector-icons';
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useBlueskyAuth } from '@/contexts/BlueskyAuthContext';
-import { getMessages, sendMessage } from '@/services/blueskyService';
+import { getMessages, sendMessage, setupMessagePolling } from '@/services/blueskyService';
 import type { BlueskyMessage } from '@/services/blueskyService';
 
 export default function DMDetailScreen() {
@@ -31,22 +30,28 @@ export default function DMDetailScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
   const flatListRef = useRef<FlatList>(null);
+  const stopPollingRef = useRef<(() => void) | null>(null);
 
   useFocusEffect(
     useCallback(() => {
       if (agent && convoId) {
-        loadMessages();
+        loadMessagesAndStartPolling();
       }
+      return () => {
+        if (stopPollingRef.current) {
+          stopPollingRef.current();
+          stopPollingRef.current = null;
+        }
+      };
     }, [agent, convoId])
   );
 
-  const loadMessages = async () => {
+  const loadMessagesAndStartPolling = async () => {
     if (!agent || !convoId) return;
     try {
       setIsLoading(true);
       const msgs = await getMessages(agent, convoId, 50);
       setMessages(msgs);
-      // Auto scroll to bottom after loading
       setTimeout(() => {
         flatListRef.current?.scrollToEnd({ animated: false });
       }, 100);
@@ -55,6 +60,21 @@ export default function DMDetailScreen() {
     } finally {
       setIsLoading(false);
     }
+
+    if (stopPollingRef.current) {
+      stopPollingRef.current();
+    }
+    stopPollingRef.current = setupMessagePolling(
+      agent,
+      convoId,
+      (updatedMessages) => {
+        setMessages(updatedMessages);
+        setTimeout(() => {
+          flatListRef.current?.scrollToEnd({ animated: true });
+        }, 100);
+      },
+      1000
+    );
   };
 
   const handleSendMessage = async () => {
@@ -68,7 +88,6 @@ export default function DMDetailScreen() {
       const success = await sendMessage(agent, convoId, textToSend);
 
       if (success) {
-        // Add message optimistically
         const newMessage: BlueskyMessage = {
           id: Date.now().toString(),
           text: textToSend,
@@ -76,7 +95,6 @@ export default function DMDetailScreen() {
           timestamp: Date.now(),
         };
         setMessages([...messages, newMessage]);
-        // Auto scroll to bottom after sending
         setTimeout(() => {
           flatListRef.current?.scrollToEnd({ animated: true });
         }, 50);
@@ -91,41 +109,42 @@ export default function DMDetailScreen() {
     }
   };
 
-  const styles = createStyles(colors, spacing, radius, typography);
+  const styles = createStyles(colors, spacing, radius, typography, insets);
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'left', 'right', 'bottom']}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <FontAwesome6 name="chevron-left" size={24} color={colors.accent} />
-        </TouchableOpacity>
-        <View style={styles.headerInfo}>
-          <Text style={styles.headerTitle}>{handle}</Text>
-          <Text style={styles.headerSubtitle}>@{handle}</Text>
-        </View>
-      </View>
-
-      {/* Messages List */}
-      {isLoading ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.accent} />
-        </View>
-      ) : messages.length === 0 ? (
-        <View style={styles.emptyContainer}>
-          <View style={styles.emptyIconWrapper}>
-            <FontAwesome6 name="comments" size={48} color={colors.textTertiary} />
+    <View style={styles.container}>
+      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+        {/* Header */}
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+            <FontAwesome6 name="chevron-left" size={20} color={colors.accent} />
+          </TouchableOpacity>
+          <View style={styles.headerInfo}>
+            <Text style={styles.headerTitle} numberOfLines={1}>{handle || 'User'}</Text>
+            <Text style={styles.headerSubtitle} numberOfLines={1}>{`@${handle || 'user'}`}</Text>
           </View>
-          <Text style={styles.emptyTitle}>No messages yet</Text>
-          <Text style={styles.emptySubtitle}>Start the conversation by sending a message</Text>
         </View>
-      ) : (
-        <FlatList
-          ref={flatListRef}
-          data={messages}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <View>
+
+        {/* Messages List */}
+        {isLoading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={colors.accent} />
+            <Text style={styles.loadingText}>Loading messages...</Text>
+          </View>
+        ) : messages.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <View style={styles.emptyIconWrapper}>
+              <FontAwesome6 name="comments" size={48} color={colors.textTertiary} />
+            </View>
+            <Text style={styles.emptyTitle}>No messages yet</Text>
+            <Text style={styles.emptySubtitle}>Start the conversation by sending a message</Text>
+          </View>
+        ) : (
+          <FlatList
+            ref={flatListRef}
+            data={messages}
+            keyExtractor={(item, index) => item.id || `message-${index}`}
+            renderItem={({ item }) => (
               <MessageBubble
                 message={item}
                 isOwn={item.sender === currentDid}
@@ -134,47 +153,60 @@ export default function DMDetailScreen() {
                 radius={radius}
                 typography={typography}
               />
-            </View>
-          )}
-          contentContainerStyle={styles.messagesList}
-          scrollEnabled={true}
-          onEndReachedThreshold={0.1}
-        />
-      )}
-
-      {/* Floating Input Area */}
-      <View style={[styles.inputWrapper, { paddingBottom: insets.bottom + spacing.md }]}>
-        <View style={styles.inputContainer}>
-          <TextInput
-            style={styles.input}
-            placeholder="Message..."
-            placeholderTextColor={colors.textTertiary}
-            value={messageText}
-            onChangeText={setMessageText}
-            multiline
-            maxLength={280}
-            editable={!isSending}
-          />
-          <TouchableOpacity
-            style={[
-              styles.sendButton,
-              (!messageText.trim() || isSending) && styles.sendButtonDisabled,
-            ]}
-            onPress={handleSendMessage}
-            disabled={!messageText.trim() || isSending}
-          >
-            {isSending ? (
-              <ActivityIndicator size="small" color="#FFFFFF" />
-            ) : (
-              <FontAwesome6 name="paper-plane" size={16} color="#FFFFFF" />
             )}
-          </TouchableOpacity>
-        </View>
-        {messageText.length > 0 && (
-          <Text style={styles.charCount}>{messageText.length}/280</Text>
+            contentContainerStyle={styles.messagesList}
+            scrollEnabled={true}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          />
         )}
-      </View>
-    </SafeAreaView>
+      </SafeAreaView>
+
+      {/* Input Area with KeyboardAvoidingView */}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={0}
+        style={styles.keyboardAvoidingView}
+      >
+        <View style={[styles.inputWrapper, { paddingBottom: Math.max(insets.bottom, 8) + 12 }]}>
+          <View style={styles.inputContainer}>
+            <View style={styles.inputBox}>
+              <TextInput
+                style={styles.input}
+                placeholder="Message..."
+                placeholderTextColor={colors.textTertiary}
+                value={messageText}
+                onChangeText={setMessageText}
+                multiline
+                maxLength={280}
+                editable={!isSending}
+                returnKeyType="default"
+              />
+            </View>
+            <TouchableOpacity
+              style={[
+                styles.sendButton,
+                (!messageText.trim() || isSending) && styles.sendButtonDisabled,
+              ]}
+              onPress={handleSendMessage}
+              disabled={!messageText.trim() || isSending}
+              activeOpacity={0.7}
+            >
+              {isSending ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <FontAwesome6 name="paper-plane" size={18} color="#FFFFFF" solid />
+              )}
+            </TouchableOpacity>
+          </View>
+          {messageText.length > 0 && (
+            <Text style={styles.charCount}>
+              {`${messageText.length}/280`}
+            </Text>
+          )}
+        </View>
+      </KeyboardAvoidingView>
+    </View>
   );
 }
 
@@ -201,20 +233,21 @@ function MessageBubble({
   });
 
   return (
-    <View style={[styles.messageBubbleRow, isOwn && styles.messageBubbleRowOwn]}>
+    <View style={[staticStyles.messageBubbleRow, isOwn && staticStyles.messageBubbleRowOwn]}>
       <View
         style={[
-          styles.messageBubble,
-          isOwn && styles.messageBubbleOwn,
+          staticStyles.messageBubble,
+          isOwn ? staticStyles.messageBubbleOwn : staticStyles.messageBubbleReceived,
           {
             backgroundColor: isOwn ? colors.accent : colors.surface,
+            borderColor: colors.border,
           },
         ]}
       >
-        <Text style={[styles.messageText, isOwn && styles.messageTextOwn]}>
-          {message.text}
+        <Text style={[staticStyles.messageText, { color: isOwn ? '#FFFFFF' : colors.textPrimary }]}>
+          {message.text || ''}
         </Text>
-        <Text style={[styles.messageTime, isOwn && styles.messageTimeOwn]}>
+        <Text style={[staticStyles.messageTime, { color: isOwn ? 'rgba(255,255,255,0.8)' : colors.textTertiary }]}>
           {timeString}
         </Text>
       </View>
@@ -222,10 +255,10 @@ function MessageBubble({
   );
 }
 
-const styles = StyleSheet.create({
+const staticStyles = StyleSheet.create({
   messageBubbleRow: {
     paddingHorizontal: 16,
-    paddingVertical: 4,
+    paddingVertical: 3,
     flexDirection: 'row',
     justifyContent: 'flex-start',
   },
@@ -234,48 +267,60 @@ const styles = StyleSheet.create({
   },
   messageBubble: {
     maxWidth: '75%',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
   },
-  messageBubbleOwn: {},
+  messageBubbleOwn: {
+    borderBottomRightRadius: 4,
+  },
+  messageBubbleReceived: {
+    borderBottomLeftRadius: 4,
+    borderWidth: 1,
+  },
   messageText: {
     fontSize: 15,
     lineHeight: 20,
   },
-  messageTextOwn: {
-    color: '#FFFFFF',
-  },
   messageTime: {
-    fontSize: 12,
+    fontSize: 11,
     marginTop: 4,
-    opacity: 0.7,
-  },
-  messageTimeOwn: {
-    color: '#FFFFFF',
+    fontWeight: '400',
   },
 });
 
-const createStyles = (colors: any, spacing: any, radius: any, typography: any) =>
+const createStyles = (colors: any, spacing: any, radius: any, typography: any, insets: any) =>
   StyleSheet.create({
     container: {
       flex: 1,
       backgroundColor: colors.background,
     },
+    safeArea: {
+      flex: 1,
+    },
+    keyboardAvoidingView: {
+      position: 'relative',
+    },
     header: {
       flexDirection: 'row',
       alignItems: 'center',
-      paddingHorizontal: spacing.lg,
-      paddingVertical: spacing.md,
+      paddingHorizontal: 16,
+      paddingVertical: 12,
       borderBottomWidth: 1,
       borderBottomColor: colors.border,
       backgroundColor: colors.background,
-      gap: spacing.md,
+      gap: 12,
     },
     backButton: {
-      width: 40,
-      height: 40,
-      borderRadius: radius.md,
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: colors.surface,
       justifyContent: 'center',
       alignItems: 'center',
     },
@@ -283,88 +328,113 @@ const createStyles = (colors: any, spacing: any, radius: any, typography: any) =
       flex: 1,
     },
     headerTitle: {
-      ...typography.headline,
-      color: colors.textPrimary,
+      fontSize: 17,
       fontWeight: '600',
+      color: colors.textPrimary,
     },
     headerSubtitle: {
-      ...typography.caption,
+      fontSize: 13,
       color: colors.textSecondary,
-      marginTop: 2,
+      marginTop: 1,
     },
     loadingContainer: {
       flex: 1,
       justifyContent: 'center',
       alignItems: 'center',
+      gap: 12,
+    },
+    loadingText: {
+      fontSize: 14,
+      color: colors.textSecondary,
+      fontWeight: '500',
     },
     emptyContainer: {
       flex: 1,
       justifyContent: 'center',
       alignItems: 'center',
-      paddingHorizontal: spacing.lg,
+      paddingHorizontal: 32,
     },
     emptyIconWrapper: {
       width: 80,
       height: 80,
-      borderRadius: radius.xl,
+      borderRadius: 40,
       backgroundColor: colors.surface,
       justifyContent: 'center',
       alignItems: 'center',
-      marginBottom: spacing.lg,
+      marginBottom: 16,
     },
     emptyTitle: {
-      ...typography.headline,
+      fontSize: 18,
+      fontWeight: '600',
       color: colors.textPrimary,
-      marginBottom: spacing.sm,
+      marginBottom: 8,
     },
     emptySubtitle: {
-      ...typography.body,
+      fontSize: 14,
       color: colors.textSecondary,
       textAlign: 'center',
+      lineHeight: 20,
     },
     messagesList: {
-      paddingVertical: spacing.md,
+      paddingVertical: 12,
       flexGrow: 1,
       justifyContent: 'flex-end',
     },
     inputWrapper: {
       backgroundColor: colors.background,
-      paddingHorizontal: spacing.lg,
-      paddingTop: spacing.md,
+      paddingHorizontal: 16,
+      paddingTop: 12,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
     },
     inputContainer: {
       flexDirection: 'row',
       alignItems: 'flex-end',
-      gap: spacing.sm,
+      gap: 10,
+    },
+    inputBox: {
+      flex: 1,
       backgroundColor: colors.surface,
-      borderRadius: radius.full,
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.sm,
+      borderRadius: 24,
+      paddingHorizontal: 16,
+      paddingTop: 10,
+      paddingBottom: 10,
       borderWidth: 1,
       borderColor: colors.border,
+      minHeight: 44,
+      maxHeight: 120,
+      justifyContent: 'center',
     },
     input: {
-      flex: 1,
-      ...typography.body,
+      fontSize: 15,
       color: colors.textPrimary,
-      maxHeight: 100,
-      minHeight: 40,
+      lineHeight: 20,
+      paddingVertical: 0,
+      textAlignVertical: 'center',
     },
     sendButton: {
-      width: 36,
-      height: 36,
-      borderRadius: 18,
+      width: 44,
+      height: 44,
+      borderRadius: 22,
       backgroundColor: colors.accent,
       justifyContent: 'center',
       alignItems: 'center',
+      shadowColor: colors.accent,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.3,
+      shadowRadius: 4,
+      elevation: 3,
     },
     sendButtonDisabled: {
-      opacity: 0.5,
+      opacity: 0.4,
+      shadowOpacity: 0,
+      elevation: 0,
     },
     charCount: {
-      ...typography.caption,
+      fontSize: 12,
       color: colors.textTertiary,
       textAlign: 'right',
-      marginTop: spacing.xs,
+      marginTop: 6,
+      paddingRight: 4,
     },
   });
