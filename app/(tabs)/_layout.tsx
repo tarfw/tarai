@@ -76,7 +76,7 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-      name="nodes"
+      name="memories"
       options={{
       title: 'agents',
           tabBarIcon: ({ color, focused }) => (
@@ -88,8 +88,8 @@ export default function TabLayout() {
       name="relay"
       options={{
       title: 'relay',
-      tabBarIcon: ({ color, focused }) => (
-      <FontAwesome6 name="square" size={22} color={focused ? colors.accent : color} />
+          tabBarIcon: ({ color, focused }) => (
+          <FontAwesome6 name="square" size={22} color={focused ? colors.accent : color} />
           ),
         }}
       />
@@ -98,6 +98,8 @@ export default function TabLayout() {
       <Tabs.Screen name="ai" options={{ href: null }} />
       <Tabs.Screen name="chat" options={{ href: null }} />
       <Tabs.Screen name="cart" options={{ href: null }} />
+      <Tabs.Screen name="nodes" options={{ href: null }} />
+      <Tabs.Screen name="integrations" options={{ href: null }} />
     </Tabs>
   );
 }

@@ -13,8 +13,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { getAllTasks, searchTasks, getTaskStats, updateTaskStatus } from '@/services/taskService';
-import { TASK_CATEGORIES } from '@/services/vectorStores/nodeVectorStore';
-import type { TaskRecord, TaskStatus } from '@/types/node';
+import { TASK_CATEGORIES } from '@/services/vectorStores/memoryVectorStore';
+import type { TaskRecord, TaskStatus } from '@/types/memory';
 
 const STATUS_CONFIG: Record<TaskStatus, { color: string; icon: string }> = {
   pending: { color: '#f59e0b', icon: 'clock' },

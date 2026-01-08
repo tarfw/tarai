@@ -2,14 +2,14 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, View, Text, StyleSheet, Image } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { useBlueskyAuth } from '@/contexts/BlueskyAuthContext';
-import { nodeVectorStore } from '@/services/vectorStores/nodeVectorStore';
-import { initializeNodeService } from '@/services/nodeService';
+import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
+import { memoryVectorStore } from '@/services/vectorStores/memoryVectorStore';
+import { initializeMemoryService } from '@/services/memoryService';
 import { colors, typography, spacing, radius } from '@/constants/theme';
 
 export default function Index() {
   const insets = useSafeAreaInsets();
-  const { isAuthenticated, isLoading: authLoading } = useBlueskyAuth();
+  const { isAuthenticated, isLoading: authLoading } = useSupabaseAuth();
   const [loadingStatus, setLoadingStatus] = useState('Initializing...');
   const [appReady, setAppReady] = useState(false);
 
@@ -18,20 +18,20 @@ export default function Index() {
       try {
         // Load vector store and AI model (as per blog)
         setLoadingStatus('Loading AI model...');
-        console.log('[Init] Starting nodeVectorStore.load()...');
-        await nodeVectorStore.load();
-        console.log('[Init] nodeVectorStore.load() completed successfully');
+        console.log('[Init] Starting memoryVectorStore.load()...');
+        await memoryVectorStore.load();
+        console.log('[Init] memoryVectorStore.load() completed successfully');
 
         setLoadingStatus('Initializing database...');
-        console.log('[Init] Starting initializeNodeService()...');
-        await initializeNodeService();
-        console.log('[Init] initializeNodeService() completed');
+        console.log('[Init] Starting initializeMemoryService()...');
+        await initializeMemoryService();
+        console.log('[Init] initializeMemoryService() completed');
 
         // Load demo data
-        const { loadDemoData } = await import('@/services/demo/sampleNodes');
+        const { loadDemoData } = await import('@/services/demo/sampleMemories');
         setLoadingStatus('Loading demo data...');
         const result = await loadDemoData(true); // Force reload
-        console.log(`Loaded ${result.nodes} nodes, ${result.tasks} tasks`);
+        console.log(`Loaded ${result.memories} memories, ${result.tasks} tasks`);
 
         setLoadingStatus('Ready!');
         setAppReady(true);
@@ -51,7 +51,7 @@ export default function Index() {
         router.replace('/(tabs)/tasks');
       } else {
         // User not authenticated, go to login
-        router.replace('/bluesky-login');
+        router.replace('/email-login');
       }
     }
   }, [appReady, authLoading, isAuthenticated]);

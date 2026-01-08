@@ -39,7 +39,26 @@
       "Bash(npm ls:*)",
       "Bash(node:*)",
       "Bash(timeout 30 npx expo start:*)",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:rxdb.info)",
+      "WebFetch(domain:tinybase.org)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:pears.com)",
+      "WebFetch(domain:docs.pears.com)",
+      "WebFetch(domain:www.pears.com)",
+      "WebFetch(domain:hypercore-protocol.org)",
+      "WebFetch(domain:bare.pears.com)",
+      "WebFetch(domain:npmjs.com)",
+      "Bash(findstr:*)",
+      "WebFetch(domain:lancedb.github.io)",
+      "WebFetch(domain:www.npmjs.com)",
+      "WebFetch(domain:www.instantdb.com)",
+      "Bash(chmod:*)",
+      "Bash(wrangler whoami:*)",
+      "Bash(npm search:*)",
+      "WebFetch(domain:hono.dev)",
+      "Bash(move google-login.tsx email-login.tsx)",
+      "Bash(npm uninstall:*)"
     ]
   }
 }

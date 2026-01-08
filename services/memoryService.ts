@@ -1,36 +1,36 @@
-// TARAI Node Service
-// Handles node operations with vector embeddings for semantic search
+// TARAI Memory Service
+// Handles memory operations with vector embeddings for semantic search
 
-import type { NodeRecord, NodeType, NodeStatus } from '@/types/node';
+import type { MemoryRecord, MemoryType, MemoryStatus } from '@/types/memory';
 import {
-  nodeVectorStore,
-  nodeSplitter,
-  nodeToString,
+  memoryVectorStore,
+  memorySplitter,
+  memoryToString,
   COMMERCE_CATEGORIES,
-} from '@/services/vectorStores/nodeVectorStore';
+} from '@/services/vectorStores/memoryVectorStore';
 import { getDb } from '@/services/database/db';
 
-const generateId = () => `node_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+const generateId = () => `memory_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
 // ========== CRUD OPERATIONS ==========
 
-export async function createNode(data: {
+export async function createMemory(data: {
   id?: string; // Allow providing custom ID for demo data
-  type: NodeType;
+  type: MemoryType;
   title: string;
   parent?: string;
   data?: string;
   quantity?: number;
   value?: number;
   location?: string;
-  status?: NodeStatus;
+  status?: MemoryStatus;
 }): Promise<string> {
   const database = getDb();
   const id = data.id || generateId();
   const now = Date.now();
 
   await database.execute(
-    `INSERT INTO nodes (id, type, title, parent, data, quantity, value, location, status, created, updated)
+    `INSERT INTO memories (id, type, title, parent, data, quantity, value, location, status, created, updated)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
@@ -48,25 +48,25 @@ export async function createNode(data: {
   );
 
   // Index in vector store for semantic search (with chunking for long content)
-  const searchText = nodeToString({ title: data.title, type: data.type, data: data.data });
-  console.log(`[NodeService] Indexing node ${id}: "${searchText.substring(0, 50)}..."`);
-  const chunks = await nodeSplitter.splitText(searchText);
-  console.log(`[NodeService] Split into ${chunks.length} chunks`);
+  const searchText = memoryToString({ title: data.title, type: data.type, data: data.data });
+  console.log(`[MemoryService] Indexing memory ${id}: "${searchText.substring(0, 50)}..."`);
+  const chunks = await memorySplitter.splitText(searchText);
+  console.log(`[MemoryService] Split into ${chunks.length} chunks`);
   for (let i = 0; i < chunks.length; i++) {
-    console.log(`[NodeService] Adding chunk ${i + 1}/${chunks.length} to vector store...`);
-    await nodeVectorStore.add({
+    console.log(`[MemoryService] Adding chunk ${i + 1}/${chunks.length} to vector store...`);
+    await memoryVectorStore.add({
       document: chunks[i],
-      metadata: { nodeId: id, type: data.type },
+      metadata: { memoryId: id, type: data.type },
     });
-    console.log(`[NodeService] Chunk ${i + 1} added successfully`);
+    console.log(`[MemoryService] Chunk ${i + 1} added successfully`);
   }
 
   return id;
 }
 
-export async function updateNode(
+export async function updateMemory(
   id: string,
-  updates: Partial<Omit<NodeRecord, 'id' | 'created'>>
+  updates: Partial<Omit<MemoryRecord, 'id' | 'created'>>
 ): Promise<void> {
   const database = getDb();
   const fields: string[] = [];
@@ -110,53 +110,53 @@ export async function updateNode(
   values.push(id);
 
   await database.execute(
-    `UPDATE nodes SET ${fields.join(', ')} WHERE id = ?`,
+    `UPDATE memories SET ${fields.join(', ')} WHERE id = ?`,
     values
   );
 
   // Update vector store (delete old chunks, re-index with new content)
-  await nodeVectorStore.delete({
-    predicate: (doc) => doc.metadata?.nodeId === id,
+  await memoryVectorStore.delete({
+    predicate: (doc) => doc.metadata?.memoryId === id,
   });
   if (updates.title || updates.data) {
-    const node = await getNodeById(id);
-    if (node) {
-      const searchText = nodeToString({ title: node.title, type: node.type, data: node.data });
-      const chunks = await nodeSplitter.splitText(searchText);
+    const memory = await getMemoryById(id);
+    if (memory) {
+      const searchText = memoryToString({ title: memory.title, type: memory.type, data: memory.data });
+      const chunks = await memorySplitter.splitText(searchText);
       for (const chunk of chunks) {
-        await nodeVectorStore.add({
+        await memoryVectorStore.add({
           document: chunk,
-          metadata: { nodeId: id, type: node.type },
+          metadata: { memoryId: id, type: memory.type },
         });
       }
     }
   }
 }
 
-export async function deleteNode(id: string): Promise<void> {
+export async function deleteMemory(id: string): Promise<void> {
   const database = getDb();
-  await database.execute('DELETE FROM nodes WHERE id = ?', [id]);
+  await database.execute('DELETE FROM memories WHERE id = ?', [id]);
   // Cascade deletes handled by FK, also clean vector store
-  await nodeVectorStore.delete({
-    predicate: (doc) => doc.metadata?.nodeId === id,
+  await memoryVectorStore.delete({
+    predicate: (doc) => doc.metadata?.memoryId === id,
   });
 }
 
-export async function getNodeById(id: string): Promise<NodeRecord | null> {
+export async function getMemoryById(id: string): Promise<MemoryRecord | null> {
   const database = getDb();
-  const result = await database.execute('SELECT * FROM nodes WHERE id = ?', [id]);
-  return (result.rows?.[0] as NodeRecord) || null;
+  const result = await database.execute('SELECT * FROM memories WHERE id = ?', [id]);
+  return (result.rows?.[0] as MemoryRecord) || null;
 }
 
 // ========== QUERY OPERATIONS ==========
 
-export async function getAllNodes(
-  type?: NodeType,
-  status?: NodeStatus,
+export async function getAllMemories(
+  type?: MemoryType,
+  status?: MemoryStatus,
   limit: number = 100
-): Promise<NodeRecord[]> {
+): Promise<MemoryRecord[]> {
   const database = getDb();
-  let query = 'SELECT * FROM nodes WHERE 1=1';
+  let query = 'SELECT * FROM memories WHERE 1=1';
   const params: (string | number)[] = [];
 
   if (type) {
@@ -172,30 +172,30 @@ export async function getAllNodes(
   params.push(limit);
 
   const result = await database.execute(query, params);
-  return (result.rows || []) as NodeRecord[];
+  return (result.rows || []) as MemoryRecord[];
 }
 
-export async function getNodesByType(type: NodeType): Promise<NodeRecord[]> {
+export async function getMemoriesByType(type: MemoryType): Promise<MemoryRecord[]> {
   const database = getDb();
   const result = await database.execute(
-    'SELECT * FROM nodes WHERE type = ? ORDER BY updated DESC',
+    'SELECT * FROM memories WHERE type = ? ORDER BY updated DESC',
     [type]
   );
-  return (result.rows || []) as NodeRecord[];
+  return (result.rows || []) as MemoryRecord[];
 }
 
-export async function getChildNodes(parentId: string): Promise<NodeRecord[]> {
+export async function getChildMemories(parentId: string): Promise<MemoryRecord[]> {
   const database = getDb();
   const result = await database.execute(
-    'SELECT * FROM nodes WHERE parent = ? ORDER BY created ASC',
+    'SELECT * FROM memories WHERE parent = ? ORDER BY created ASC',
     [parentId]
   );
-  return (result.rows || []) as NodeRecord[];
+  return (result.rows || []) as MemoryRecord[];
 }
 
-export async function getRootNodes(types?: NodeType[]): Promise<NodeRecord[]> {
+export async function getRootMemories(types?: MemoryType[]): Promise<MemoryRecord[]> {
   const database = getDb();
-  let query = 'SELECT * FROM nodes WHERE parent IS NULL';
+  let query = 'SELECT * FROM memories WHERE parent IS NULL';
   const params: string[] = [];
 
   if (types && types.length > 0) {
@@ -206,24 +206,24 @@ export async function getRootNodes(types?: NodeType[]): Promise<NodeRecord[]> {
   query += ' ORDER BY updated DESC';
 
   const result = await database.execute(query, params);
-  return (result.rows || []) as NodeRecord[];
+  return (result.rows || []) as MemoryRecord[];
 }
 
 // ========== SEARCH OPERATIONS ==========
 
-export async function searchNodes(
+export async function searchMemories(
   query: string,
-  filters?: { type?: NodeType; status?: NodeStatus },
+  filters?: { type?: MemoryType; status?: MemoryStatus },
   limit: number = 20
-): Promise<NodeRecord[]> {
+): Promise<MemoryRecord[]> {
   const database = getDb();
 
   console.log(`[Search] Starting semantic search for: "${query}"`);
   console.log(`[Search] Filters:`, filters);
 
   // Semantic vector search
-  console.log(`[Search] Calling nodeVectorStore.query()...`);
-  const results = await nodeVectorStore.query({
+  console.log(`[Search] Calling memoryVectorStore.query()...`);
+  const results = await memoryVectorStore.query({
     queryText: query.trim(),
     nResults: limit * 3,
   });
@@ -236,27 +236,27 @@ export async function searchNodes(
     console.log(`[Search] After type filter: ${filteredResults.length} results`);
   }
 
-  // Deduplicate by nodeId and track max similarity per node
-  const nodeIds = [...new Set(filteredResults.map((r) => r.metadata?.nodeId as string))];
+  // Deduplicate by memoryId and track max similarity per memory
+  const memoryIds = [...new Set(filteredResults.map((r) => r.metadata?.memoryId as string))];
   const similarityMap = new Map<string, number>();
   filteredResults.forEach((r) => {
-    const nodeId = r.metadata?.nodeId as string;
-    if (!similarityMap.has(nodeId) || r.similarity > similarityMap.get(nodeId)!) {
-      similarityMap.set(nodeId, r.similarity);
+    const memoryId = r.metadata?.memoryId as string;
+    if (!similarityMap.has(memoryId) || r.similarity > similarityMap.get(memoryId)!) {
+      similarityMap.set(memoryId, r.similarity);
     }
   });
 
-  console.log(`[Search] Unique node IDs found: ${nodeIds.length}`);
+  console.log(`[Search] Unique memory IDs found: ${memoryIds.length}`);
 
-  if (nodeIds.length === 0) {
+  if (memoryIds.length === 0) {
     console.log(`[Search] No results found`);
     return [];
   }
 
-  // Fetch full node records from DB
-  const placeholders = nodeIds.map(() => '?').join(',');
-  let sql = `SELECT * FROM nodes WHERE id IN (${placeholders})`;
-  const params: string[] = [...nodeIds];
+  // Fetch full memory records from DB
+  const placeholders = memoryIds.map(() => '?').join(',');
+  let sql = `SELECT * FROM memories WHERE id IN (${placeholders})`;
+  const params: string[] = [...memoryIds];
 
   if (filters?.status) {
     sql += ' AND status = ?';
@@ -264,22 +264,22 @@ export async function searchNodes(
   }
 
   const result = await database.execute(sql, params);
-  const nodes = (result.rows || []) as NodeRecord[];
+  const memories = (result.rows || []) as MemoryRecord[];
 
-  console.log(`[Search] Fetched ${nodes.length} nodes from DB`);
+  console.log(`[Search] Fetched ${memories.length} memories from DB`);
 
   // Add similarity and sort by relevance
-  const sortedNodes = nodes
+  const sortedMemories = memories
     .map((n) => ({ ...n, similarity: similarityMap.get(n.id) || 0 }))
     .sort((a, b) => (b.similarity || 0) - (a.similarity || 0))
     .slice(0, limit);
 
-  console.log(`[Search] Returning ${sortedNodes.length} results`);
-  sortedNodes.forEach((n, i) => {
+  console.log(`[Search] Returning ${sortedMemories.length} results`);
+  sortedMemories.forEach((n, i) => {
     console.log(`[Search] ${i + 1}. ${n.title} (${Math.round((n.similarity || 0) * 100)}%)`);
   });
 
-  return sortedNodes;
+  return sortedMemories;
 }
 
 export async function getSemanticSuggestions(
@@ -314,18 +314,18 @@ export async function getSemanticSuggestions(
 
 // ========== STATS ==========
 
-export async function getNodeStats(): Promise<{
+export async function getMemoryStats(): Promise<{
   total: number;
   byType: Record<string, number>;
   byStatus: Record<string, number>;
 }> {
   const database = getDb();
 
-  const totalResult = await database.execute('SELECT COUNT(*) as total FROM nodes');
+  const totalResult = await database.execute('SELECT COUNT(*) as total FROM memories');
   const total = totalResult.rows?.[0]?.total || 0;
 
   const byTypeResult = await database.execute(
-    'SELECT type, COUNT(*) as count FROM nodes GROUP BY type'
+    'SELECT type, COUNT(*) as count FROM memories GROUP BY type'
   );
   const byType: Record<string, number> = {};
   (byTypeResult.rows || []).forEach((row: any) => {
@@ -333,7 +333,7 @@ export async function getNodeStats(): Promise<{
   });
 
   const byStatusResult = await database.execute(
-    'SELECT status, COUNT(*) as count FROM nodes GROUP BY status'
+    'SELECT status, COUNT(*) as count FROM memories GROUP BY status'
   );
   const byStatus: Record<string, number> = {};
   (byStatusResult.rows || []).forEach((row: any) => {
@@ -345,26 +345,26 @@ export async function getNodeStats(): Promise<{
 
 // ========== INITIALIZATION ==========
 
-export async function initializeNodeService(): Promise<void> {
-  console.log('Initializing TARAI node service...');
+export async function initializeMemoryService(): Promise<void> {
+  console.log('Initializing TARAI memory service...');
   const { initializeDatabase } = await import('./database/schema');
   await initializeDatabase(getDb());
-  console.log('TARAI node service initialized');
+  console.log('TARAI memory service initialized');
 }
 
 // ========== EXPORTS ==========
 
-export const nodeService = {
-  createNode,
-  updateNode,
-  deleteNode,
-  getNodeById,
-  getAllNodes,
-  getNodesByType,
-  getChildNodes,
-  getRootNodes,
-  searchNodes,
+export const memoryService = {
+  createMemory,
+  updateMemory,
+  deleteMemory,
+  getMemoryById,
+  getAllMemories,
+  getMemoriesByType,
+  getChildMemories,
+  getRootMemories,
+  searchMemories,
   getSemanticSuggestions,
-  getNodeStats,
-  initialize: initializeNodeService,
+  getMemoryStats,
+  initialize: initializeMemoryService,
 };

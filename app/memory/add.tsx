@@ -25,19 +25,19 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { FontAwesome6 } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import { useTheme } from "@/contexts/ThemeContext";
-import { COMMERCE_CATEGORIES } from "@/services/vectorStores/nodeVectorStore";
-import { nodeService } from "@/services/nodeService";
-import type { NodeType, NodeStatus } from "@/types/node";
+import { COMMERCE_CATEGORIES } from "@/services/vectorStores/memoryVectorStore";
+import { memoryService } from "@/services/memoryService";
+import type { MemoryType, MemoryStatus } from "@/types/memory";
 
 type FormData = {
   title: string;
   description: string;
   value: string;
-  type: NodeType;
+  type: MemoryType;
   tags: string;
   location: string;
   quantity: string;
-  status: NodeStatus;
+  status: MemoryStatus;
 };
 
 const INITIAL_FORM: FormData = {
@@ -51,7 +51,7 @@ const INITIAL_FORM: FormData = {
   status: "active",
 };
 
-export default function AddNode() {
+export default function AddMemory() {
   const insets = useSafeAreaInsets();
   const { colors, spacing, radius, typography } = useTheme();
   const params = useLocalSearchParams<{ id?: string; mode?: string }>();
@@ -91,38 +91,38 @@ export default function AddNode() {
     opacity: backdropOpacity.value,
   }));
 
-  // Load existing node data when editing
+  // Load existing memory data when editing
   useEffect(() => {
     if (isEditing && params.id) {
-      loadNode(params.id);
+      loadMemory(params.id);
     }
   }, [isEditing, params.id]);
 
-  const loadNode = async (id: string) => {
+  const loadMemory = async (id: string) => {
     setIsLoading(true);
     try {
-      const node = await nodeService.getNodeById(id);
-      if (node) {
-        // Parse the data JSON field
+      const memory = await memoryService.getMemoryById(id);
+      if (memory) {
+        // Parse data JSON field
         let parsedData: { desc?: string; tags?: string } = {};
         try {
-          if (node.data) parsedData = JSON.parse(node.data);
+          if (memory.data) parsedData = JSON.parse(memory.data);
         } catch (e) {}
 
         setForm({
-          title: node.title || "",
+          title: memory.title || "",
           description: parsedData.desc || "",
-          value: node.value?.toString() || "",
-          type: (node.type as NodeType) || "product",
+          value: memory.value?.toString() || "",
+          type: (memory.type as MemoryType) || "product",
           tags: parsedData.tags || "",
-          location: node.location || "",
-          quantity: node.quantity?.toString() || "1",
-          status: (node.status as NodeStatus) || "active",
+          location: memory.location || "",
+          quantity: memory.quantity?.toString() || "1",
+          status: (memory.status as MemoryStatus) || "active",
         });
       }
     } catch (error) {
-      console.error("Failed to load node:", error);
-      Alert.alert("Error", "Failed to load node data.");
+      console.error("Failed to load memory:", error);
+      Alert.alert("Error", "Failed to load memory data.");
     } finally {
       setIsLoading(false);
     }
@@ -182,14 +182,14 @@ export default function AddNode() {
 
     setIsSubmitting(true);
     try {
-      // Build the data JSON field
+      // Build data JSON field
       const dataJson = JSON.stringify({
         desc: form.description.trim(),
         tags: form.tags.trim(),
       });
 
       if (isEditing && params.id) {
-        await nodeService.updateNode(params.id, {
+        await memoryService.updateMemory(params.id, {
           title: form.title.trim(),
           type: form.type,
           data: dataJson,
@@ -199,7 +199,7 @@ export default function AddNode() {
           status: form.status,
         });
       } else {
-        await nodeService.createNode({
+        await memoryService.createMemory({
           title: form.title.trim(),
           type: form.type,
           data: dataJson,
@@ -211,8 +211,8 @@ export default function AddNode() {
       }
       router.back();
     } catch (error) {
-      console.error("Failed to save node:", error);
-      Alert.alert("Error", "Failed to save node. Please try again.");
+      console.error("Failed to save memory:", error);
+      Alert.alert("Error", "Failed to save memory. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
@@ -220,8 +220,8 @@ export default function AddNode() {
 
   const handleDelete = () => {
     Alert.alert(
-      "Delete Node",
-      "Are you sure you want to delete this node? This action cannot be undone.",
+      "Delete Memory",
+      "Are you sure you want to delete this memory? This action cannot be undone.",
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -230,10 +230,10 @@ export default function AddNode() {
           onPress: async () => {
             if (params.id) {
               try {
-                await nodeService.deleteNode(params.id);
+                await memoryService.deleteMemory(params.id);
                 router.back();
               } catch (error) {
-                Alert.alert("Error", "Failed to delete node.");
+                Alert.alert("Error", "Failed to delete memory.");
               }
             }
           },
@@ -246,7 +246,7 @@ export default function AddNode() {
   const typeColor = categoryColors[form.type] || colors.accent;
 
   // Status options
-  const STATUS_OPTIONS: { value: NodeStatus; label: string; color: string }[] = [
+  const STATUS_OPTIONS: { value: MemoryStatus; label: string; color: string }[] = [
     { value: "active", label: "Active", color: "#22c55e" },
     { value: "pending", label: "Pending", color: "#f59e0b" },
     { value: "completed", label: "Completed", color: "#3b82f6" },
@@ -439,7 +439,7 @@ export default function AddNode() {
           {isEditing && (
             <TouchableOpacity style={styles.deleteButton} onPress={handleDelete}>
               <FontAwesome6 name="trash" size={16} color={colors.error} />
-              <Text style={styles.deleteButtonText}>Delete Node</Text>
+              <Text style={styles.deleteButtonText}>Delete Memory</Text>
             </TouchableOpacity>
           )}
         </ScrollView>
@@ -486,7 +486,7 @@ export default function AddNode() {
                       isSelected && { backgroundColor: `${chipColor}15` },
                     ]}
                     onPress={() => {
-                      updateField("type", type as NodeType);
+                      updateField("type", type as MemoryType);
                       closeSheet();
                     }}
                   >

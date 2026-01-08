@@ -3,7 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { BskyAgent } from "@atproto/api";
 
 const BLUESKY_SESSION_KEY = "@tarai_bluesky_session";
-const BLUESKY_DID_KEY = "@tarai_bluesky_did";
+const BLUESKY_CONNECTED_KEY = "@tarai_bluesky_connected";
 
 interface BlueskySession {
   accessJwt: string;
@@ -13,20 +13,20 @@ interface BlueskySession {
 }
 
 interface BlueskyAuthContextType {
-  isAuthenticated: boolean;
+  isConnected: boolean;
   isLoading: boolean;
   handle: string | null;
   did: string | null;
   agent: BskyAgent | null;
-  login: (handle: string, password: string) => Promise<void>;
-  logout: () => Promise<void>;
+  connect: (handle: string, password: string) => Promise<void>;
+  disconnect: () => Promise<void>;
   error: string | null;
 }
 
 const BlueskyAuthContext = createContext<BlueskyAuthContextType | undefined>(undefined);
 
 export function BlueskyAuthProvider({ children }: { children: React.ReactNode }) {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isConnected, setIsConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [handle, setHandle] = useState<string | null>(null);
   const [did, setDid] = useState<string | null>(null);
@@ -46,7 +46,7 @@ export function BlueskyAuthProvider({ children }: { children: React.ReactNode })
       setAgent(newAgent);
       setHandle(session.handle);
       setDid(session.did);
-      setIsAuthenticated(true);
+      setIsConnected(true);
       setError(null);
     } catch (e) {
       console.error("Failed to initialize agent session", e);
@@ -61,7 +61,7 @@ export function BlueskyAuthProvider({ children }: { children: React.ReactNode })
       setAgent(newAgent);
       setHandle(session.handle);
       setDid(session.did);
-      setIsAuthenticated(true);
+      setIsConnected(true);
       setError(null);
     }
   };
@@ -83,7 +83,7 @@ export function BlueskyAuthProvider({ children }: { children: React.ReactNode })
     })();
   }, []);
 
-  const login = async (handleInput: string, password: string) => {
+  const connect = async (handleInput: string, password: string) => {
     try {
       setError(null);
       const loginAgent = new BskyAgent({
@@ -96,7 +96,7 @@ export function BlueskyAuthProvider({ children }: { children: React.ReactNode })
       });
 
       if (!response.success || !loginAgent.session) {
-        throw new Error("Login failed");
+        throw new Error("Connection failed");
       }
 
       const session: BlueskySession = {
@@ -107,38 +107,40 @@ export function BlueskyAuthProvider({ children }: { children: React.ReactNode })
       };
 
       await AsyncStorage.setItem(BLUESKY_SESSION_KEY, JSON.stringify(session));
+      await AsyncStorage.setItem(BLUESKY_CONNECTED_KEY, "true");
       initializeAgent(session);
     } catch (e) {
-      const errorMessage = e instanceof Error ? e.message : "Login failed";
+      const errorMessage = e instanceof Error ? e.message : "Connection failed";
       setError(errorMessage);
       throw e;
     }
   };
 
-  const logout = async () => {
+  const disconnect = async () => {
     try {
       await AsyncStorage.removeItem(BLUESKY_SESSION_KEY);
-      setIsAuthenticated(false);
+      await AsyncStorage.removeItem(BLUESKY_CONNECTED_KEY);
+      setIsConnected(false);
       setHandle(null);
       setDid(null);
       setAgent(null);
       setError(null);
     } catch (e) {
-      console.error("Failed to logout", e);
-      setError("Logout failed");
+      console.error("Failed to disconnect", e);
+      setError("Disconnect failed");
     }
   };
 
   return (
     <BlueskyAuthContext.Provider
       value={{
-        isAuthenticated,
+        isConnected,
         isLoading,
         handle,
         did,
         agent,
-        login,
-        logout,
+        connect,
+        disconnect,
         error,
       }}
     >

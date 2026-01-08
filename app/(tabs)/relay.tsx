@@ -19,7 +19,7 @@ import type { BlueskyConversation } from '@/services/blueskyService';
 export default function DMsScreen() {
   const insets = useSafeAreaInsets();
   const { colors, spacing, radius, typography } = useTheme();
-  const { isAuthenticated, agent, logout } = useBlueskyAuth();
+  const { isConnected, agent, disconnect } = useBlueskyAuth();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [conversations, setConversations] = useState<BlueskyConversation[]>([]);
@@ -31,10 +31,11 @@ export default function DMsScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      if (isAuthenticated && agent) {
+      if (isConnected && agent) {
         loadConversationsAndStartPolling();
-      } else if (!isAuthenticated) {
-        router.replace('/bluesky-login');
+      } else if (!isConnected) {
+        // Not connected, show empty state or redirect to integrations
+        setIsLoading(false);
       }
       return () => {
         if (stopPollingRef.current) {
@@ -42,7 +43,7 @@ export default function DMsScreen() {
           stopPollingRef.current = null;
         }
       };
-    }, [isAuthenticated, agent])
+    }, [isConnected, agent])
   );
 
   const loadConversationsAndStartPolling = async () => {
@@ -99,9 +100,9 @@ export default function DMsScreen() {
     setSearchResults([]);
   };
 
-  const handleLogout = async () => {
-    await logout();
-    router.replace('/bluesky-login');
+  const handleDisconnect = async () => {
+    await disconnect();
+    router.replace('/(tabs)/integrations');
   };
 
   const handleSelectConversation = (conversation: BlueskyConversation) => {
@@ -118,9 +119,11 @@ export default function DMsScreen() {
       {/* Header */}
       <View style={[staticStyles.header, { borderBottomColor: colors.border }]}>
         <Text style={[staticStyles.headerTitle, { color: colors.textPrimary }]}>Relay</Text>
-        <TouchableOpacity style={staticStyles.logoutButton} onPress={handleLogout}>
-          <Text style={[staticStyles.logoutText, { color: colors.error }]}>Sign Out</Text>
-        </TouchableOpacity>
+        {isConnected && (
+          <TouchableOpacity style={staticStyles.logoutButton} onPress={() => router.push('/(tabs)/integrations')}>
+            <FontAwesome6 name="gear" size={16} color={colors.textSecondary} />
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Search Bar */}
@@ -146,7 +149,9 @@ export default function DMsScreen() {
       </View>
 
       {/* Content Area */}
-      {isLoading && displayList.length === 0 ? (
+      {!isConnected ? (
+        <NotConnectedState colors={colors} spacing={spacing} radius={radius} typography={typography} />
+      ) : isLoading && displayList.length === 0 ? (
         <LoadingState colors={colors} spacing={spacing} />
       ) : displayList.length === 0 ? (
         <EmptyState
@@ -167,6 +172,41 @@ export default function DMsScreen() {
           insets={insets}
         />
       )}
+    </View>
+  );
+}
+
+// Not Connected State Component
+function NotConnectedState({
+  colors,
+  spacing,
+  radius,
+  typography,
+}: {
+  colors: any;
+  spacing: any;
+  radius: any;
+  typography: any;
+}) {
+  return (
+    <View style={[staticStyles.contentArea, { justifyContent: 'center', alignItems: 'center', padding: spacing.xl }]}>
+      <View style={[staticStyles.emptyIcon, { backgroundColor: colors.surface }]}>
+        <FontAwesome6 name="butterfly" size={48} color={colors.textTertiary} />
+      </View>
+      <Text style={[staticStyles.emptyTitle, { marginTop: spacing.lg, color: colors.textPrimary, ...typography.headline }]}>
+        Connect Bluesky
+      </Text>
+      <Text style={[staticStyles.emptyMessage, { marginTop: spacing.sm, color: colors.textSecondary, ...typography.body, textAlign: 'center' }]}>
+        Link your Bluesky account to access messaging and social features
+      </Text>
+      <TouchableOpacity
+        style={[staticStyles.connectButton, { marginTop: spacing.xl, backgroundColor: '#0085ff', borderRadius: radius.md }]}
+        onPress={() => router.push('/(tabs)/integrations')}
+      >
+        <Text style={[staticStyles.connectButtonText, { color: '#FFFFFF', ...typography.callout, fontWeight: '600' }]}>
+          Go to Integrations
+        </Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -446,6 +486,28 @@ const staticStyles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '400',
     flex: 1,
+  },
+  emptyIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  emptyMessage: {
+    fontSize: 14,
+    textAlign: 'center',
+  },
+  connectButton: {
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+  },
+  connectButtonText: {
+    textAlign: 'center',
   },
   conversationItem: {
     borderBottomWidth: 1,

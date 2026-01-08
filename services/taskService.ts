@@ -1,7 +1,7 @@
 // TARAI Task Service
 // Manages tasks generated from orders
 
-import { TaskRecord, TaskType, TaskStatus } from '@/types/node';
+import { TaskRecord, TaskType, TaskStatus } from '@/types/memory';
 import { getDb } from '@/services/database/db';
 
 const generateId = () => `task_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -15,11 +15,11 @@ export const createTask = async (
   const now = Date.now();
 
   await database.execute(
-    `INSERT INTO tasks (id, nodeid, personid, type, title, status, priority, due, data, created, updated)
+    `INSERT INTO tasks (id, memoryid, personid, type, title, status, priority, due, data, created, updated)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
-      task.nodeid,
+      task.memoryid,
       task.personid,
       task.type,
       task.title,
@@ -54,9 +54,9 @@ export const updateTask = async (
   const fields: string[] = [];
   const values: any[] = [];
 
-  if (updates.nodeid !== undefined) {
-    fields.push('nodeid = ?');
-    values.push(updates.nodeid);
+  if (updates.memoryid !== undefined) {
+    fields.push('memoryid = ?');
+    values.push(updates.memoryid);
   }
   if (updates.personid !== undefined) {
     fields.push('personid = ?');
@@ -123,12 +123,12 @@ export const getTasksByPerson = async (
   return (result.rows || []) as TaskRecord[];
 };
 
-// Get tasks by node
-export const getTasksByNode = async (nodeid: string): Promise<TaskRecord[]> => {
+// Get tasks by memory
+export const getTasksByMemory = async (memoryid: string): Promise<TaskRecord[]> => {
   const database = getDb();
   const result = await database.execute(
-    `SELECT * FROM tasks WHERE nodeid = ? ORDER BY created ASC`,
-    [nodeid]
+    `SELECT * FROM tasks WHERE memoryid = ? ORDER BY created ASC`,
+    [memoryid]
   );
   return (result.rows || []) as TaskRecord[];
 };
@@ -200,13 +200,13 @@ export const startTask = async (id: string): Promise<void> => {
 
 // Bulk create tasks for an order
 export const createOrderTasks = async (
-  nodeid: string,
+  memoryid: string,
   tasks: { personid: string; type: TaskType; title: string; due?: number; priority?: number }[]
 ): Promise<string[]> => {
   const ids: string[] = [];
   for (const task of tasks) {
     const id = await createTask({
-      nodeid,
+      memoryid,
       personid: task.personid,
       type: task.type,
       title: task.title,
@@ -219,10 +219,10 @@ export const createOrderTasks = async (
   return ids;
 };
 
-// Delete all tasks for a node
-export const deleteTasksByNode = async (nodeid: string): Promise<void> => {
+// Delete all tasks for a memory
+export const deleteTasksByMemory = async (memoryid: string): Promise<void> => {
   const database = getDb();
-  await database.execute(`DELETE FROM tasks WHERE nodeid = ?`, [nodeid]);
+  await database.execute(`DELETE FROM tasks WHERE memoryid = ?`, [memoryid]);
 };
 
 // Get task stats
@@ -259,44 +259,44 @@ export const getTaskStats = async (): Promise<{
   };
 };
 
-// Search tasks - semantic search via node vector store
+// Search tasks - semantic search via memory vector store
 export const searchTasks = async (query: string, limit: number = 50): Promise<TaskRecord[]> => {
   const database = getDb();
-  const { nodeVectorStore } = await import('@/services/vectorStores/nodeVectorStore');
+  const { memoryVectorStore } = await import('@/services/vectorStores/memoryVectorStore');
 
   // Semantic vector search
-  const vectorResults = await nodeVectorStore.query({
+  const vectorResults = await memoryVectorStore.query({
     queryText: query.trim(),
     nResults: limit * 2,
   });
 
-  // Get nodeIds from vector results
-  const nodeIds = [...new Set(vectorResults.map((r) => r.metadata?.nodeId as string).filter(Boolean))];
+  // Get memoryIds from vector results
+  const memoryIds = [...new Set(vectorResults.map((r) => r.metadata?.memoryId as string).filter(Boolean))];
 
-  if (nodeIds.length === 0) {
+  if (memoryIds.length === 0) {
     return [];
   }
 
-  // Fetch tasks for matched nodes
-  const placeholders = nodeIds.map(() => '?').join(',');
+  // Fetch tasks for matched memories
+  const placeholders = memoryIds.map(() => '?').join(',');
   const result = await database.execute(
-    `SELECT * FROM tasks WHERE nodeid IN (${placeholders}) ORDER BY priority DESC, created DESC LIMIT ?`,
-    [...nodeIds, limit]
+    `SELECT * FROM tasks WHERE memoryid IN (${placeholders}) ORDER BY priority DESC, created DESC LIMIT ?`,
+    [...memoryIds, limit]
   );
   const tasks = (result.rows || []) as TaskRecord[];
 
   // Create similarity map from vector results
   const similarityMap = new Map<string, number>();
   vectorResults.forEach((r) => {
-    const nodeId = r.metadata?.nodeId as string;
-    if (nodeId && (!similarityMap.has(nodeId) || r.similarity > similarityMap.get(nodeId)!)) {
-      similarityMap.set(nodeId, r.similarity);
+    const memoryId = r.metadata?.memoryId as string;
+    if (memoryId && (!similarityMap.has(memoryId) || r.similarity > similarityMap.get(memoryId)!)) {
+      similarityMap.set(memoryId, r.similarity);
     }
   });
 
-  // Add similarity to tasks based on their node's similarity
+  // Add similarity to tasks based on their memory's similarity
   return tasks
-    .map((t) => ({ ...t, similarity: similarityMap.get(t.nodeid) || 0 }))
+    .map((t) => ({ ...t, similarity: similarityMap.get(t.memoryid) || 0 }))
     .sort((a, b) => (b.similarity || 0) - (a.similarity || 0));
 };
 
@@ -311,3 +311,7 @@ export const getTasksDueSoon = async (hours: number = 24): Promise<TaskRecord[]>
   );
   return (result.rows || []) as TaskRecord[];
 };
+
+// Legacy exports for compatibility
+export const getTasksByNode = getTasksByMemory;
+export const deleteTasksByNode = deleteTasksByMemory;

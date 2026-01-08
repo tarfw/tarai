@@ -1,10 +1,10 @@
 // TARAI Local Database Schema (OP-SQLite)
-// 3-table schema: nodes, people, tasks
+// 3-table schema: memories, people, tasks
 
 export const SCHEMA_QUERIES = {
-  // Main nodes table (10 columns)
-  createNodesTable: `
-    CREATE TABLE IF NOT EXISTS nodes (
+  // Main memories table (10 columns)
+  createMemoriesTable: `
+    CREATE TABLE IF NOT EXISTS memories (
       id TEXT PRIMARY KEY,
       type TEXT NOT NULL,
       title TEXT NOT NULL,
@@ -19,22 +19,22 @@ export const SCHEMA_QUERIES = {
     );
   `,
 
-  createNodesIndexes: [
-    `CREATE INDEX IF NOT EXISTS idx_nodes_type ON nodes(type);`,
-    `CREATE INDEX IF NOT EXISTS idx_nodes_parent ON nodes(parent);`,
-    `CREATE INDEX IF NOT EXISTS idx_nodes_type_parent ON nodes(type, parent);`,
-    `CREATE INDEX IF NOT EXISTS idx_nodes_status ON nodes(status);`,
-    `CREATE INDEX IF NOT EXISTS idx_nodes_updated ON nodes(updated);`,
+  createMemoriesIndexes: [
+    `CREATE INDEX IF NOT EXISTS idx_memories_type ON memories(type);`,
+    `CREATE INDEX IF NOT EXISTS idx_memories_parent ON memories(parent);`,
+    `CREATE INDEX IF NOT EXISTS idx_memories_type_parent ON memories(type, parent);`,
+    `CREATE INDEX IF NOT EXISTS idx_memories_status ON memories(status);`,
+    `CREATE INDEX IF NOT EXISTS idx_memories_updated ON memories(updated);`,
   ],
 
-  // People junction table (node <-> person relationships)
+  // People junction table (memory <-> person relationships)
   createPeopleTable: `
     CREATE TABLE IF NOT EXISTS people (
-      nodeid TEXT NOT NULL,
+      memoryid TEXT NOT NULL,
       personid TEXT NOT NULL,
       role TEXT,
-      PRIMARY KEY (nodeid, personid),
-      FOREIGN KEY (nodeid) REFERENCES nodes(id) ON DELETE CASCADE
+      PRIMARY KEY (memoryid, personid),
+      FOREIGN KEY (memoryid) REFERENCES memories(id) ON DELETE CASCADE
     );
   `,
 
@@ -47,7 +47,7 @@ export const SCHEMA_QUERIES = {
   createTasksTable: `
     CREATE TABLE IF NOT EXISTS tasks (
       id TEXT PRIMARY KEY,
-      nodeid TEXT NOT NULL,
+      memoryid TEXT NOT NULL,
       personid TEXT NOT NULL,
       type TEXT NOT NULL,
       title TEXT NOT NULL,
@@ -57,13 +57,13 @@ export const SCHEMA_QUERIES = {
       data TEXT,
       created INTEGER NOT NULL,
       updated INTEGER NOT NULL,
-      FOREIGN KEY (nodeid) REFERENCES nodes(id) ON DELETE CASCADE
+      FOREIGN KEY (memoryid) REFERENCES memories(id) ON DELETE CASCADE
     );
   `,
 
   createTasksIndexes: [
     `CREATE INDEX IF NOT EXISTS idx_tasks_personid ON tasks(personid);`,
-    `CREATE INDEX IF NOT EXISTS idx_tasks_nodeid ON tasks(nodeid);`,
+    `CREATE INDEX IF NOT EXISTS idx_tasks_memoryid ON tasks(memoryid);`,
     `CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);`,
     `CREATE INDEX IF NOT EXISTS idx_tasks_personid_status ON tasks(personid, status);`,
     `CREATE INDEX IF NOT EXISTS idx_tasks_due ON tasks(due);`,
@@ -77,7 +77,9 @@ export const initializeDatabase = async (db: any) => {
     // Drop old legacy tables (not vector tables - those persist embeddings)
     const oldTables = [
       'mycache', 'browsed', 'searches', 'offlinequeue', 'cart',
-      'tarai_listing_vectors', 'tarai_listing_vectors_metadata'
+      'tarai_listing_vectors', 'tarai_listing_vectors_metadata',
+      'nodes', 'tarai_node_vectors', 'tarai_node_vectors_metadata',
+      'people', 'tasks', 'tarai'  // Also drop these to force recreation with new schema
     ];
 
     for (const table of oldTables) {
@@ -89,12 +91,12 @@ export const initializeDatabase = async (db: any) => {
     }
     console.log('Cleaned up legacy tables');
 
-    // Create nodes table and indexes
-    await db.execute(SCHEMA_QUERIES.createNodesTable);
-    for (const indexQuery of SCHEMA_QUERIES.createNodesIndexes) {
+    // Create memories table and indexes
+    await db.execute(SCHEMA_QUERIES.createMemoriesTable);
+    for (const indexQuery of SCHEMA_QUERIES.createMemoriesIndexes) {
       await db.execute(indexQuery);
     }
-    console.log('Created nodes table');
+    console.log('Created memories table');
 
     // Create people table and indexes
     await db.execute(SCHEMA_QUERIES.createPeopleTable);

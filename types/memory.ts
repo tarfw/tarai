@@ -1,8 +1,8 @@
 // TARAI Commerce Types
-// 3-table schema: nodes, people, tasks
+// 3-table schema: memories, people, tasks
 
 // ============================================
-// NODE TYPES (18 total)
+// MEMORY TYPES (18 total)
 // ============================================
 
 // Commerce Types (12) - Orderable entities
@@ -20,7 +20,7 @@ export type CommerceType =
   | 'realestate'   // Property
   | 'healthcare';  // Medical
 
-// Structural Types (6) - Supporting nodes
+// Structural Types (6) - Supporting memories
 export type StructuralType =
   | 'variant'   // Product variation
   | 'inventory' // Stock tracking
@@ -29,28 +29,28 @@ export type StructuralType =
   | 'order'     // Confirmed order
   | 'search';   // Search history
 
-export type NodeType = CommerceType | StructuralType;
+export type MemoryType = CommerceType | StructuralType;
 
-export type NodeStatus = 'active' | 'pending' | 'completed' | 'cancelled';
+export type MemoryStatus = 'active' | 'pending' | 'completed' | 'cancelled';
 
-// Main node record (matches DB schema)
-export interface NodeRecord {
+// Main memory record (matches DB schema)
+export interface MemoryRecord {
   id: string;
-  type: NodeType;
+  type: MemoryType;
   title: string;
-  parent?: string;        // FK to parent node
+  parent?: string;        // FK to parent memory
   data?: string;          // JSON for extras
   quantity: number;
   value: number;          // Price/cost
   location?: string;
-  status: NodeStatus;
+  status: MemoryStatus;
   created: number;
   updated: number;
   // Client-side only (set by semantic search)
   similarity?: number;
 }
 
-// Parsed node data by type
+// Parsed memory data by type
 export interface ProductData {
   desc?: string;
   img?: string[];
@@ -104,7 +104,7 @@ export type PersonRole =
   | 'support';   // Customer support
 
 export interface PeopleRecord {
-  nodeid: string;
+  memoryid: string;
   personid: string;
   role: PersonRole;
 }
@@ -195,7 +195,7 @@ export type TaskStatus = 'pending' | 'progress' | 'completed' | 'cancelled';
 
 export interface TaskRecord {
   id: string;
-  nodeid: string;         // FK to source order/node
+  memoryid: string;       // FK to source order/memory
   personid: string;       // Assigned person
   type: TaskType;
   title: string;
@@ -258,12 +258,12 @@ export const PERSON_ROLES: PersonRole[] = [
 // LEGACY EXPORTS (for compatibility)
 // ============================================
 
-export type Node = NodeRecord;
-export type CachedNode = NodeRecord;
-export interface BrowsedNode {
+export type Memory = MemoryRecord;
+export type CachedMemory = MemoryRecord;
+export interface BrowsedMemory {
   id: string;
   title: string;
-  type: NodeType;
+  type: MemoryType;
   price: number;
   seller: string;
   thumbnail: string;

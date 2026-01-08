@@ -1,51 +1,51 @@
 // TARAI People Service
-// Manages node <-> person relationships
+// Manages memory <-> person relationships
 
-import { PeopleRecord, PersonRole } from '@/types/node';
+import { PeopleRecord, PersonRole } from '@/types/memory';
 import { getDb } from '@/services/database/db';
 
-// Add a person to a node
-export const addPersonToNode = async (
-  nodeid: string,
+// Add a person to a memory
+export const addPersonToMemory = async (
+  memoryid: string,
   personid: string,
   role: PersonRole
 ): Promise<void> => {
   const database = getDb();
   await database.execute(
-    `INSERT OR REPLACE INTO people (nodeid, personid, role) VALUES (?, ?, ?)`,
-    [nodeid, personid, role]
+    `INSERT OR REPLACE INTO people (memoryid, personid, role) VALUES (?, ?, ?)`,
+    [memoryid, personid, role]
   );
 };
 
-// Remove a person from a node
-export const removePersonFromNode = async (
-  nodeid: string,
+// Remove a person from a memory
+export const removePersonFromMemory = async (
+  memoryid: string,
   personid: string
 ): Promise<void> => {
   const database = getDb();
   await database.execute(
-    `DELETE FROM people WHERE nodeid = ? AND personid = ?`,
-    [nodeid, personid]
+    `DELETE FROM people WHERE memoryid = ? AND personid = ?`,
+    [memoryid, personid]
   );
 };
 
-// Get all people for a node
-export const getPeopleByNode = async (nodeid: string): Promise<PeopleRecord[]> => {
+// Get all people for a memory
+export const getPeopleByMemory = async (memoryid: string): Promise<PeopleRecord[]> => {
   const database = getDb();
   const result = await database.execute(
-    `SELECT nodeid, personid, role FROM people WHERE nodeid = ?`,
-    [nodeid]
+    `SELECT memoryid, personid, role FROM people WHERE memoryid = ?`,
+    [memoryid]
   );
   return (result.rows || []) as PeopleRecord[];
 };
 
-// Get all nodes for a person
-export const getNodesByPerson = async (
+// Get all memories for a person
+export const getMemoriesByPerson = async (
   personid: string,
   role?: PersonRole
 ): Promise<PeopleRecord[]> => {
   const database = getDb();
-  let query = `SELECT nodeid, personid, role FROM people WHERE personid = ?`;
+  let query = `SELECT memoryid, personid, role FROM people WHERE personid = ?`;
   const params: (string | PersonRole)[] = [personid];
 
   if (role) {
@@ -61,7 +61,7 @@ export const getNodesByPerson = async (
 export const getPeopleByRole = async (role: PersonRole): Promise<PeopleRecord[]> => {
   const database = getDb();
   const result = await database.execute(
-    `SELECT nodeid, personid, role FROM people WHERE role = ?`,
+    `SELECT memoryid, personid, role FROM people WHERE role = ?`,
     [role]
   );
   return (result.rows || []) as PeopleRecord[];
@@ -76,53 +76,53 @@ export const getAllPeople = async (): Promise<string[]> => {
   return (result.rows || []).map((row: any) => row.personid);
 };
 
-// Get person with their roles across all nodes
+// Get person with their roles across all memories
 export const getPersonWithRoles = async (personid: string): Promise<{
   personid: string;
-  roles: { nodeid: string; role: PersonRole }[];
+  roles: { memoryid: string; role: PersonRole }[];
 }> => {
   const database = getDb();
   const result = await database.execute(
-    `SELECT nodeid, role FROM people WHERE personid = ?`,
+    `SELECT memoryid, role FROM people WHERE personid = ?`,
     [personid]
   );
   return {
     personid,
     roles: (result.rows || []).map((row: any) => ({
-      nodeid: row.nodeid,
+      memoryid: row.memoryid,
       role: row.role as PersonRole,
     })),
   };
 };
 
-// Bulk add people to a node
-export const addPeopleToNode = async (
-  nodeid: string,
+// Bulk add people to a memory
+export const addPeopleToMemory = async (
+  memoryid: string,
   people: { personid: string; role: PersonRole }[]
 ): Promise<void> => {
   const database = getDb();
   for (const person of people) {
     await database.execute(
-      `INSERT OR REPLACE INTO people (nodeid, personid, role) VALUES (?, ?, ?)`,
-      [nodeid, person.personid, person.role]
+      `INSERT OR REPLACE INTO people (memoryid, personid, role) VALUES (?, ?, ?)`,
+      [memoryid, person.personid, person.role]
     );
   }
 };
 
-// Remove all people from a node
-export const clearNodePeople = async (nodeid: string): Promise<void> => {
+// Remove all people from a memory
+export const clearMemoryPeople = async (memoryid: string): Promise<void> => {
   const database = getDb();
-  await database.execute(`DELETE FROM people WHERE nodeid = ?`, [nodeid]);
+  await database.execute(`DELETE FROM people WHERE memoryid = ?`, [memoryid]);
 };
 
-// Count people by role for a node
+// Count people by role for a memory
 export const countPeopleByRole = async (
-  nodeid: string
+  memoryid: string
 ): Promise<Record<PersonRole, number>> => {
   const database = getDb();
   const result = await database.execute(
-    `SELECT role, COUNT(*) as count FROM people WHERE nodeid = ? GROUP BY role`,
-    [nodeid]
+    `SELECT role, COUNT(*) as count FROM people WHERE memoryid = ? GROUP BY role`,
+    [memoryid]
   );
   const counts: Record<string, number> = {};
   (result.rows || []).forEach((row: any) => {
@@ -131,38 +131,38 @@ export const countPeopleByRole = async (
   return counts as Record<PersonRole, number>;
 };
 
-// Search people - semantic search via node vector store
+// Search people - semantic search via memory vector store
 export const searchPeople = async (query: string, limit: number = 50): Promise<PeopleRecord[]> => {
   const database = getDb();
-  const { nodeVectorStore } = await import('@/services/vectorStores/nodeVectorStore');
+  const { memoryVectorStore } = await import('@/services/vectorStores/memoryVectorStore');
 
   // If empty query, return all
   if (!query.trim()) {
     const result = await database.execute(
-      `SELECT DISTINCT personid, nodeid, role FROM people ORDER BY personid LIMIT ?`,
+      `SELECT DISTINCT personid, memoryid, role FROM people ORDER BY personid LIMIT ?`,
       [limit]
     );
     return (result.rows || []) as PeopleRecord[];
   }
 
   // Semantic vector search
-  const vectorResults = await nodeVectorStore.query({
+  const vectorResults = await memoryVectorStore.query({
     queryText: query.trim(),
     nResults: limit * 2,
   });
 
-  // Get nodeIds from vector results
-  const nodeIds = [...new Set(vectorResults.map((r) => r.metadata?.nodeId as string).filter(Boolean))];
+  // Get memoryIds from vector results
+  const memoryIds = [...new Set(vectorResults.map((r) => r.metadata?.memoryId as string).filter(Boolean))];
 
-  if (nodeIds.length === 0) {
+  if (memoryIds.length === 0) {
     return [];
   }
 
-  // Fetch people for matched nodes
-  const placeholders = nodeIds.map(() => '?').join(',');
+  // Fetch people for matched memories
+  const placeholders = memoryIds.map(() => '?').join(',');
   const result = await database.execute(
-    `SELECT DISTINCT personid, nodeid, role FROM people WHERE nodeid IN (${placeholders}) ORDER BY personid LIMIT ?`,
-    [...nodeIds, limit]
+    `SELECT DISTINCT personid, memoryid, role FROM people WHERE memoryid IN (${placeholders}) ORDER BY personid LIMIT ?`,
+    [...memoryIds, limit]
   );
   return (result.rows || []) as PeopleRecord[];
 };
@@ -189,3 +189,11 @@ export const getPeopleStats = async (): Promise<{
 
   return { total, byRole };
 };
+
+// Legacy exports for compatibility
+export const addPersonToNode = addPersonToMemory;
+export const removePersonFromNode = removePersonFromMemory;
+export const getPeopleByNode = getPeopleByMemory;
+export const getNodesByPerson = getMemoriesByPerson;
+export const addPeopleToNode = addPeopleToMemory;
+export const clearNodePeople = clearMemoryPeople;

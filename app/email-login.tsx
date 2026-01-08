@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
+  Image,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -14,31 +15,33 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FontAwesome6 } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
-import { useBlueskyAuth } from '@/contexts/BlueskyAuthContext';
+import { useSupabaseAuth } from '@/contexts/SupabaseAuthContext';
 
-export default function BlueskyLoginScreen() {
+export default function EmailLoginScreen() {
   const insets = useSafeAreaInsets();
   const { colors, spacing, radius, typography } = useTheme();
-  const { connect, isLoading, error: authError, isConnected } = useBlueskyAuth();
+  const { signInWithEmail, signUpWithEmail, isLoading, error: authError, isAuthenticated } = useSupabaseAuth();
 
-  const [handle, setHandle] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [isSignUp, setIsSignUp] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [signingIn, setSigningIn] = useState(false);
 
-  // If already connected, redirect to integrations
+  // If already authenticated, redirect to main app
   useEffect(() => {
-    if (isConnected) {
-      router.replace('/(tabs)/integrations');
+    if (isAuthenticated) {
+      router.replace('/(tabs)/tasks');
     }
-  }, [isConnected]);
+  }, [isAuthenticated]);
 
-  const handleConnect = async () => {
+  const handleAuth = async () => {
     try {
       setError(null);
 
-      if (!handle.trim()) {
-        setError('Please enter your handle');
+      if (!email.trim()) {
+        setError('Please enter your email');
         return;
       }
 
@@ -47,16 +50,23 @@ export default function BlueskyLoginScreen() {
         return;
       }
 
-      // Normalize handle (remove @ if present)
-      const normalizedHandle = handle.startsWith('@') ? handle.slice(1) : handle;
+      if (password.length < 6) {
+        setError('Password must be at least 6 characters');
+        return;
+      }
 
-      await connect(normalizedHandle, password);
+      setSigningIn(true);
 
-      // Navigate to integrations screen on successful connection
-      router.replace('/(tabs)/integrations');
+      if (isSignUp) {
+        await signUpWithEmail(email, password);
+      } else {
+        await signInWithEmail(email, password);
+      }
+      // Navigation will happen automatically via the useEffect above
     } catch (e) {
-      const errorMessage = e instanceof Error ? e.message : 'Connection failed';
+      const errorMessage = e instanceof Error ? e.message : isSignUp ? 'Sign up failed' : 'Sign in failed';
       setError(errorMessage);
+      setSigningIn(false);
     }
   };
 
@@ -74,38 +84,34 @@ export default function BlueskyLoginScreen() {
         <View style={[styles.content, { paddingTop: insets.top + spacing.xl }]}>
           {/* Header */}
           <View style={styles.header}>
-            <TouchableOpacity
-              onPress={() => router.back()}
-              style={styles.backButton}
-            >
-              <FontAwesome6 name="arrow-left" size={20} color={colors.textPrimary} />
-            </TouchableOpacity>
-            <View style={styles.logoContainer}>
-              <FontAwesome6 name="butterfly" size={48} color={colors.accent} />
-            </View>
-            <Text style={styles.title}>Connect Bluesky</Text>
-            <Text style={styles.subtitle}>Link your Bluesky account</Text>
+            <Image
+              source={require('@/assets/images/tar.png')}
+              style={styles.logo}
+              resizeMode="contain"
+            />
+            <Text style={styles.title}>{isSignUp ? 'Create Account' : 'Welcome Back'}</Text>
+            <Text style={styles.subtitle}>Universal Commerce</Text>
           </View>
 
           {/* Form */}
           <View style={styles.form}>
-            {/* Handle Input */}
+            {/* Email Input */}
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Handle</Text>
+              <Text style={styles.label}>Email</Text>
               <View
                 style={[
                   styles.inputContainer,
-                  handle && styles.inputContainerFocused,
+                  email && styles.inputContainerFocused,
                 ]}
               >
-                <Text style={styles.handlePrefix}>@</Text>
+                <FontAwesome6 name="envelope" size={16} color={colors.textTertiary} />
                 <TextInput
                   style={styles.input}
-                  placeholder="username"
+                  placeholder="your@email.com"
                   placeholderTextColor={colors.textTertiary}
-                  value={handle}
-                  onChangeText={setHandle}
-                  editable={!isLoading}
+                  value={email}
+                  onChangeText={setEmail}
+                  editable={!isLoading && !signingIn}
                   autoCapitalize="none"
                   autoCorrect={false}
                   keyboardType="email-address"
@@ -122,6 +128,7 @@ export default function BlueskyLoginScreen() {
                   password && styles.inputContainerFocused,
                 ]}
               >
+                <FontAwesome6 name="lock" size={16} color={colors.textTertiary} />
                 <TextInput
                   style={[styles.input, { flex: 1 }]}
                   placeholder="Enter your password"
@@ -129,16 +136,16 @@ export default function BlueskyLoginScreen() {
                   value={password}
                   onChangeText={setPassword}
                   secureTextEntry={!showPassword}
-                  editable={!isLoading}
+                  editable={!isLoading && !signingIn}
                 />
                 <TouchableOpacity
                   onPress={() => setShowPassword(!showPassword)}
-                  disabled={isLoading}
+                  disabled={isLoading || signingIn}
                   style={styles.passwordToggle}
                 >
                   <FontAwesome6
                     name={showPassword ? 'eye' : 'eye-slash'}
-                    size={18}
+                    size={16}
                     color={colors.textSecondary}
                   />
                 </TouchableOpacity>
@@ -158,20 +165,39 @@ export default function BlueskyLoginScreen() {
               </View>
             )}
 
-            {/* Connect Button */}
+            {/* Auth Button */}
             <TouchableOpacity
               style={[
-                styles.loginButton,
-                isLoading && styles.loginButtonDisabled,
+                styles.authButton,
+                (isLoading || signingIn) && styles.authButtonDisabled,
               ]}
-              onPress={handleConnect}
-              disabled={isLoading}
+              onPress={handleAuth}
+              disabled={isLoading || signingIn}
             >
-              {isLoading ? (
+              {isLoading || signingIn ? (
                 <ActivityIndicator color="#FFFFFF" size="small" />
               ) : (
-                <Text style={styles.loginButtonText}>Connect</Text>
+                <Text style={styles.authButtonText}>
+                  {isSignUp ? 'Sign Up' : 'Sign In'}
+                </Text>
               )}
+            </TouchableOpacity>
+
+            {/* Toggle Sign Up/Sign In */}
+            <TouchableOpacity
+              style={styles.toggleButton}
+              onPress={() => {
+                setIsSignUp(!isSignUp);
+                setError(null);
+              }}
+              disabled={isLoading || signingIn}
+            >
+              <Text style={[styles.toggleText, { color: colors.textSecondary }]}>
+                {isSignUp ? 'Already have an account? ' : "Don't have an account? "}
+                <Text style={[styles.toggleLink, { color: colors.accent }]}>
+                  {isSignUp ? 'Sign In' : 'Sign Up'}
+                </Text>
+              </Text>
             </TouchableOpacity>
           </View>
 
@@ -185,7 +211,7 @@ export default function BlueskyLoginScreen() {
                 style={{ marginRight: spacing.sm }}
               />
               <Text style={styles.infoText}>
-                Your credentials are securely used to connect with Bluesky. Session tokens are stored locally.
+                Your data is encrypted and secure. We'll never share your information.
               </Text>
             </View>
           </View>
@@ -212,29 +238,18 @@ const createStyles = (colors: any, spacing: any, radius: any, typography: any) =
     },
     header: {
       alignItems: 'center',
-      marginBottom: spacing.xxl,
-      position: 'relative',
+      marginTop: spacing.xl,
+      marginBottom: spacing.xl,
     },
-    backButton: {
-      position: 'absolute',
-      left: 0,
-      top: 0,
-      padding: spacing.sm,
-      zIndex: 10,
-    },
-    logoContainer: {
-      width: 80,
-      height: 80,
-      borderRadius: radius.xl,
-      backgroundColor: colors.accentSubtle,
-      justifyContent: 'center',
-      alignItems: 'center',
-      marginBottom: spacing.lg,
+    logo: {
+      width: 100,
+      height: 100,
+      marginBottom: spacing.md,
     },
     title: {
       ...typography.largeTitle,
       color: colors.textPrimary,
-      marginBottom: spacing.sm,
+      marginBottom: spacing.xs,
     },
     subtitle: {
       ...typography.body,
@@ -242,7 +257,7 @@ const createStyles = (colors: any, spacing: any, radius: any, typography: any) =
     },
     form: {
       gap: spacing.lg,
-      marginBottom: spacing.xxl,
+      marginBottom: spacing.xl,
     },
     inputGroup: {
       gap: spacing.sm,
@@ -261,16 +276,11 @@ const createStyles = (colors: any, spacing: any, radius: any, typography: any) =
       borderColor: colors.border,
       paddingHorizontal: spacing.md,
       height: 48,
+      gap: spacing.sm,
     },
     inputContainerFocused: {
       borderColor: colors.accent,
       borderWidth: 2,
-    },
-    handlePrefix: {
-      ...typography.body,
-      color: colors.textTertiary,
-      marginRight: spacing.xs,
-      fontWeight: '600',
     },
     input: {
       flex: 1,
@@ -279,7 +289,33 @@ const createStyles = (colors: any, spacing: any, radius: any, typography: any) =
       padding: 0,
     },
     passwordToggle: {
-      padding: spacing.sm,
+      padding: spacing.xs,
+    },
+    authButton: {
+      backgroundColor: colors.accent,
+      borderRadius: radius.md,
+      height: 48,
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginTop: spacing.md,
+    },
+    authButtonDisabled: {
+      opacity: 0.6,
+    },
+    authButtonText: {
+      ...typography.headline,
+      color: '#FFFFFF',
+      fontWeight: '600',
+    },
+    toggleButton: {
+      alignItems: 'center',
+      paddingVertical: spacing.sm,
+    },
+    toggleText: {
+      ...typography.body,
+    },
+    toggleLink: {
+      fontWeight: '600',
     },
     errorBox: {
       flexDirection: 'row',
@@ -294,22 +330,6 @@ const createStyles = (colors: any, spacing: any, radius: any, typography: any) =
       flex: 1,
       ...typography.body,
       color: colors.error,
-    },
-    loginButton: {
-      backgroundColor: colors.accent,
-      borderRadius: radius.md,
-      height: 48,
-      justifyContent: 'center',
-      alignItems: 'center',
-      marginTop: spacing.md,
-    },
-    loginButtonDisabled: {
-      opacity: 0.6,
-    },
-    loginButtonText: {
-      ...typography.headline,
-      color: '#FFFFFF',
-      fontWeight: '600',
     },
     infoSection: {
       gap: spacing.md,

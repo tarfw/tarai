@@ -1,0 +1,2 @@
+export const SUPABASE_URL = 'https://erkapwbrlflitysminxq.supabase.co';
+export const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVya2Fwd2JybGZsaXR5c21pbnhxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc3ODkyMjEsImV4cCI6MjA4MzM2NTIyMX0.mSsWvHAeM-imMLjGsWC6StgEU5cD1ArDPxN2gYq4ufI';

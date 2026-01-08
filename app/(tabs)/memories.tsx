@@ -13,56 +13,56 @@ import {
   Pressable,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { getAllNodes, searchNodes, deleteNode, getNodeStats } from '@/services/nodeService';
-import { COMMERCE_CATEGORIES } from '@/services/vectorStores/nodeVectorStore';
-import type { NodeRecord, NodeType, NodeStatus } from '@/types/node';
+import { getAllMemories, searchMemories, deleteMemory, getMemoryStats } from '@/services/memoryService';
+import { COMMERCE_CATEGORIES } from '@/services/vectorStores/memoryVectorStore';
+import type { MemoryRecord, MemoryType, MemoryStatus } from '@/types/memory';
 import { useFocusEffect, router } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 
-const STATUS_CONFIG: Record<NodeStatus, { color: string }> = {
+const STATUS_CONFIG: Record<MemoryStatus, { color: string }> = {
   active: { color: '#22c55e' },
   pending: { color: '#f59e0b' },
   completed: { color: '#3b82f6' },
   cancelled: { color: '#ef4444' },
 };
 
-export default function NodesScreen() {
+export default function MemoriesScreen() {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
-  const [nodes, setNodes] = useState<NodeRecord[]>([]);
-  const [filteredNodes, setFilteredNodes] = useState<NodeRecord[]>([]);
+  const [memories, setMemories] = useState<MemoryRecord[]>([]);
+  const [filteredMemories, setFilteredMemories] = useState<MemoryRecord[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
-  const [selectedItem, setSelectedItem] = useState<NodeRecord | null>(null);
+  const [selectedItem, setSelectedItem] = useState<MemoryRecord | null>(null);
   const [stats, setStats] = useState({ total: 0, byType: {} as Record<string, number>, byStatus: {} as Record<string, number> });
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useFocusEffect(
     useCallback(() => {
-      loadNodes();
+      loadMemories();
       loadStats();
     }, [])
   );
 
-  const loadNodes = async () => {
+  const loadMemories = async () => {
     try {
-      const allNodes = await getAllNodes();
-      const commerceNodes = allNodes.filter(
+      const allMemories = await getAllMemories();
+      const commerceMemories = allMemories.filter(
         (n) => !['variant', 'inventory', 'store', 'cart', 'search'].includes(n.type)
       );
-      setNodes(commerceNodes);
-      setFilteredNodes(commerceNodes);
+      setMemories(commerceMemories);
+      setFilteredMemories(commerceMemories);
     } catch (e) {
-      console.error('Failed to load nodes', e);
+      console.error('Failed to load memories', e);
     }
   };
 
   const loadStats = async () => {
     try {
-      const nodeStats = await getNodeStats();
-      setStats(nodeStats);
+      const memoryStats = await getMemoryStats();
+      setStats(memoryStats);
     } catch (e) {
       console.error('Failed to load stats', e);
     }
@@ -74,15 +74,15 @@ export default function NodesScreen() {
 
     if (query.trim().length === 0) {
       setIsSearching(false);
-      setFilteredNodes(nodes);
+      setFilteredMemories(memories);
       return;
     }
 
     searchTimeoutRef.current = setTimeout(async () => {
       setIsSearching(true);
       try {
-        const results = await searchNodes(query, {}, 30);
-        setFilteredNodes(results);
+        const results = await searchMemories(query, {}, 30);
+        setFilteredMemories(results);
       } catch (e) {
         console.error('Search failed', e);
       }
@@ -92,18 +92,18 @@ export default function NodesScreen() {
   const handleClearSearch = () => {
     setSearchQuery('');
     setIsSearching(false);
-    setFilteredNodes(nodes);
+    setFilteredMemories(memories);
   };
 
   const handleAddPress = () => {
-    router.push('/node/add');
+    router.push('/memory/add');
   };
 
-  const handleItemPress = (item: NodeRecord) => {
-    router.push(`/node/add?id=${item.id}&mode=edit`);
+  const handleItemPress = (item: MemoryRecord) => {
+    router.push(`/memory/add?id=${item.id}&mode=edit`);
   };
 
-  const handleMorePress = (item: NodeRecord) => {
+  const handleMorePress = (item: MemoryRecord) => {
     setSelectedItem(item);
     setMenuVisible(true);
   };
@@ -111,25 +111,25 @@ export default function NodesScreen() {
   const handleEdit = () => {
     setMenuVisible(false);
     if (selectedItem) {
-      router.push(`/node/add?id=${selectedItem.id}&mode=edit`);
+      router.push(`/memory/add?id=${selectedItem.id}&mode=edit`);
     }
   };
 
   const handleDelete = () => {
     setMenuVisible(false);
     if (selectedItem) {
-      Alert.alert('Delete Node', `Are you sure you want to delete "${selectedItem.title}"?`, [
+      Alert.alert('Delete Memory', `Are you sure you want to delete "${selectedItem.title}"?`, [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
             try {
-              await deleteNode(selectedItem.id);
-              loadNodes();
+              await deleteMemory(selectedItem.id);
+              loadMemories();
               loadStats();
             } catch (error) {
-              Alert.alert('Error', 'Failed to delete node.');
+              Alert.alert('Error', 'Failed to delete memory.');
             }
           },
         },
@@ -137,13 +137,13 @@ export default function NodesScreen() {
     }
   };
 
-  
+
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top + 16 }]}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Nodes</Text>
+        <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Memories</Text>
         <TouchableOpacity style={[styles.addButton, { backgroundColor: colors.accent }]} onPress={handleAddPress}>
           <FontAwesome6 name="plus" size={18} color="#FFFFFF" />
         </TouchableOpacity>
@@ -154,7 +154,7 @@ export default function NodesScreen() {
         <View style={[styles.searchBar, { backgroundColor: colors.surface, borderColor: isFocused ? colors.accent : colors.border }]}>
           <FontAwesome6 name="magnifying-glass" size={16} color={colors.textTertiary} />
           <TextInput
-            placeholder="Search nodes..."
+            placeholder="Search memories..."
             value={searchQuery}
             onChangeText={handleSearch}
             onFocus={() => setIsFocused(true)}
@@ -173,28 +173,28 @@ export default function NodesScreen() {
 
 
 
-      {/* Nodes List */}
+      {/* Memories List */}
       <View style={styles.listWrapper}>
-        {filteredNodes.length === 0 ? (
+        {filteredMemories.length === 0 ? (
           <View style={styles.emptyState}>
             <View style={[styles.emptyIconContainer, { backgroundColor: colors.surface }]}>
               <FontAwesome6 name="cube" size={40} color={colors.textTertiary} />
             </View>
-            <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>No nodes found</Text>
+            <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>No memories found</Text>
             <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
-              Create your first node
+              Create your first memory
             </Text>
             <TouchableOpacity style={[styles.emptyButton, { backgroundColor: colors.accent }]} onPress={handleAddPress}>
               <FontAwesome6 name="plus" size={14} color="#FFFFFF" />
-              <Text style={styles.emptyButtonText}>Create Node</Text>
+              <Text style={styles.emptyButtonText}>Create Memory</Text>
             </TouchableOpacity>
           </View>
         ) : (
           <FlatList
-            data={filteredNodes}
+            data={filteredMemories}
             keyExtractor={(item) => item.id}
             renderItem={({ item }) => (
-              <NodeCard
+              <MemoryCard
                 item={item}
                 colors={colors}
                 onPress={() => handleItemPress(item)}
@@ -240,14 +240,14 @@ export default function NodesScreen() {
   );
 }
 
-function NodeCard({
+function MemoryCard({
   item,
   colors,
   onPress,
   onMore,
   showSimilarity,
 }: {
-  item: NodeRecord;
+  item: MemoryRecord;
   colors: any;
   onPress: () => void;
   onMore: () => void;
@@ -261,19 +261,19 @@ function NodeCard({
   return (
     <TouchableOpacity
       onPress={onPress}
-      style={[styles.nodeCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
+      style={[styles.memoryCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
       activeOpacity={0.7}
     >
-      <View style={styles.nodeHeader}>
-        <View style={styles.nodeHeaderLeft}>
-          <Text style={styles.nodeIcon}>{category?.icon || '📦'}</Text>
-          <View style={styles.nodeHeaderInfo}>
-            <Text style={[styles.nodeTitle, { color: colors.textPrimary }]} numberOfLines={1}>
+      <View style={styles.memoryHeader}>
+        <View style={styles.memoryHeaderLeft}>
+          <Text style={styles.memoryIcon}>{category?.icon || '📦'}</Text>
+          <View style={styles.memoryHeaderInfo}>
+            <Text style={[styles.memoryTitle, { color: colors.textPrimary }]} numberOfLines={1}>
               {item.title || 'Untitled'}
             </Text>
-            <View style={styles.nodeMeta}>
+            <View style={styles.memoryMeta}>
               <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
-              <Text style={[styles.nodeStatus, { color: statusColor }]}>
+              <Text style={[styles.memoryStatus, { color: statusColor }]}>
                 {item.status || 'active'}
               </Text>
             </View>
@@ -284,11 +284,11 @@ function NodeCard({
         </TouchableOpacity>
       </View>
 
-      <View style={styles.nodeFooter}>
+      <View style={styles.memoryFooter}>
         <Text style={[styles.categoryText, { color: colors.textSecondary }]}>
           {category?.label || item.type}
         </Text>
-        <Text style={[styles.nodeValue, { color: colors.textPrimary }]}>
+        <Text style={[styles.memoryValue, { color: colors.textPrimary }]}>
           {item.value > 0 ? `₹${item.value}` : 'Free'}
         </Text>
       </View>
@@ -392,37 +392,37 @@ const styles = StyleSheet.create({
   listContent: {
     paddingHorizontal: 20,
   },
-  nodeCard: {
+  memoryCard: {
     borderRadius: 12,
     borderWidth: 1,
     padding: 16,
     marginBottom: 12,
     position: 'relative',
   },
-  nodeHeader: {
+  memoryHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     marginBottom: 12,
   },
-  nodeHeaderLeft: {
+  memoryHeaderLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
     flex: 1,
   },
-  nodeIcon: {
+  memoryIcon: {
     fontSize: 32,
   },
-  nodeHeaderInfo: {
+  memoryHeaderInfo: {
     flex: 1,
     gap: 4,
   },
-  nodeTitle: {
+  memoryTitle: {
     fontSize: 16,
     fontWeight: '600',
   },
-  nodeMeta: {
+  memoryMeta: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
@@ -432,7 +432,7 @@ const styles = StyleSheet.create({
     height: 8,
     borderRadius: 4,
   },
-  nodeStatus: {
+  memoryStatus: {
     fontSize: 12,
     fontWeight: '500',
     textTransform: 'capitalize',
@@ -440,7 +440,7 @@ const styles = StyleSheet.create({
   moreButton: {
     padding: 4,
   },
-  nodeFooter: {
+  memoryFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -450,7 +450,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     textTransform: 'capitalize',
   },
-  nodeValue: {
+  memoryValue: {
     fontSize: 16,
     fontWeight: '700',
   },
