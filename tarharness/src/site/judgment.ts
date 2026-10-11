@@ -71,16 +71,6 @@ export interface CreateJudgment {
   tone: ToneToken | null;
   density: DensityToken | null;
   heroPattern?: HeroPattern | null;
-  // Compat helpers for transitional callers
-  category?: string | null;
-  theme?: string | null;
-  columns?: number | null;
-  heroStyle?: 'fullbleed_16_6' | 'split_16_9' | null;
-  flow?: string | null;
-  quickAdd?: boolean | null;
-  purposes?: string[];
-  assets?: string[];
-  enquiry?: boolean | null;
 }
 
 /**
@@ -214,15 +204,6 @@ export async function fanOut(
       tone: 'canvas',
       density: 2,
       heroPattern: 'split',
-      category: 'goods',
-      theme: 'dark-luxury',
-      columns: 3,
-      heroStyle: 'fullbleed_16_6',
-      flow: 'commerce_first',
-      quickAdd: true,
-      purposes: ['header', 'catalog', 'contact'],
-      assets: [],
-      enquiry: true,
     };
   }
 
@@ -275,34 +256,7 @@ export async function fanOut(
     ? heroChoice.choice
     : 'split';
 
-  const purposes = ['header'];
-  if (spotlight) purposes.push('spotlight');
-  purposes.push(kind === 'food' ? 'menu' : kind === 'services' ? 'services' : 'catalog');
-  if (story) purposes.push('story');
-  if (trust) purposes.push('trust');
-  purposes.push('contact');
-
-  return {
-    kind,
-    style,
-    spotlight,
-    story,
-    trust,
-    lead,
-    typography,
-    tone,
-    density,
-    heroPattern,
-    category: kind,
-    theme: style,
-    columns: density === 1 ? 4 : density === 3 ? 2 : 3,
-    heroStyle: 'fullbleed_16_6',
-    flow: lead === 'spotlight' ? 'classic_lookbook' : 'commerce_first',
-    quickAdd: true,
-    purposes,
-    assets: [],
-    enquiry: true,
-  };
+  return { kind, style, spotlight, story, trust, lead, typography, tone, density, heroPattern };
 }
 
 export interface EditJudgment {

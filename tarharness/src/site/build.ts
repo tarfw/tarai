@@ -26,7 +26,7 @@ import {
   catalogSectionFor,
   checkPublishGate,
   compileSectionOrder,
-  defaultBlueprint as createDefaultBlueprint,
+  defaultBlueprint,
   type Blueprint,
   type BusinessKind,
   type DensityToken,
@@ -107,10 +107,6 @@ const padFor = (density: DensityToken | Density): string =>
 const style = (density: DensityToken | Density, tone?: ToneToken | Tone): StyleSet => ({
   base: { pad: padFor(density), ...(tone && TONE_STYLE[tone] ? TONE_STYLE[tone] : {}) },
 });
-
-export function defaultBlueprint(kind: BusinessKind = 'goods', brief?: SiteDocument['brief']): Blueprint {
-  return createDefaultBlueprint(kind);
-}
 
 function whatsappUrl(phone: string | undefined, message: string): string {
   if (!phone) return '/contact';
