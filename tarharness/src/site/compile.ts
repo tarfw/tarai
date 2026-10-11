@@ -157,8 +157,7 @@ function renderSection(section: Section, context: RenderContext): string {
     } else if (isHero) {
       option = context.doc.blueprint?.heroPattern;
     } else if (isFooter) {
-      option = (context.doc.blueprint as Record<string, unknown> | undefined)?.footerStyle as string | undefined
-        || (context.doc.blueprint?.headerStyle === 'cowboy' || context.doc.blueprint?.heroPattern === 'cowboy' ? 'cowboy' : undefined);
+      option = (context.doc.blueprint as Record<string, unknown> | undefined)?.footerStyle as string | undefined;
     } else if (section.purpose === 'notice') {
       const textNode = section.nodes?.find((n) => n.kind === 'text');
       const text = String(textNode?.props?.text || '');
@@ -299,8 +298,7 @@ export async function compileDocument(doc: SiteDocument, options: CompileOptions
       }
     }
     if (!hasFooter) {
-      const footerOption = (doc.blueprint as Record<string, unknown> | undefined)?.footerStyle as string | undefined
-        || (doc.blueprint?.headerStyle === 'cowboy' || doc.blueprint?.heroPattern === 'cowboy' ? 'cowboy' : undefined);
+      const footerOption = (doc.blueprint as Record<string, unknown> | undefined)?.footerStyle as string | undefined;
       const footerPrimitive = getPrimitive('footer', footerOption);
       renderedSections.push(footerPrimitive.render({ id: 'site-footer', purpose: 'footer', nodes: [], layout: { kind: 'flow' } }, contexts()));
     }
@@ -370,8 +368,7 @@ export async function compileDocument(doc: SiteDocument, options: CompileOptions
         }
       }
       if (!hasFooter) {
-        const footerOption = (variant.blueprint as Record<string, unknown> | undefined)?.footerStyle as string | undefined
-          || (variant.blueprint?.headerStyle === 'cowboy' || variant.blueprint?.heroPattern === 'cowboy' ? 'cowboy' : undefined);
+        const footerOption = (variant.blueprint as Record<string, unknown> | undefined)?.footerStyle as string | undefined;
         const footerPrimitive = getPrimitive('footer', footerOption);
         renderedSections.push(footerPrimitive.render({ id: 'site-footer', purpose: 'footer', nodes: [], layout: { kind: 'flow' } }, contexts()));
       }

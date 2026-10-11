@@ -13,8 +13,8 @@ export type TypographyToken = 'serif' | 'sans' | 'grotesk';
 export type ToneToken = 'canvas' | 'surface' | 'ink';
 export type DensityToken = 1 | 2 | 3;
 export type CatalogLayout = 'flat' | 'pills' | 'rails';
-export type HeaderStyle = 'split' | 'fullbleed' | 'minimal' | 'floating_pill' | 'cowboy';
-export type HeroPattern = 'split' | 'commerce' | 'typography' | 'bg_image' | 'minimal' | 'fullbleed' | 'centered_atmospheric' | 'cowboy';
+export type HeaderStyle = 'split' | 'fullbleed' | 'minimal' | 'floating_pill';
+export type HeroPattern = 'split' | 'commerce' | 'typography' | 'bg_image' | 'minimal' | 'fullbleed' | 'centered_atmospheric';
 
 export interface SectionSummary {
   kind: SectionKind;
@@ -63,8 +63,8 @@ export const SECTION_KINDS: readonly SectionKind[] = [
 ] as const;
 
 export const BUSINESS_KINDS: readonly BusinessKind[] = ['goods', 'food', 'services', 'wholesale'] as const;
-export const HEADER_STYLES: readonly HeaderStyle[] = ['split', 'fullbleed', 'minimal', 'floating_pill', 'cowboy'] as const;
-export const HERO_PATTERNS: readonly HeroPattern[] = ['split', 'commerce', 'typography', 'bg_image', 'minimal', 'fullbleed', 'centered_atmospheric', 'cowboy'] as const;
+export const HEADER_STYLES: readonly HeaderStyle[] = ['split', 'fullbleed', 'minimal', 'floating_pill'] as const;
+export const HERO_PATTERNS: readonly HeroPattern[] = ['split', 'commerce', 'typography', 'bg_image', 'minimal', 'fullbleed', 'centered_atmospheric'] as const;
 export const TYPOGRAPHY_TOKENS: readonly TypographyToken[] = ['serif', 'sans', 'grotesk'] as const;
 export const TONE_TOKENS: readonly ToneToken[] = ['canvas', 'surface', 'ink'] as const;
 export const DENSITY_TOKENS: readonly DensityToken[] = [1, 2, 3] as const;

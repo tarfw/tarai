@@ -12,14 +12,12 @@ import type { RenderContext } from './primitives/nodes.ts';
 import * as HeaderMinimal from './primitives/header/minimal.ts';
 import * as HeaderFloatingPill from './primitives/header/floating_pill.ts';
 import * as HeaderCenteredLogo from './primitives/header/centered_logo.ts';
-import * as HeaderCowboy from './primitives/header/cowboy.ts';
 
 // Hero primitives
 import * as HeroSplit from './primitives/hero/split.ts';
 import * as HeroAtmospheric from './primitives/hero/atmospheric.ts';
 import * as HeroCommerce from './primitives/hero/commerce.ts';
 import * as HeroTypography from './primitives/hero/typography.ts';
-import * as HeroCowboy from './primitives/hero/cowboy.ts';
 
 // Announcement primitives
 import * as AnnouncementScrolling from './primitives/announcement/scrolling.ts';
@@ -30,7 +28,6 @@ import * as CatalogCleanGrid from './primitives/catalog/clean_grid.ts';
 
 // Footer primitives
 import * as FooterContactCard from './primitives/footer/contact_card.ts';
-import * as FooterCowboy from './primitives/footer/cowboy.ts';
 
 // Generic fallback renderer
 import { renderNodes } from './primitives/nodes.ts';
@@ -50,13 +47,11 @@ export function getPrimitive(purpose: string, option?: string): PrimitiveRendere
     }
     case 'navigation':
     case 'header': {
-      if (option === 'cowboy' || option === 'fullbleed') return HeaderCowboy;
       if (option === 'floating_pill') return HeaderFloatingPill;
       if (option === 'centered_logo') return HeaderCenteredLogo;
       return HeaderMinimal;
     }
     case 'hero': {
-      if (option === 'cowboy') return HeroCowboy;
       if (option === 'centered_atmospheric' || option === 'atmospheric' || option === 'bg_image') return HeroAtmospheric;
       if (option === 'commerce') return HeroCommerce;
       if (option === 'typography') return HeroTypography;
@@ -69,7 +64,6 @@ export function getPrimitive(purpose: string, option?: string): PrimitiveRendere
       return CatalogCleanGrid;
     }
     case 'footer': {
-      if (option === 'cowboy' || option === 'minimal') return FooterCowboy;
       return FooterContactCard;
     }
     default: {

@@ -54,11 +54,11 @@ export type TypographyToken = 'serif' | 'sans' | 'grotesk';
 export type ToneToken = 'canvas' | 'surface' | 'ink';
 export type DensityToken = 1 | 2 | 3;
 export type CatalogLayout = 'flat' | 'pills' | 'rails';
-export type HeaderStyle = 'split' | 'fullbleed' | 'minimal' | 'floating_pill' | 'cowboy';
-export const HEADER_STYLES = ['split', 'fullbleed', 'minimal', 'floating_pill', 'cowboy'] as const;
+export type HeaderStyle = 'split' | 'fullbleed' | 'minimal' | 'floating_pill';
+export const HEADER_STYLES = ['split', 'fullbleed', 'minimal', 'floating_pill'] as const;
 
-export type HeroPattern = 'split' | 'commerce' | 'typography' | 'bg_image' | 'minimal' | 'fullbleed' | 'centered_atmospheric' | 'cowboy';
-export const HERO_PATTERNS = ['split', 'commerce', 'typography', 'bg_image', 'minimal', 'fullbleed', 'centered_atmospheric', 'cowboy'] as const;
+export type HeroPattern = 'split' | 'commerce' | 'typography' | 'bg_image' | 'minimal' | 'fullbleed' | 'centered_atmospheric';
+export const HERO_PATTERNS = ['split', 'commerce', 'typography', 'bg_image', 'minimal', 'fullbleed', 'centered_atmospheric'] as const;
 
 export interface SectionSummary {
   kind: SectionKind;

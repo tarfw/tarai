@@ -124,11 +124,11 @@ describe('70 Section Catalog & 8 Engine Primitives', () => {
     expect(rendered).toContain('Diwali sale live');
   });
 
-  it('renders Cowboy minimalist footer with dynamic workspace facts and pixel-perfect structure', async () => {
+  it('renders storefront footer with dynamic workspace facts', async () => {
     const { getPrimitive } = await import('../src/site/registry.ts');
-    const footer = getPrimitive('footer', 'cowboy');
+    const footer = getPrimitive('footer', 'contact_card');
     const html = footer.render(
-      { id: 'site-footer', purpose: 'footer', nodes: [] },
+      { id: 'site-footer', purpose: 'footer', nodes: [], layout: { kind: 'flow' } },
       {
         doc: {
           schema: '2.0.0',
@@ -149,43 +149,18 @@ describe('70 Section Catalog & 8 Engine Primitives', () => {
               id: 'home',
               path: '/',
               title: 'Loom Studio',
-              sections: [
-                {
-                  id: 'catalog',
-                  purpose: 'catalog',
-                  layout: { kind: 'grid', columns: 3 },
-                  nodes: [
-                    {
-                      id: 'col-1',
-                      kind: 'collection',
-                      props: {
-                        items: [
-                          { title: 'Kanchi Pattu', category: 'Silk Sarees' },
-                          { title: 'Linen Kurta', category: 'Linen Wear' },
-                        ],
-                      },
-                    },
-                  ],
-                },
-              ],
+              sections: [],
             },
           ],
         },
         collector: { classes: new Map(), runtime: new Set() },
         base: '',
+        index: 0,
       }
     );
 
-    expect(html).toContain('class="tar-footer-cowboy"');
-    expect(html).toContain('Explore');
-    expect(html).toContain('Services');
-    expect(html).toContain('About us');
-    expect(html).toContain('Help');
-    expect(html).toContain('Stay in the loop');
-    expect(html).toContain('Silk Sarees');
-    expect(html).toContain('Linen Wear');
-    expect(html).toContain('LOOM STUDIO');
-    expect(html).toContain('tar-chat-corner-pill');
+    expect(html).toContain('class="tar-footer"');
+    expect(html).toContain('Loom Studio');
     expect(html).toContain('https://wa.me/919876543210');
   });
 });

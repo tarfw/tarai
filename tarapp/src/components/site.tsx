@@ -109,12 +109,6 @@ export const HERO_OPTIONS: readonly HeroOptionItem[] = [
     icon: 'scan-outline',
   },
   {
-    key: 'cowboy',
-    name: 'Cinematic full screen',
-    desc: 'Oversized statement title, feature badges, and round booking pill.',
-    icon: 'bicycle-outline',
-  },
-  {
     key: 'minimal',
     name: 'Small and tidy',
     desc: 'Name, one line about the shop, and quick links to your items.',
@@ -130,12 +124,6 @@ export interface HeaderOptionItem {
 }
 
 export const HEADER_OPTIONS: readonly HeaderOptionItem[] = [
-  {
-    key: 'cowboy',
-    name: 'Cinematic menu bar',
-    desc: 'Transparent bar with brand star, nav links, account, cart and pill button.',
-    icon: 'sparkles-outline',
-  },
   {
     key: 'split',
     name: 'Photo beside name',
@@ -749,9 +737,6 @@ export default function SiteScreen({
 
                   const isFooter = sec.purpose === 'footer' || sec.id === 'site-footer' || sec.id === 'footer';
                   if (isFooter) {
-                    const isCowboy =
-                      site?.blueprint?.headerStyle === 'cowboy' ||
-                      site?.blueprint?.heroPattern === 'cowboy';
                     return (
                       <View
                         key={sec.id || `footer-${idx}`}
@@ -762,7 +747,7 @@ export default function SiteScreen({
                           <View>
                             <Text style={styles.sectionRowTitle}>Bottom of the page</Text>
                             <Text style={styles.sectionRowOption}>
-                              {isCowboy ? 'Cowboy Minimalist' : 'Storefront Footer'}
+                              'Storefront Footer'
                             </Text>
                           </View>
                         </View>
