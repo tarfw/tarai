@@ -1,0 +1,24 @@
+{
+  "id": "list",
+  "type": "menu",
+  "models": ["food"],
+  "needs": { "items": "required" },
+  "layout": { "kind": "stack" },
+  "slots": {
+    "items": { "source": "items[0..11]", "count": 12 }
+  },
+  "tokens": {
+    "text": "color.ink",
+    "background": "color.canvas",
+    "muted": "color.muted",
+    "border": "color.border"
+  },
+  "settings": {
+    "price": { "type": "boolean", "default": true }
+  },
+  "fallback": {},
+  "source": {
+    "pattern": "name and price on one line, grouped by kind, one rule between rows",
+    "reference": "structural pattern only; no copy, colour or asset came from anywhere"
+  }
+}

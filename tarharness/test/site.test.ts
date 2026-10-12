@@ -3,6 +3,7 @@ import { Effect } from 'effect';
 import { afterEach, describe, expect, it } from 'vitest';
 import { WORKSPACE_SCHEMA } from '../src/db/schema.ts';
 import { executeGateway } from '../src/gateway/actions.ts';
+import { siteRegenerate } from '../src/site/store.ts';
 import type { AccessContext } from '../src/types.ts';
 import type { SiteDocument } from '../src/site/document.ts';
 
@@ -28,6 +29,9 @@ async function createTestWorkspace() {
   const at = Date.now();
   await client.execute({ sql: "INSERT INTO records(id,type,title,state,data,owner,version,created,updated) VALUES('capability','capability','Capabilities','active',?, 'owner_1',1,?,?)",
     args: [JSON.stringify({ site: true, pos: false, commerce: false }), at, at] });
+  // A real published record: the storefront shows what the owner sells, never a stand-in.
+  await client.execute({ sql: "INSERT INTO records(id,type,title,state,data,owner,version,created,updated) VALUES('prod_menu','pos.settings','Store','active','{\"currency\":\"INR\"}','owner_1',1,?,?)", args: [at, at] });
+  await client.execute({ sql: "INSERT INTO records(id,type,title,state,data,owner,version,created,updated) VALUES('prod_garlic','pos.product','Garlic Bread','active','{\"price\":15000,\"shortDescription\":\"Fresh with herbs\"}','owner_1',1,?,?)", args: [at, at] });
   return client;
 }
 
@@ -37,7 +41,7 @@ const ownerAccess: AccessContext = {
   member: { workspaceId: 'ws_slice', userId: 'owner_1', role: 'owner', state: 'active' },
 };
 
-async function generate(client: Awaited<ReturnType<typeof createTestWorkspace>>, key: string, input: Record<string, unknown> = { title: 'Slice House', prompt: 'Pizza' }) {
+async function generate(client: Awaited<ReturnType<typeof createTestWorkspace>>, key: string, input: Record<string, unknown> = { title: 'Slice House', prompt: 'Pizza', records: ['prod_garlic'] }) {
   return Effect.runPromise(executeGateway(client, ownerAccess, { actionId: 'site.generate', idempotencyKey: key, input }));
 }
 
@@ -58,8 +62,17 @@ const releaseFile = (site: SiteDocument, bucket: R2Bucket & { objects: Map<strin
   return String(bucket.objects.get(file.key));
 };
 
+/** What the owner does to sell something: a variant with a current channel price. */
+async function addChannelItem(client: Awaited<ReturnType<typeof createTestWorkspace>>, id: string, title: string, amount: number): Promise<void> {
+  const at = Date.now();
+  await client.execute({ sql: "INSERT INTO records(id,type,title,state,data,owner,version,created,updated) VALUES(?,'variant',?,'active',?,'owner_1',1,?,?)",
+    args: [id, title, JSON.stringify({ item: 'prod_menu', description: `Fresh ${title}` }), at, at] });
+  await client.execute({ sql: "INSERT INTO records(id,type,title,state,data,owner,version,created,updated) VALUES(?,'price',?,'active',?,'owner_1',1,?,?)",
+    args: [`${id}_price`, `Price of ${title}`, JSON.stringify({ variant: id, channel: 'default', amount, currency: 'INR', starts: at - 1000 }), at, at] });
+}
+
 describe('TAR Site lifecycle', () => {
-  it('composes a valid single-page v2 draft with zero client JavaScript and no invented facts', async () => {
+  it('composes a valid single-page v2 draft whose only script is its own interaction runtime', async () => {
     const client = await createTestWorkspace();
     const first = await generate(client, 'compose-default');
     expect(first.version).toBe(1);
@@ -73,17 +86,112 @@ describe('TAR Site lifecycle', () => {
     expect(preview).toContain('<meta property="og:title"');
     expect(preview).toContain('application/ld+json');
     expect(preview).toContain('Slice House');
-    expect(preview).not.toContain('<script src='); // No interaction runtime until a node asks for one
+    expect(preview).toContain('<script src="/site.js" defer>'); // A header menu cannot open without it
+    expect(preview).not.toMatch(/<script[^>]+src="https?:/); // never a third-party script
     expect(preview).not.toContain('Signature Margherita');
     expect(site.claims ?? []).toEqual([]);
+  });
+
+  it('holds an empty storefront back and names what the merchant still has to supply', async () => {
+    const client = await createTestWorkspace();
+    const bucket = releaseBucket();
+    const empty = await generate(client, 'gate-empty', { title: 'Slice House', prompt: 'Pizza' });
+    expect(empty.state).toBe('draft');
+    expect(empty.gate).toMatchObject({ ok: false });
+    expect(((empty.missing ?? []) as { need: string }[]).map((entry) => entry.need)).toContain('item');
+    expect((empty.site as SiteDocument).blueprint!.gate.ok).toBe(false);
+
+    const preview = (empty.preview as { html: string }).html;
+    // The honest empty shelf: nothing is invented in place of the owner's catalog.
+    expect(preview).toContain('arriving shortly');
+    for (const standIn of ['Signature Margherita', 'Garlic Bread', 'Product 1', '₹']) expect(preview).not.toContain(standIn);
+
+    const reviewed = await candidate(client, bucket, String(empty.siteId), 'gate-compile');
+    await expect(Effect.runPromise(executeGateway(client, ownerAccess, {
+      actionId: 'site.publish', idempotencyKey: 'gate-publish', input: reviewed,
+    }, { siteReleases: bucket }))).rejects.toThrow('not ready to publish');
+  });
+
+  it('publishes the store in one call, and answers with what is missing when it cannot', async () => {
+    const client = await createTestWorkspace();
+    const bucket = releaseBucket();
+    const draft = await generate(client, 'latest-draft', { title: 'Slice House', prompt: 'Pizza' });
+    const siteId = String(draft.siteId);
+
+    const blocked = await Effect.runPromise(executeGateway(client, ownerAccess, {
+      actionId: 'site.publishLatest', idempotencyKey: 'latest-blocked', input: { siteId },
+    }, { siteReleases: bucket }));
+    expect(blocked.published).toBe(false);
+    expect(blocked.state).toBe('draft');
+    expect(((blocked.missing ?? []) as { need: string }[]).map((entry) => entry.need)).toContain('item');
+    // Nothing was compiled for a store that cannot publish, so the bucket holds no candidate.
+    expect(bucket.objects.size).toBe(0);
+    expect((await storedSite(client, siteId)).currentRelease).toBeFalsy();
+
+    // The owner supplies the item they were told to add, then taps Publish again. One call
+    // rebuilds the draft from the new facts and puts it live.
+    const live = await Effect.runPromise(executeGateway(client, ownerAccess, {
+      actionId: 'site.publishLatest', idempotencyKey: 'latest-live', input: { siteId, records: ['prod_garlic'] },
+    }, { siteReleases: bucket }));
+    expect(live.published).toBe(true);
+    expect(live.state).toBe('live');
+    expect(live.regenerated).toBe(true);
+    const site = await storedSite(client, siteId);
+    expect(site.currentRelease).toBe(String(live.releaseId));
+    expect(site.blueprint!.gate.ok).toBe(true);
+    expect(releaseFile(site, bucket, site.releases!.length - 1, '/index.html')).toContain('Garlic Bread');
+
+    // One merchant tap is one idempotency key: the retry replays, it does not republish.
+    const replay = await Effect.runPromise(executeGateway(client, ownerAccess, {
+      actionId: 'site.publishLatest', idempotencyKey: 'latest-live', input: { siteId, records: ['prod_garlic'] },
+    }, { siteReleases: bucket }));
+    expect(replay).toEqual(live);
+    const events = await client.execute({ sql: 'SELECT action_id FROM events WHERE idempotency_key=?', args: ['latest-live'] });
+    expect(events.rows.map((row) => String(row.action_id))).toEqual(['site.publishLatest']);
+  });
+
+  it('rebuilds a draft when the owner records something new, and leaves a hand-edited store alone', async () => {
+    const client = await createTestWorkspace();
+    const draft = await generate(client, 'regen-draft', { title: 'Slice House', prompt: 'Pizza' });
+    const siteId = String(draft.siteId);
+    const built = await storedSite(client, siteId);
+    expect(built.provenance).toMatchObject({ generator: 'agent', state: built.blueprint!.hash });
+
+    // Nothing the owner recorded has moved, so the sweep passes the store by.
+    expect(await siteRegenerate(client, ownerAccess, {}, siteId)).toMatchObject({ dirty: false });
+
+    // A published channel price is the owner's signal that the item is real and for sale.
+    await addChannelItem(client, 'var_choco', 'Chocolate Bread', 12000);
+    const rebuilt = await siteRegenerate(client, ownerAccess, {}, siteId);
+    expect(rebuilt).toMatchObject({ dirty: true, rebuilt: true });
+    const fresh = await storedSite(client, siteId);
+    expect(fresh.revision).toBeGreaterThan(built.revision);
+    expect(JSON.stringify(fresh.pages)).toContain('Chocolate Bread');
+    expect(fresh.provenance).toMatchObject({ generator: 'agent', state: fresh.blueprint!.hash });
+    // The rebuild read the state it wrote, so the next tick has nothing to do.
+    expect(await siteRegenerate(client, ownerAccess, {}, siteId)).toMatchObject({ dirty: false });
+
+    // A hand edit is the owner's work: the sweep reports it instead of rebuilding over it.
+    await Effect.runPromise(executeGateway(client, ownerAccess, {
+      actionId: 'site.edit', idempotencyKey: 'regen-edit',
+      input: { siteId, base: fresh.revision, operations: [{ op: 'set_text', target: 'hero-title', value: 'Muthu’s own headline' }] },
+    }));
+    await addChannelItem(client, 'var_rasm', 'Rasm Bun', 14000);
+    const held = await siteRegenerate(client, ownerAccess, {}, siteId);
+    expect(held).toMatchObject({ dirty: true, held: 'merchant' });
+    const untouched = await storedSite(client, siteId);
+    expect(untouched.provenance?.generator).toBe('merchant');
+    expect(JSON.stringify(untouched.pages)).toContain('Muthu’s own headline');
+    expect(JSON.stringify(untouched.pages)).not.toContain('Rasm Bun');
   });
 
   it('executes site.generate through the Gateway with idempotency', async () => {
     const client = await createTestWorkspace();
     const req = { actionId: 'site.generate' as const, idempotencyKey: 'site-gen-1',
-      input: { title: 'Slice House', prompt: 'Best wood-fired pizza in Chennai', theme: 'editorial-chalk' } };
+      input: { title: 'Slice House', prompt: 'Best wood-fired pizza in Chennai', style: 'bold' } };
     const first = await Effect.runPromise(executeGateway(client, ownerAccess, req));
     expect(first.siteId).toBeDefined();
+    expect((first.site as SiteDocument).design.theme).toBe('bold');
     expect(first.version).toBe(1);
     const replay = await Effect.runPromise(executeGateway(client, ownerAccess, req));
     expect(replay).toEqual(first);
@@ -366,5 +474,52 @@ describe('TAR Site lifecycle', () => {
     expect(page).toContain('$45.00');
     expect(page).toContain('Butter Croissant');
     expect(page).not.toContain('Staff Only Item');
+  });
+});
+
+describe('design library API', () => {
+  it('serves reviewed designs and nothing the merchant has no business seeing', async () => {
+    const client = await createTestWorkspace();
+    const generated = await generate(client, 'designs-api');
+    const result = await Effect.runPromise(executeGateway(client, ownerAccess, {
+      actionId: 'site.designs', idempotencyKey: 'designs-listed', input: { siteId: String(generated.siteId) },
+    }));
+    const designs = result.designs as { id: string; name: string; desc: string; swatches: string[]; tone: string; density: string }[];
+    expect(designs.map((design) => design.id)).toEqual(['bold', 'luxury', 'warm']);
+    expect(result.default).toBe('luxury');
+    for (const design of designs) {
+      expect(design.swatches.length).toBeGreaterThanOrEqual(3);
+      expect(design.swatches.every((swatch) => /^#[0-9a-f]{6}$/.test(swatch))).toBe(true);
+      expect(design.name).toBeTruthy();
+      expect(design.desc).toBeTruthy();
+    }
+    // parai D13: the source files, their brands and their licence notes stay in the build.
+    const payload = JSON.stringify(result).toLowerCase();
+    for (const leak of ['mollie', 'magic spoon', 'arte', 'high protein', 'refero', 'design1.md', 'license', 'attribution', 'reviewer']) {
+      expect(payload, `designs payload leaked "${leak}"`).not.toContain(leak);
+    }
+  });
+
+  it('answers the sections a model set demands, and accepts models as words', async () => {
+    const client = await createTestWorkspace();
+    const result = await Effect.runPromise(executeGateway(client, ownerAccess, {
+      actionId: 'site.designs', idempotencyKey: 'designs-models', input: { models: 'products, booking, nonsense' },
+    }));
+    expect(result.models).toEqual(['products', 'booking']);
+    const required = result.sections as { required: string[]; optional: string[] };
+    expect(required.required).toEqual(['header', 'hero', 'catalog', 'booking', 'faq', 'policy', 'contact', 'footer']);
+    expect(required.optional).toEqual(['announcement', 'spotlight', 'story', 'trust']);
+  });
+
+  it('reports the stored models when a site is named', async () => {
+    const client = await createTestWorkspace();
+    const generated = await generate(client, 'designs-site-models', { title: 'Kanchi Silks', prompt: 'Handloom silk sarees, custom bridal orders', models: ['products', 'quote'], records: ['prod_garlic'] });
+    const result = await Effect.runPromise(executeGateway(client, ownerAccess, {
+      actionId: 'site.designs', idempotencyKey: 'designs-stored', input: { siteId: String(generated.siteId) },
+    }));
+    expect(result.models).toEqual(['products', 'quote']);
+    const site = generated.site as SiteDocument;
+    expect(['bold', 'luxury', 'warm']).toContain(site.design.theme);
+    expect((site.blueprint?.profile?.models || []).sort()).toEqual(['products', 'quote']);
   });
 });

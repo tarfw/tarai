@@ -8,10 +8,11 @@
  */
 
 import { badRequest } from '../errors.ts';
-import { auditDesign, CATEGORY_IDS, isTokenRef, resolveToken, TONE_KEYS, type Design } from './design.ts';
+import { auditDesign, isTokenRef, resolveToken, TONE_KEYS, type Design } from './design.ts';
+import { COMMERCE_MODELS } from './blueprint.ts';
 import {
   ALIGN_VALUES, ASPECT_VALUES, BORDER_VALUES, DOCUMENT_VERSION, DENSITY_VALUES, EASING_VALUES,
-  JOURNEY_TARGETS, LIMITS, MASK_VALUES, NODE_KINDS, PAD_VALUES, PUBLIC_TYPES, RESERVED_PATHS,
+  JOURNEY_TARGETS, LAYOUT_COLLAPSES, LAYOUT_HEIGHTS, LAYOUT_RATIOS, LIMITS, MASK_VALUES, NODE_KINDS, PAD_VALUES, PUBLIC_TYPES, RESERVED_PATHS,
   SECTION_LAYOUTS, SHADOW_VALUES, SIZE_VALUES, STYLE_KEYS, WIDTH_VALUES,
   type Binding, type Node, type Section, type SiteDocument, type Style, type StyleSet,
 } from './document.ts';
@@ -59,6 +60,30 @@ function checkColorValue(issues: Issue[], design: Design, value: unknown, area: 
     return;
   }
   if (!/^#[0-9a-f]{6}$/i.test(value)) issues.push({ level: 'blocking', area, path, message: `${area} must be a hex colour or a colour token.` });
+}
+
+/**
+ * The grammar knobs a section may ask for (parai §5.1). Each is one word from a code-owned
+ * list, and a knob only exists for the layouts that implement it.
+ */
+function checkLayout(issues: Issue[], design: Design, layout: unknown, path: string): void {
+  const spec = object(layout);
+  const kind = text(spec.kind);
+  const word = (area: string, values: readonly string[], message: string) => {
+    if (spec[area] === undefined) return;
+    if (!values.includes(text(spec[area]))) issues.push({ level: 'blocking', area: 'section', path: `${path}.${area}`, message });
+  };
+  word('ratio', LAYOUT_RATIOS, 'A ratio is one of 50/50, 60/40, 40/60, 2/1 or 1/2.');
+  word('collapse', LAYOUT_COLLAPSES, 'Collapse is stack or keep.');
+  word('height', LAYOUT_HEIGHTS, 'Height is short, tall or full.');
+  if (spec.ratio !== undefined && kind !== 'split') issues.push({ level: 'blocking', area: 'section', path: `${path}.ratio`, message: 'Only a split has a ratio.' });
+  if (spec.collapse !== undefined && kind !== 'split' && kind !== 'row') issues.push({ level: 'blocking', area: 'section', path: `${path}.collapse`, message: 'Only a split or a row says how it collapses.' });
+  if (spec.height !== undefined && kind !== 'overlay') issues.push({ level: 'blocking', area: 'section', path: `${path}.height`, message: 'Only an overlay has a height.' });
+  if (spec.scrim !== undefined) {
+    const scrim = text(spec.scrim);
+    if (kind !== 'overlay') issues.push({ level: 'blocking', area: 'section', path: `${path}.scrim`, message: 'Only an overlay has a scrim.' });
+    else if (!isTokenRef(scrim) || typeof resolveToken(design, scrim) !== 'string') issues.push({ level: 'blocking', area: 'section', path: `${path}.scrim`, message: 'A scrim is a colour token the design carries.' });
+  }
 }
 
 function checkStyle(issues: Issue[], design: Design, set: unknown, path: string): void {
@@ -306,7 +331,15 @@ export function collectIssues(doc: SiteDocument): Issue[] {
   checkText(issues, doc.brief?.goal, 300, 'Brief goal', 'brief.goal', false);
   checkText(issues, doc.brief?.audience, 300, 'Brief audience', 'brief.audience', false);
   checkText(issues, doc.brief?.tone, 300, 'Brief tone', 'brief.tone', false);
-  if (doc.category !== undefined && !(CATEGORY_IDS as readonly string[]).includes(doc.category)) issues.push({ level: 'blocking', area: 'document', path: 'category', message: 'Category must be a registered archetype.' });
+  // `category` is the retired archetype name; models below own it. Accepted, unvalidated, for one release.
+  if (doc.blueprint) {
+    const models = doc.blueprint.profile?.models;
+    if (!Array.isArray(models) || !models.length) issues.push({ level: 'blocking', area: 'document', path: 'blueprint.profile.models', message: 'The blueprint must declare at least one commerce model.' });
+    else if (models.some((model) => !(COMMERCE_MODELS as readonly string[]).includes(model))) issues.push({ level: 'blocking', area: 'document', path: 'blueprint.profile.models', message: 'Commerce models must be registered.' });
+    const gate = doc.blueprint.gate;
+    if (!gate || typeof gate.ok !== 'boolean' || !Array.isArray(gate.missing)) issues.push({ level: 'blocking', area: 'document', path: 'blueprint.gate', message: 'The blueprint must carry a gate result with its missing list.' });
+    if (gate && gate.ok !== true && (!Array.isArray(gate.missing) || !gate.missing.length)) issues.push({ level: 'blocking', area: 'document', path: 'blueprint.gate.missing', message: 'A closed gate must name what the merchant still has to supply.' });
+  }
 
   for (const report of auditDesign(doc.design)) issues.push({ level: report.level, area: `design.${report.area}`, path: 'design', message: report.message });
   for (const key of ['display', 'heading', 'body'] as const) {
@@ -358,10 +391,16 @@ export function collectIssues(doc: SiteDocument): Issue[] {
       if (!(SECTION_LAYOUTS as readonly string[]).includes(text(object(section.layout).kind))) issues.push({ level: 'blocking', area: 'section', path: sat, message: 'Section layout kind is invalid.' });
       const columns = object(section.layout).columns;
       if (columns !== undefined && (typeof columns !== 'number' || columns < 1 || columns > 6)) issues.push({ level: 'blocking', area: 'section', path: sat, message: 'Section columns must be 1 to 6.' });
+      checkLayout(issues, doc.design, section.layout, `${sat}.layout`);
       checkStyle(issues, doc.design, section.style, `${sat}.style`);
       if (!Array.isArray(section.nodes) || section.nodes.length > LIMITS.nodes) { issues.push({ level: 'blocking', area: 'section', path: sat, message: `A section holds at most ${LIMITS.nodes} nodes.` }); return; }
       totalNodes += section.nodes.length;
-      checkNodes(issues, doc, section.nodes, `${sat}.nodes`, nodeIds.node, 1, nodeIds);
+      // Chrome sections render from the document itself, so an empty one is honest.
+      if (!section.nodes.length && section.purpose !== 'header' && section.purpose !== 'footer') {
+        issues.push({ level: 'blocking', area: 'node', path: `${sat}.nodes`, message: 'A container needs at least one child node.' });
+      } else if (section.nodes.length) {
+        checkNodes(issues, doc, section.nodes, `${sat}.nodes`, nodeIds.node, 1, nodeIds);
+      }
       checkBindings(issues, section, sat);
       for (const action of section.actions || []) {
         checkText(issues, action.label, 120, 'Action label', sat, true);

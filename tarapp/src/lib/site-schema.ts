@@ -44,21 +44,19 @@ export interface Style {
 }
 export interface StyleSet { base?: Style; small?: Style; medium?: Style; large?: Style; [key: string]: Style | undefined; }
 export interface Node { id: string; kind: string; props: Record<string, unknown>; style?: StyleSet; children?: Node[]; component?: string; variant?: string }
-export interface Section { id: string; purpose: string; layout: { kind: string; columns?: number; gap?: string; align?: string; width?: string }; style?: StyleSet; nodes: Node[]; bindings?: Record<string, unknown>[] }
+export interface Section { id: string; purpose: string; layout: { kind: string; columns?: number; gap?: string; align?: string; width?: string }; style?: StyleSet; nodes: Node[]; bindings?: Record<string, unknown>[]; recipe?: { id: string; settings?: Record<string, boolean | string> } }
 export interface Page { id: string; path: string; title: string; meta?: { description?: string }; sections: Section[] }
 export interface Journey { id: string; title: string; kind: string; target: string; enabled: boolean; fields: { key: string; label: string; kind: string; required?: boolean }[] }
 export type BusinessKind = 'goods' | 'food' | 'services' | 'wholesale';
-export type SectionKind = 'header' | 'hero' | 'notice' | 'spotlight' | 'catalog' | 'menu' | 'services' | 'story' | 'trust' | 'contact';
+export type SectionKind =
+  | 'header' | 'announcement' | 'hero' | 'spotlight' | 'catalog' | 'menu' | 'booking'
+  | 'story' | 'trust' | 'faq' | 'policy' | 'location' | 'contact' | 'footer';
 export type LeadSection = 'spotlight' | 'catalog' | 'story';
+export type CommerceModel = 'products' | 'food' | 'booking' | 'quote' | 'digital' | 'bulk';
 export type TypographyToken = 'serif' | 'sans' | 'grotesk';
 export type ToneToken = 'canvas' | 'surface' | 'ink';
 export type DensityToken = 1 | 2 | 3;
 export type CatalogLayout = 'flat' | 'pills' | 'rails';
-export type HeaderStyle = 'split' | 'fullbleed' | 'minimal' | 'floating_pill';
-export const HEADER_STYLES = ['split', 'fullbleed', 'minimal', 'floating_pill'] as const;
-
-export type HeroPattern = 'split' | 'commerce' | 'typography' | 'bg_image' | 'minimal' | 'fullbleed' | 'centered_atmospheric';
-export const HERO_PATTERNS = ['split', 'commerce', 'typography', 'bg_image', 'minimal', 'fullbleed', 'centered_atmospheric'] as const;
 
 export interface SectionSummary {
   kind: SectionKind;
@@ -66,24 +64,124 @@ export interface SectionSummary {
   detail: string;
 }
 
+export interface GateNeed { model: CommerceModel; need: string; message: string }
+export interface GateResult { ok: boolean; missing: GateNeed[] }
+export interface ModelProfile {
+  models: CommerceModel[];
+  industry: string;
+  capabilities: { pos: boolean; commerce: boolean; site: boolean; team: boolean };
+  confidence: { models: number; industry: number };
+  ask: boolean;
+}
+
+export type OverrideKind = 'design' | 'recipe' | 'settings' | 'text' | 'hide' | 'show' | 'order';
+
+/** What the merchant has chosen for themselves; code applies these before anything the system proposes. */
+export interface Overrides {
+  design?: string;
+  recipes?: Partial<Record<SectionKind, string>>;
+  settings?: Partial<Record<SectionKind, Record<string, boolean | string>>>;
+  text?: Record<string, string>;
+  hidden?: SectionKind[];
+  shown?: SectionKind[];
+  order?: SectionKind[];
+  pending?: string[];
+}
+
 export interface Blueprint {
   kind: BusinessKind;
+  profile?: ModelProfile;
   style?: string;
   typography: TypographyToken;
   tone: ToneToken;
   density: DensityToken;
   lead: LeadSection;
   sections: SectionKind[];
-  headerStyle: HeaderStyle;
-  heroPattern?: HeroPattern;
+  recipes?: Partial<Record<SectionKind, string>>;
+  overrides?: Overrides;
   catalogLayout: CatalogLayout;
-  gate: boolean;
+  gate: GateResult;
   hash: string;
   revision: number;
 }
 
-export interface PersonaWhen { channel?: string; device?: string; returning?: boolean }
-export interface Persona { id: string; when: PersonaWhen; priority: number; hide?: string[]; order?: string[]; tone?: Record<string, string> }
+/** One control the server says a layout has: a switch, a short line, or a choice. */
+export interface RecipeSetting { type: 'boolean' | 'text' | 'choice'; default: boolean | string; options?: string[]; max?: number }
+export interface RecipeOption { id: string; pattern: string }
+
+/** What the design API returns: the library a merchant may choose from (parai D13). */
+export interface DesignOption { id: string; name: string; desc: string; swatches: string[]; tone: string; density: string }
+export interface DesignLibrary {
+  designs: DesignOption[];
+  default: string;
+  models: CommerceModel[];
+  sections: { required: SectionKind[]; optional: SectionKind[] };
+  /** Layouts per section type, the settings each one exposes, and the default choice. */
+  recipes: Partial<Record<SectionKind, RecipeOption[]>>;
+  settings: Partial<Record<SectionKind, Record<string, Record<string, RecipeSetting>>>>;
+  defaults: Partial<Record<SectionKind, string>>;
+  overrides: Overrides;
+}
+
+/**
+ * What site.generate takes: what the business is, plus the facts on record. Every list
+ * accepts a comma-separated string or an array. Colours and fonts are not inputs.
+ */
+export interface SiteGenerateInput {
+  prompt?: string;
+  title?: string;
+  audience?: string;
+  tone?: string;
+  city?: string;
+  models?: CommerceModel[] | string;
+  industry?: string;
+  style?: string;
+  lead?: string;
+  notice?: string;
+  season?: string;
+  records?: string[] | string;
+  services?: string[] | string;
+  hours?: string[] | string;
+  proofs?: string[] | string;
+  features?: string[] | string;
+  terms?: string[] | string;
+  minimum?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  locale?: string;
+  reset?: boolean;
+}
+
+export interface SiteGenerateResult {
+  siteId: string;
+  version: number;
+  state: string;
+  site: SiteDocument;
+  preview: { html: string; css: string; hash: string };
+  composed: boolean;
+  blueprint: Blueprint;
+  gate: GateResult;
+  missing: GateNeed[];
+  note?: string;
+}
+
+/** One publish tap, three honest outcomes: live, still a draft with a list, or an error. */
+export interface PublishOutcome {
+  siteId: string;
+  published: boolean;
+  state: string;
+  releaseId?: string;
+  liveUrl?: string;
+  publicUrl?: string;
+  generation?: number;
+  regenerated?: boolean;
+  gate?: GateResult;
+  missing?: GateNeed[];
+  blocking?: string[];
+}
+
+export interface PersonaWhen { channel?: string; device?: string; returning?: boolean }export interface Persona { id: string; when: PersonaWhen; priority: number; hide?: string[]; order?: string[]; tone?: Record<string, string> }
 export interface ReleaseFile { path: string; mime: string; bytes: number; hash: string; key: string }
 export interface ReleaseManifest {
   id: string; siteId: string; version: number; generation: number; created: number; hash: string;
@@ -139,7 +237,9 @@ export type PatchOperation =
   | { op: 'add_asset'; asset: Asset }
   | { op: 'remove_asset'; target: string }
   | { op: 'lock'; target: string; kind: Lock['kind'] }
-  | { op: 'unlock'; target: string };
+  | { op: 'unlock'; target: string }
+  | { op: 'set_override'; kind: OverrideKind; target?: string; value?: unknown }
+  | { op: 'clear_override'; kind: OverrideKind | 'all'; target?: string };
 
 export interface DiffEntry { target: string; kind: string; from: string; to: string }
 export interface CheckIssue { level: 'blocking' | 'advisory'; area: string; path: string; message: string }

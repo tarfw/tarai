@@ -11,10 +11,8 @@ import { escapeAttribute, escapeHtml, slugify } from './html.ts';
 import { TONE_STYLE } from './design.ts';
 import { compileCss, type CssCollector } from './styles.ts';
 import { getPrimitive } from './registry.ts';
+import { recipeOfType, sectionType } from './recipes/library.ts';
 import { EXT, itemSlug, renderNodes, type RenderContext, type ResolvedItem } from './primitives/nodes.ts';
-import { renderDefaultHeaderNav } from './primitives/nav.ts';
-import { renderDefaultCatalogSection } from './primitives/collection.ts';
-import { renderShopifyFooter } from './primitives/action.ts';
 
 export type { ResolvedItem } from './primitives/nodes.ts';
 
@@ -148,29 +146,21 @@ function renderSection(section: Section, context: RenderContext): string {
   const isHero = section.purpose === 'hero' || (section.purpose === 'header' && section.id === 'hero');
   const isNav = !isHero && (section.purpose === 'navigation' || section.purpose === 'nav' || (section.purpose === 'header' && section.id !== 'hero'));
   const isFooter = section.purpose === 'footer' || section.id === 'site-footer' || section.id === 'footer';
+  const blueprint = context.doc.blueprint;
 
-  // 1. Resolve design option from section or blueprint
-  let option = (section as unknown as { option?: string }).option;
-  if (!option) {
-    if (isNav) {
-      option = context.doc.blueprint?.headerStyle;
-    } else if (isHero) {
-      option = context.doc.blueprint?.heroPattern;
-    } else if (isFooter) {
-      option = (context.doc.blueprint as Record<string, unknown> | undefined)?.footerStyle as string | undefined;
-    } else if (section.purpose === 'notice') {
-      const textNode = section.nodes?.find((n) => n.kind === 'text');
-      const text = String(textNode?.props?.text || '');
-      if (text.toLowerCase().includes('quiz') || context.doc.blueprint?.heroPattern === 'centered_atmospheric') {
-        option = 'quiz_pill';
-      }
-    }
+  // 1. Resolve the recipe: the section's own stamp, then the store's pick, then the default.
+  const purpose = isHero ? 'hero' : isNav ? 'navigation' : isFooter ? 'footer' : section.purpose;
+  const type = sectionType(purpose);
+  let option = section.recipe?.id || blueprint?.recipes?.[type];
+  if (type === 'announcement' && !option) {
+    const textNode = section.nodes?.find((node) => node.kind === 'text');
+    if (String(textNode?.props?.text || '').toLowerCase().includes('quiz')) option = 'pill';
   }
 
-  // 2. Dispatch to the modular primitive registry
-  const purpose = isHero ? 'hero' : isNav ? 'navigation' : isFooter ? 'footer' : section.purpose;
-  const primitive = getPrimitive(purpose, option);
-  return primitive.render(section, context);
+  // 2. Dispatch to the primitive the recipe names, with the recipe on the context
+  const recipe = recipeOfType(type, option);
+  const primitive = getPrimitive(purpose, recipe?.id || option);
+  return primitive.render(section, { ...context, recipe });
 }
 
 function pageMeta(doc: SiteDocument, page: Page, origin: string | undefined, canonicalPath: string, titleOverride?: string): string {
@@ -249,16 +239,13 @@ function variantOf(doc: SiteDocument, persona: Persona): SiteDocument {
   return { ...doc, pages };
 }
 
-function hasCatalogSection(page: Page): boolean {
-  return page.sections.some((s) => s.purpose === 'catalog' || s.purpose === 'collection' || s.purpose === 'menu' || s.purpose === 'services' || s.nodes.some((n) => n.kind === 'collection'));
-}
-
-function hasNavSection(page: Page): boolean {
-  return page.sections.some((s) => s.id !== 'hero' && (s.purpose === 'navigation' || s.purpose === 'nav' || s.id === 'nav' || s.nodes.some((n) => n.kind === 'navigation')));
-}
-
-function hasFooterSection(page: Page): boolean {
-  return page.sections.some((s) => s.purpose === 'footer' || s.nodes.some((n) => n.kind === 'footer'));
+/**
+ * The page as its document describes it. Nothing is invented here: a store that has no
+ * header or footer section in the document has none on the page, because the blueprint put
+ * them there (or the owner switched them off) — parai §7.
+ */
+function renderPageSections(page: Page, contexts: (item?: ResolvedItem, index?: number) => RenderContext): string {
+  return page.sections.map((section) => renderSection(section, contexts())).filter(Boolean).join('\n');
 }
 
 export async function compileDocument(doc: SiteDocument, options: CompileOptions = {}): Promise<CompileResult> {
@@ -272,39 +259,11 @@ export async function compileDocument(doc: SiteDocument, options: CompileOptions
   const contexts = (item?: ResolvedItem, index = 0): RenderContext => ({ doc, collector, base, item, index });
 
   for (const page of doc.pages) {
-    const hasNav = hasNavSection(page);
-    const hasCatalog = hasCatalogSection(page);
-    const hasFooter = hasFooterSection(page);
-    const renderedSections = page.sections
-      .filter((section) => section.purpose !== 'contact' && section.id !== 'contact')
-      .map((section) => renderSection(section, contexts()))
-      .filter(Boolean);
-    if (!hasNav) {
-      const navHtml = renderDefaultHeaderNav(doc, page);
-      const noticeIndex = page.sections.findIndex((s) => s.purpose === 'notice');
-      if (noticeIndex === 0) {
-        renderedSections.splice(1, 0, navHtml);
-      } else {
-        renderedSections.unshift(navHtml);
-      }
-    }
-    if (!hasCatalog) {
-      const catalogHtml = renderDefaultCatalogSection(doc);
-      const contactIndex = renderedSections.findIndex((s) => s.includes('data-purpose="contact"'));
-      if (contactIndex >= 0) {
-        renderedSections.splice(contactIndex, 0, catalogHtml);
-      } else {
-        renderedSections.push(catalogHtml);
-      }
-    }
-    if (!hasFooter) {
-      const footerOption = (doc.blueprint as Record<string, unknown> | undefined)?.footerStyle as string | undefined;
-      const footerPrimitive = getPrimitive('footer', footerOption);
-      renderedSections.push(footerPrimitive.render({ id: 'site-footer', purpose: 'footer', nodes: [], layout: { kind: 'flow' } }, contexts()));
-    }
-    const body = renderedSections.join('\n');
-    const runtime = collector.runtime.size > 0;
-    const html = pageHtml(doc, page, body, options.origin, page.path, '/style.css', runtime);
+    const body = renderPageSections(page, contexts);
+    // A hamburger menu is inert without the runtime that opens it, so whoever drew one asks
+    // for the script.
+    if (body.includes('data-menu=')) collector.runtime.add('menu');
+    const html = pageHtml(doc, page, body, options.origin, page.path, '/style.css', collector.runtime.size > 0);
     files.push({ path: page.path === '/' ? '/index.html' : `${page.path}/index.html`, mime: 'text/html; charset=utf-8', body: html, hash: await sha(html) });
     routes.push(page.path);
 
@@ -320,7 +279,7 @@ export async function compileDocument(doc: SiteDocument, options: CompileOptions
             const slice = items.slice((number - 1) * size, number * size);
             const paged = { ...node, props: { ...node.props, items: slice } };
             const sectionCopy = { ...section, nodes: section.nodes.map((entry) => entry === node ? paged : entry) };
-            const pagedBody = page.sections.map((entry) => entry === section ? renderSection(sectionCopy, contexts()) : renderSection(entry, contexts())).join('\n');
+            const pagedBody = renderPageSections({ ...page, sections: page.sections.map((entry) => entry === section ? sectionCopy : entry) }, contexts);
             const path = `${page.path === '/' ? '' : page.path}/page/${number}`;
             const html2 = pageHtml(doc, page, pagedBody, options.origin, path, '/style.css', collector.runtime.size > 0, `${page.title} (page ${number})`);
             files.push({ path: `${path}/index.html`, mime: 'text/html; charset=utf-8', body: html2, hash: await sha(html2) });
@@ -342,37 +301,7 @@ export async function compileDocument(doc: SiteDocument, options: CompileOptions
   for (const persona of variants) {
     const variant = variantOf(doc, persona);
     for (const page of variant.pages) {
-      const hasNav = hasNavSection(page);
-      const hasCatalog = hasCatalogSection(page);
-      const hasFooter = hasFooterSection(page);
-      const renderedSections = page.sections
-        .filter((section) => section.purpose !== 'contact' && section.id !== 'contact')
-        .map((section) => renderSection(section, contexts()))
-        .filter(Boolean);
-      if (!hasNav) {
-        const navHtml = renderDefaultHeaderNav(variant, page);
-        const noticeIndex = page.sections.findIndex((s) => s.purpose === 'notice');
-        if (noticeIndex === 0) {
-          renderedSections.splice(1, 0, navHtml);
-        } else {
-          renderedSections.unshift(navHtml);
-        }
-      }
-      if (!hasCatalog) {
-        const catalogHtml = renderDefaultCatalogSection(variant);
-        const contactIndex = renderedSections.findIndex((s) => s.includes('data-purpose="contact"'));
-        if (contactIndex >= 0) {
-          renderedSections.splice(contactIndex, 0, catalogHtml);
-        } else {
-          renderedSections.push(catalogHtml);
-        }
-      }
-      if (!hasFooter) {
-        const footerOption = (variant.blueprint as Record<string, unknown> | undefined)?.footerStyle as string | undefined;
-        const footerPrimitive = getPrimitive('footer', footerOption);
-        renderedSections.push(footerPrimitive.render({ id: 'site-footer', purpose: 'footer', nodes: [], layout: { kind: 'flow' } }, contexts()));
-      }
-      const body = renderedSections.join('\n');
+      const body = renderPageSections(page, contexts);
       const html = pageHtml(variant, page, body, options.origin, page.path, '/style.css', collector.runtime.size > 0);
       const path = `/.persona/${persona.id}${page.path === '/' ? '' : page.path}/index.html`;
       files.push({ path, mime: 'text/html; charset=utf-8', body: html, hash: await sha(html) });

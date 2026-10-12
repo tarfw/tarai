@@ -7,6 +7,12 @@
 
 import { DENSITY_VALUES, EASING_VALUES, LIMITS, type Style } from './document.ts';
 import type { TypographyToken, ToneToken, DensityToken } from './blueprint.ts';
+import { contrast } from './contrast.ts';
+import { CODE_FLOORS, designFor } from './designs/library.ts';
+import { GROTESK, MONO, SANS, SERIF } from './fonts.ts';
+
+export { contrast, ensureContrast, hexRgb, isGradient, isHex, labelOn, luminance, mix } from './contrast.ts';
+export { GROTESK, MONO, SANS, SERIF } from './fonts.ts';
 
 export interface DesignDirection {
   audience: string;
@@ -98,10 +104,6 @@ export interface Design {
   source?: DesignSource;
 }
 
-export const SANS = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Mukta Malar", sans-serif';
-export const SERIF = 'Georgia, "Times New Roman", "Mukta Malar", serif';
-export const GROTESK = 'system-ui, -apple-system, "Helvetica Neue", "Mukta Malar", sans-serif';
-
 export const FONT_STACKS: Record<TypographyToken, { display: string; heading: string; body: string }> = {
   sans: { display: SANS, heading: SANS, body: SANS },
   serif: { display: SERIF, heading: SERIF, body: SANS },
@@ -183,222 +185,22 @@ export function createDesign(
     },
     space,
     shape: { sm: 4, md: 8, lg: 16, pill: 9999 },
-    elevation: { low: 2, high: 8 },
-    layout: { columns: 3, gap: 16, align: 'start' },
-    motion: { duration: 200, easing: 'easeout', reduce: true },
+    elevation: { ...CODE_FLOORS.elevation },
+    layout: { ...CODE_FLOORS.layout },
+    motion: { ...CODE_FLOORS.motion },
     guidance: ['Under 150 KB static HTML', 'No heavy animation', 'Tamil font stack supported'],
   };
 }
 
-export const INTER = '"Inter Variable", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Mukta Malar", sans-serif';
-export const POPPINS = '"Poppins", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Mukta Malar", sans-serif';
-export const MONO = '"IBM Plex Mono", SFMono-Regular, Consolas, Menlo, monospace';
-
-export interface ReferoStyleMeta {
-  id: string;
-  name: string;
-  archetype: string;
-  source: string;
-  vibe: string;
-  design: Design;
-}
-
-export const REFERO_CATALOG: Record<string, ReferoStyleMeta> = {
-  'dark-luxury': {
-    id: 'dark-luxury',
-    name: 'Mollie',
-    archetype: 'Mollie',
-    source: 'designmds/DESIGN1.md',
-    vibe: 'Cashmere counter, dark ledger. Broad white editorial space around black type, warm cream oat surfaces, espresso panels and copper links.',
-    design: {
-      theme: 'dark-luxury',
-      direction: {
-        audience: 'Premium retail & luxury clients',
-        purpose: 'High-end storefront',
-        voice: 'Refined, precise, tactile',
-        density: 'balanced',
-        idea: 'Cashmere counter, dark ledger',
-      },
-      color: {
-        canvas: '#ffffff',
-        ink: '#000000',
-        accent: '#3b281d',
-        accentink: '#ffffff',
-        surface: '#f7f4f1',
-        border: '#e4dfd7',
-        muted: '#595959',
-        success: '#1e681d',
-        danger: '#99001c',
-      },
-      type: {
-        display: INTER,
-        heading: INTER,
-        body: INTER,
-        base: 16,
-        scale: 1.25,
-        leading: 1.4,
-        weight: 600,
-        tracking: -0.015,
-      },
-      space: { unit: 4, section: 80, container: 1200 },
-      shape: { sm: 4, md: 16, lg: 24, pill: 9999 },
-      elevation: { low: 2, high: 8 },
-      layout: { columns: 3, gap: 16, align: 'start' },
-      motion: { duration: 200, easing: 'easeout', reduce: true },
-      guidance: [
-        'Paper canvas with Oat surfaces and espresso accents',
-        'Use Ledger Brown only for filled pill buttons (9999px radius)',
-        'Monospace uppercase category labels',
-        'Zero heavy outer drop shadows',
-      ],
-    },
-  },
-  'neon-pop': {
-    id: 'neon-pop',
-    name: 'Magic Spoon',
-    archetype: 'Magic Spoon',
-    source: 'designmds/DESIGN2.md',
-    vibe: 'Neon arcade grocery. Saturated violet typography and playful pastel fields, chunky pill buttons with collectible packaging energy.',
-    design: {
-      theme: 'neon-pop',
-      direction: {
-        audience: 'Modern lifestyle, youth, confectionery & snacks',
-        purpose: 'Vibrant direct-to-consumer storefront',
-        voice: 'Playful, bold, high-energy',
-        density: 'balanced',
-        idea: 'Neon cereal arcade',
-      },
-      color: {
-        canvas: '#f0eeff',
-        ink: '#290566',
-        accent: '#5b00ed',
-        accentink: '#ffffff',
-        surface: '#ffffff',
-        border: '#c8bdf5',
-        muted: '#5a458f',
-        success: '#16a34a',
-        danger: '#e30ba6',
-      },
-      type: {
-        display: POPPINS,
-        heading: POPPINS,
-        body: POPPINS,
-        base: 16,
-        scale: 1.25,
-        leading: 1.4,
-        weight: 700,
-        tracking: 0.01,
-      },
-      space: { unit: 4, section: 80, container: 1200 },
-      shape: { sm: 8, md: 16, lg: 24, pill: 9999 },
-      elevation: { low: 2, high: 8 },
-      layout: { columns: 3, gap: 16, align: 'start' },
-      motion: { duration: 200, easing: 'easeout', reduce: true },
-      guidance: [
-        'Deep concord violet typography on lavender canvas and marshmallow cards',
-        'Heavy Poppins display geometry',
-        'Chunky pill buttons with solid fills',
-        'High energy promotional graphics',
-      ],
-    },
-  },
-  'harvest-editorial': {
-    id: 'harvest-editorial',
-    name: 'arte*',
-    archetype: 'arte*',
-    source: 'designmds/DESIGN3.md',
-    vibe: 'Sunlit harvest editorial. Warm wheat cream canvas, harvest copper ink, citron beam accents, rounded display typography, earthy and printed feel.',
-    design: {
-      theme: 'harvest-editorial',
-      direction: {
-        audience: 'Craft lovers, artisanal shoppers, diners',
-        purpose: 'Artisanal & heritage storefront',
-        voice: 'Warm, authentic, farm-crafted',
-        density: 'balanced',
-        idea: 'Golden hour harvest editorial',
-      },
-      color: {
-        canvas: '#f5f0e8',
-        ink: '#542800',
-        accent: '#1c3b2d',
-        accentink: '#ffffff',
-        surface: '#ffffff',
-        border: '#d6caa8',
-        muted: '#735639',
-        success: '#416b24',
-        danger: '#c24b38',
-      },
-      type: {
-        display: SERIF,
-        heading: POPPINS,
-        body: POPPINS,
-        base: 16,
-        scale: 1.25,
-        leading: 1.45,
-        weight: 600,
-        tracking: 0,
-      },
-      space: { unit: 4, section: 96, container: 1200 },
-      shape: { sm: 6, md: 20, lg: 28, pill: 9999 },
-      elevation: { low: 2, high: 8 },
-      layout: { columns: 3, gap: 16, align: 'start' },
-      motion: { duration: 200, easing: 'easeout', reduce: true },
-      guidance: [
-        'Warm wheat cream canvas with deep copper ink',
-        'Citron beam and periwinkle counter-accents',
-        'Soft 20px card radii and hairline borders',
-        'Sunlit golden-hour photography',
-      ],
-    },
-  },
-};
-
-export const DEFAULT_DESIGN = REFERO_CATALOG['dark-luxury'].design;
-
-export const THEME_IDS = ['dark-luxury', 'neon-pop', 'harvest-editorial', 'canvas', 'surface', 'ink'] as const;
-export const THEMES: Record<string, Design> = {
-  'dark-luxury': REFERO_CATALOG['dark-luxury'].design,
-  'neon-pop': REFERO_CATALOG['neon-pop'].design,
-  'harvest-editorial': REFERO_CATALOG['harvest-editorial'].design,
-  mollie: REFERO_CATALOG['dark-luxury'].design,
-  'magic-spoon': REFERO_CATALOG['neon-pop'].design,
-  'high-protein': REFERO_CATALOG['neon-pop'].design,
-  arte: REFERO_CATALOG['harvest-editorial'].design,
-  'arte*': REFERO_CATALOG['harvest-editorial'].design,
-  canvas: createDesign('sans', 'canvas', 2),
-  surface: createDesign('sans', 'surface', 2),
-  ink: createDesign('sans', 'ink', 2),
-  'minimal-clean': createDesign('sans', 'canvas', 2),
-  'editorial-light': createDesign('serif', 'canvas', 2),
-  'editorial-lookbook': createDesign('serif', 'canvas', 3),
-  'editorial-chalk': createDesign('serif', 'surface', 2),
-  'streetwear-dark': createDesign('grotesk', 'ink', 1),
-};
+/**
+ * The built library is the only design catalog; the generated import map is rewritten by
+ * `npm run designs` from designmds/*.md, and ids that predate that migration resolve there.
+ */
+export const DEFAULT_DESIGN = designFor(null);
 
 export function resolveDesign(themeId?: string | null): Design {
-  if (!themeId) return REFERO_CATALOG['dark-luxury'].design;
-  return THEMES[themeId] || REFERO_CATALOG['dark-luxury'].design;
+  return designFor(themeId);
 }
-
-export const CATEGORY_IDS = ['goods', 'food', 'services', 'wholesale'] as const;
-export const CATEGORIES: Record<string, { id: string; sector: string; criteria: string }> = {
-  goods: { id: 'goods', sector: 'Goods', criteria: 'Sells physical goods, retail catalog' },
-  food: { id: 'food', sector: 'Food', criteria: 'Sells prepared food, bakery, sweets, menu' },
-  services: { id: 'services', sector: 'Services', criteria: 'Sells time or skill, tailor, salon, clinic' },
-  wholesale: { id: 'wholesale', sector: 'Wholesale', criteria: 'Sells in bulk, B2B trade, wholesale enquiry' },
-};
-
-export const PURPOSE_IDEAS: Record<string, string> = {
-  header: 'photo and shop intro',
-  notice: '1-tap shop announcement or delivery notice',
-  spotlight: 'festival or promotional offer banner',
-  catalog: 'products catalog with live prices and WhatsApp order',
-  menu: 'prepared food menu with portions and pickup',
-  services: 'services list with enquiry and booking CTA',
-  story: 'craft, heritage or owner story',
-  trust: 'certificates, verified quotes, COD and shop address',
-  contact: 'WhatsApp order button, phone call and address',
-};
 
 export const COLOR_KEYS: readonly (keyof DesignColor)[] = [
   'canvas', 'ink', 'accent', 'accentink', 'surface', 'border', 'muted', 'success', 'danger',
@@ -439,31 +241,6 @@ export function resolveToken(design: Design, ref: string): string | number | und
 
 export function isTokenRef(value: string): boolean {
   return value.startsWith('token:');
-}
-
-export function hexRgb(value: string): [number, number, number] | null {
-  const match = /^#([0-9a-f]{6})$/i.exec(value.trim());
-  if (!match) return null;
-  const int = parseInt(match[1], 16);
-  return [(int >> 16) & 255, (int >> 8) & 255, int & 255];
-}
-
-export function luminance(value: string): number | null {
-  const rgb = hexRgb(value);
-  if (!rgb) return null;
-  const [r, g, b] = rgb.map((channel) => {
-    const scaled = channel / 255;
-    return scaled <= 0.03928 ? scaled / 12.92 : ((scaled + 0.055) / 1.055) ** 2.4;
-  });
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-}
-
-export function contrast(a: string, b: string): number | null {
-  const la = luminance(a);
-  const lb = luminance(b);
-  if (la === null || lb === null) return null;
-  const [high, low] = la >= lb ? [la, lb] : [lb, la];
-  return (high + 0.05) / (low + 0.05);
 }
 
 export interface DesignReport {

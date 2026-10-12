@@ -1,0 +1,23 @@
+{
+  "id": "brand",
+  "type": "header",
+  "models": ["products", "food", "booking", "quote", "digital", "bulk"],
+  "needs": { "brand": "required" },
+  "layout": { "kind": "row" },
+  "slots": {
+    "brand": { "source": "facts.name", "max": 40 }
+  },
+  "tokens": {
+    "text": "color.ink",
+    "background": "color.canvas",
+    "accent": "color.accent"
+  },
+  "settings": {
+    "links": { "type": "boolean", "default": true }
+  },
+  "fallback": { "brand": "Your store name" },
+  "source": {
+    "pattern": "name centred across the band, menu button at the edge",
+    "reference": "structural pattern only; no copy, colour or asset came from anywhere"
+  }
+}

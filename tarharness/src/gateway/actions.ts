@@ -7,7 +7,7 @@ import { findAction, type ActionId } from '../registry/catalog.ts';
 import { executePos } from '../pos/store.ts';
 import { draftProduct, saveProductContent } from '../pos/content.ts';
 import { canExecute, canReadRecord, canRunFlowStep } from '../access.ts';
-import { executeSiteGenerate, executeSiteScout, executeSiteCompile, executeSitePublish, executeSiteRollback, executeSiteRefresh, executeSiteUnpublish, executeSiteChecks, executeSiteReleases, executeSiteBriefAdd, executeSiteBriefRemove, executeSiteNoticeSet, executeSiteSectionsSet } from '../site/store.ts';
+import { executeSiteGenerate, executeSiteDesigns, executeSiteScout, executeSiteCompile, executeSitePublish, executeSitePublishLatest, executeSiteRollback, executeSiteRefresh, executeSiteUnpublish, executeSiteChecks, executeSiteReleases, executeSiteBriefAdd, executeSiteBriefRemove, executeSiteNoticeSet, executeSiteSectionsSet } from '../site/store.ts';
 import { executeSiteAsk, executeSiteDesignImport, executeSiteEdit, executeSiteUndo } from '../site/edit.ts';
 import { executeSiteAssetGenerate, executeSiteAssetUpload, executeSiteAssets } from '../site/asset.ts';
 import { searchWeb } from '../web/search.ts';
@@ -154,15 +154,20 @@ export function executeGateway(client: Client, context: AccessContext, request: 
       if (request.actionId === 'site.assets') return executeSiteAssets(client, context, request.input);
       if (request.actionId === 'site.checks') return executeSiteChecks(client, services.siteReleases, context, request.input);
       if (request.actionId === 'site.releases') return executeSiteReleases(client, context, request.input);
+      if (request.actionId === 'site.designs') return executeSiteDesigns(client, context, request.input);
       if (request.actionId === 'site.compile') return executeSiteCompile(client, services.siteReleases, context, request.input, request.idempotencyKey, hash, services.publication, services.siteDomain, services.productContent);
       if (request.actionId === 'site.publish') return executeSitePublish(client, services.siteReleases, context, request.input, request.idempotencyKey, hash, services.publication, services.siteDomain, services.productContent);
+      if (request.actionId === 'site.publishLatest') return executeSitePublishLatest(client, context, request.input, request.idempotencyKey, hash, {
+        control: services.publication, domain: services.siteDomain, releases: services.siteReleases, content: services.productContent,
+        ai: services.ai, typesafe: services.typesafe, model: services.siteModel, groqApiKey: services.groqApiKey, pexelsApiKey: services.pexelsApiKey,
+      });
       if (request.actionId === 'site.rollback') return executeSiteRollback(client, context, request.input, request.idempotencyKey, hash, services.publication, services.siteDomain, services.siteReleases, services.productContent);
       if (request.actionId === 'site.refresh') return executeSiteRefresh(client, services.siteReleases, context, request.input, request.idempotencyKey, hash, services.publication, services.siteDomain, services.productContent);
       if (request.actionId === 'site.unpublish') return executeSiteUnpublish(client, context, request.input, request.idempotencyKey, hash, services.publication);
       if (request.actionId === 'site.brief.add') return executeSiteBriefAdd(client, context, request.input, request.idempotencyKey, hash, services.typesafe, services.publication);
       if (request.actionId === 'site.brief.remove') return executeSiteBriefRemove(client, context, request.input, request.idempotencyKey, hash, services.typesafe, services.publication);
       if (request.actionId === 'site.notice.set') return executeSiteNoticeSet(client, context, request.input, request.idempotencyKey, hash);
-      if (request.actionId === 'site.sections.set') return executeSiteSectionsSet(client, context, request.input, request.idempotencyKey, hash);
+      if (request.actionId === 'site.sections.set') return executeSiteSectionsSet(client, context, request.input, request.idempotencyKey, hash, services.typesafe, services.ai, services.publication, services.siteModel, services.groqApiKey, services.productContent, services.pexelsApiKey);
       if (request.actionId === 'web.search') {
         const claimed = await claimTurn(client, request.idempotencyKey, hash);
         if (claimed.result) return claimed.result;

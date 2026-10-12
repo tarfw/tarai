@@ -1,5 +1,5 @@
-import { EASING_CSS } from './document.ts';
-import type { Style, StyleSet } from './document.ts';
+import { EASING_CSS, HEIGHT_CSS, RATIO_CSS } from './document.ts';
+import type { SectionLayoutSpec, Style, StyleSet } from './document.ts';
 import { resolveToken, type Design } from './design.ts';
 
 export interface CssCollector {
@@ -62,6 +62,33 @@ export function styleClass(collector: CssCollector, style: StyleSet | undefined)
   const name = `s-${short(key)}`;
   collector.classes.set(name, style);
   return ` ${name}`;
+}
+
+/**
+ * The grammar knobs a section asked for, carried onto its container as custom properties so
+ * a recipe stays data. validate.ts admits only words from LAYOUT_RATIOS and LAYOUT_HEIGHTS
+ * and requires a scrim to be a token the design carries, so nothing here interpolates a
+ * value an author wrote.
+ */
+export function layoutStyle(design: Design, layout: SectionLayoutSpec | undefined): string {
+  if (!layout) return '';
+  const vars: string[] = [];
+  if (layout.kind === 'split') {
+    const ratio = RATIO_CSS[layout.ratio || ''];
+    if (ratio) vars.push(`--split-ratio:${ratio}`);
+  }
+  if (layout.kind === 'overlay') {
+    const height = HEIGHT_CSS[layout.height || ''];
+    if (height) vars.push(`--overlay-height:${height}`);
+    const scrim = layout.scrim ? resolveToken(design, String(layout.scrim)) : undefined;
+    if (typeof scrim === 'string') vars.push(`--overlay-scrim:${scrim}`);
+  }
+  return vars.length ? ` style="${vars.join(';')}"` : '';
+}
+
+/** The narrow-screen behaviour a wide layout declares. */
+export function layoutClass(layout: SectionLayoutSpec | undefined): string {
+  return layout?.collapse === 'keep' ? ' tar-keep' : '';
 }
 
 export function compileCss(design: Design, collector: CssCollector): string {
@@ -131,6 +158,23 @@ a { color: inherit; }
 .tar-stack { display: flex; flex-direction: column; gap: ${space(4)}; }
 .tar-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr)); gap: ${space(4)}; }
 .tar-grid > .tar-title { grid-column: 1 / -1; width: 100%; }
+.tar-row { display: flex; flex-direction: row; flex-wrap: wrap; gap: ${space(4)}; align-items: flex-start; }
+.tar-row > * { flex: 1 1 ${space(40)}; min-width: 0; }
+.tar-split { display: grid; grid-template-columns: var(--split-ratio, 1fr 1fr); gap: ${space(8)}; align-items: center; }
+.tar-overlay { position: relative; display: flex; flex-direction: column; justify-content: flex-end; gap: ${space(4)}; min-height: var(--overlay-height, auto); overflow: hidden; border-radius: var(--radius-md); }
+.tar-overlay > .tar-scrim { position: absolute; inset: 0; background: var(--overlay-scrim, transparent); opacity: 0.72; pointer-events: none; }
+.tar-overlay > .tar-media { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+.tar-overlay > :not(.tar-scrim) { position: relative; }
+.tar-rail { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(min(280px, 78vw), 1fr); gap: ${space(4)}; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x mandatory; scroll-padding-inline-start: ${space(4)}; padding-bottom: ${space(2)}; }
+.tar-rail > * { scroll-snap-align: start; }
+.tar-disclosure { display: flex; flex-direction: column; gap: ${space(1)}; }
+.tar-disclosure > details { border-top: 1px solid var(--color-border); }
+.tar-disclosure > details:last-child { border-bottom: 1px solid var(--color-border); }
+.tar-disclosure summary { display: flex; align-items: center; justify-content: space-between; gap: ${space(4)}; padding: ${space(4)} 0; font-weight: 600; cursor: pointer; list-style: none; }
+.tar-disclosure summary::-webkit-details-marker { display: none; }
+.tar-disclosure summary::after { content: '+'; color: var(--color-muted); font-weight: 400; }
+.tar-disclosure details[open] summary::after { content: '−'; }
+.tar-disclosure summary + div { padding: 0 0 ${space(4)}; max-width: 72ch; }
 .tar-card { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: ${space(4)}; display: flex; flex-direction: column; gap: ${space(2)}; }
 .tar-prose { max-width: 72ch; }
 .tar-title { font-family: var(--font-display); font-weight: ${design.type.weight}; line-height: 1.15; }
@@ -181,6 +225,9 @@ h3.tar-title { font-size: var(--type-body); font-weight: ${Math.min(900, design.
 .tar-navlinks a { text-decoration: none; color: var(--color-ink); transition: opacity 0.15s ease; }
 .tar-navlinks a:hover { opacity: 0.7; }
 .tar-menu-btn { display: none; background: none; border: 1px solid var(--color-border); border-radius: var(--radius-sm); padding: ${space(1)} ${space(2)}; font-size: 1.1rem; cursor: pointer; color: var(--color-ink); }
+.tar-nav-centered .tar-nav-inner { justify-content: center; position: relative; }
+.tar-nav-centered .tar-brand { text-align: center; }
+.tar-nav-centered .tar-menu { position: absolute; right: clamp(16px, 4vw, 48px); }
 
 /* ========================================================
    HIGH-CRAFT HERO PATTERNS (METHOD 2)
@@ -194,7 +241,8 @@ h3.tar-title { font-size: var(--type-body); font-weight: ${Math.min(900, design.
 .tar-hero-actions .tar-btn { font-size: 14px; padding: 10px 22px; }
 
 /* 1. Split Hero 50/50 (#4) */
-.tar-hero-split .tar-hero-grid { display: grid; grid-template-columns: 1.1fr 0.9fr; align-items: center; gap: clamp(32px, 5vw, 64px); }
+.tar-hero-split .tar-hero-grid { display: grid; grid-template-columns: var(--split-ratio, 1.1fr 0.9fr); align-items: center; gap: clamp(32px, 5vw, 64px); }
+.tar-hero-split.tar-hero-flip .tar-hero-media { order: -1; }
 .tar-hero-split .tar-hero-text { display: flex; flex-direction: column; }
 .tar-hero-split .tar-hero-media { position: relative; width: 100%; border-radius: var(--radius-lg); overflow: hidden; box-shadow: var(--elevation-high); aspect-ratio: 4 / 3; background: var(--color-surface); }
 .tar-hero-split .tar-hero-media img { width: 100%; height: 100%; object-fit: cover; display: block; border-radius: var(--radius-lg); }
@@ -202,7 +250,7 @@ h3.tar-title { font-size: var(--type-body); font-weight: ${Math.min(900, design.
 .tar-brand-mark { font-family: var(--font-display); font-size: 48px; font-weight: 800; color: var(--color-muted); letter-spacing: 0.05em; }
 
 /* 2. Commerce Hero (#16) */
-.tar-hero-commerce .tar-hero-grid { display: grid; grid-template-columns: 1.15fr 0.85fr; align-items: center; gap: clamp(32px, 5vw, 64px); }
+.tar-hero-commerce .tar-hero-grid { display: grid; grid-template-columns: var(--split-ratio, 1.15fr 0.85fr); align-items: center; gap: clamp(32px, 5vw, 64px); }
 .tar-hero-spotlight-card { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: 16px; box-shadow: var(--elevation-high); display: flex; flex-direction: column; gap: 12px; position: relative; }
 .tar-hero-spotlight-img { width: 100%; aspect-ratio: 1 / 1; object-fit: cover; border-radius: var(--radius-md); background: #f1f5f9; display: block; }
 .tar-hero-spotlight-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -230,19 +278,11 @@ h3.tar-title { font-size: var(--type-body); font-weight: ${Math.min(900, design.
 .tar-hero-minimal .tar-hero-grid { display: flex; justify-content: space-between; align-items: center; gap: 32px; flex-wrap: wrap; width: 100%; }
 .tar-hero-minimal .tar-hero-title { font-family: var(--font-display); font-size: clamp(2rem, 3.8vw, 3.2rem); font-weight: 600; line-height: 1.2; margin-bottom: 8px; }
 
-/* 6. Centered Atmospheric Hero (GutGutGoose Sky + Canister Peek) */
-.tar-hero-centered-atmospheric { position: relative; width: 100%; min-height: 92vh; display: flex; align-items: center; justify-content: center; text-align: center; color: #ffffff; padding: 120px 20px 0; overflow: hidden; background: linear-gradient(180deg, #427eb3 0%, #68a0d0 40%, #8dbde3 75%, #a6cdf0 100%); }
-.tar-hero-centered-wrap { width: 100%; max-width: 820px; margin: 0 auto; display: flex; flex-direction: column; align-items: center; }
-.tar-hero-centered-title { font-family: var(--font-display); font-size: clamp(2.4rem, 5.2vw, 4.4rem); font-weight: 700; line-height: 1.12; letter-spacing: -0.02em; color: #ffffff; margin: 0 0 16px 0; text-shadow: 0 2px 12px rgba(0,0,0,0.15); max-width: 22ch; }
-.tar-hero-centered-desc { font-size: clamp(1.05rem, 1.4vw, 1.25rem); line-height: 1.6; color: rgba(255, 255, 255, 0.95); max-width: 60ch; margin: 0 0 28px 0; text-shadow: 0 1px 4px rgba(0,0,0,0.12); }
-.tar-hero-centered-actions { display: flex; justify-content: center; margin-bottom: 32px; }
-.tar-hero-pill-btn { display: inline-flex; align-items: center; justify-content: center; background: #283f1d; color: #ffffff; padding: 15px 36px; border-radius: 999px; font-size: 16px; font-weight: 700; text-decoration: none; box-shadow: 0 4px 18px rgba(0,0,0,0.22); transition: transform 0.15s ease, background 0.15s ease; border: none; }
-.tar-hero-pill-btn:hover { transform: translateY(-2px); background: #203417; }
-.tar-hero-canister-peek { width: 100%; display: flex; justify-content: center; margin-top: auto; padding-top: 16px; }
-.tar-canister-mockup { width: min(280px, 70vw); display: flex; flex-direction: column; align-items: center; }
-.tar-canister-cap { width: 100%; height: 50px; border-radius: 18px 18px 4px 4px; background: linear-gradient(180deg, #f8f8f8 0%, #e2e2e2 100%); box-shadow: 0 -4px 16px rgba(0,0,0,0.1), inset 0 1px 2px rgba(255,255,255,0.8); border: 1px solid rgba(255,255,255,0.6); }
-.tar-canister-jar { width: 94%; height: 60px; border-radius: 0 0 12px 12px; background: linear-gradient(180deg, #d8d8d8 0%, #bcbcbc 100%); box-shadow: inset 0 2px 4px rgba(0,0,0,0.06); }
-.tar-canister-img { width: min(280px, 70vw); height: auto; display: block; border-radius: 20px 20px 0 0; }
+/* 6. Fullscreen Hero: the overlay grammar carrying the shop's own photo */
+.tar-hero-fullscreen { border-radius: 0; padding: var(--space-section) 0; }
+.tar-hero-fullscreen .tar-hero-title { font-family: var(--font-display); font-size: clamp(2.2rem, 5vw, 4rem); font-weight: 700; line-height: 1.12; letter-spacing: -0.02em; max-width: 22ch; }
+.tar-hero-fullscreen .tar-hero-desc { font-size: clamp(1.05rem, 1.4vw, 1.25rem); line-height: 1.6; max-width: 60ch; }
+.tar-hero-fullscreen .tar-btn-outline { border-color: currentColor; color: currentColor; }
 
 /* Floating Pill Navigation (GutGutGoose Style) */
 .tar-nav-floating { position: absolute; top: 0; left: 0; right: 0; z-index: 50; background: transparent; border-bottom: none; width: 100%; }
@@ -262,11 +302,11 @@ h3.tar-title { font-size: var(--type-body); font-weight: ${Math.min(900, design.
 .tar-navlinks-floating a { color: #ffffff !important; font-size: 14px; font-weight: 600; text-decoration: none; transition: opacity 0.15s ease; }
 .tar-navlinks-floating a:hover { opacity: 0.8; }
 
-/* Quiz Pill Notice Bar (GutGutGoose Style) */
-.tar-notice-quiz { background: #283f1d; color: #ffffff; padding: 8px 16px; font-size: 13px; font-weight: 600; text-align: center; border-bottom: none; }
-.tar-notice-quiz-link { display: inline-flex; align-items: center; gap: 8px; color: #ffffff; text-decoration: none; transition: opacity 0.15s ease; }
+/* Announcement pill */
+.tar-notice-quiz { background: var(--color-accent); color: var(--color-accentink); text-align: center; border-bottom: none; }
+.tar-notice-quiz-link { display: inline-flex; align-items: center; gap: ${space(2)}; color: inherit; text-decoration: none; }
 .tar-notice-quiz-link:hover { opacity: 0.9; }
-.tar-notice-arrow-pill { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid rgba(255, 255, 255, 0.7); font-size: 11px; margin-left: 4px; }
+.tar-notice-arrow-pill { display: inline-flex; align-items: center; justify-content: center; width: ${space(4)}; height: ${space(4)}; border-radius: var(--radius-pill); border: 1px solid currentColor; }
 
 /* Collection Grid and Cards */
 .tar-collection-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; width: 100%; }
@@ -351,10 +391,9 @@ ${blocks.join('\n')}
   .tar-hero-centered-title { font-size: clamp(1.9rem, 7.5vw, 2.8rem); margin-bottom: 12px; }
   .tar-hero-centered-desc { font-size: 0.95rem; margin-bottom: 20px; }
   .tar-hero-pill-btn { padding: 12px 28px; font-size: 15px; }
-  .tar-canister-mockup { width: min(220px, 60vw); }
-  .tar-canister-cap { height: 38px; }
-  .tar-canister-jar { height: 48px; }
   .tar-flex { flex-direction: column; }
+  .tar-split:not(.tar-keep) { grid-template-columns: 1fr; gap: ${space(6)}; }
+  .tar-row.tar-keep { flex-wrap: nowrap; }
   .tar-menu[data-ready] .tar-navlinks:not(.tar-navlinks-floating) { display: none; }
   .tar-menu[data-ready][data-open] .tar-navlinks:not(.tar-navlinks-floating) {
     display: flex;

@@ -1,10 +1,153 @@
-import type { Binding, Node, SectionLayoutSpec, SiteDocument } from '../document.ts';
+import type { Binding, Node, Section, SectionLayoutSpec, SiteDocument, StyleSet } from '../document.ts';
 import { escapeAttribute, escapeHtml, formatMoney, safeHref, slugify } from '../html.ts';
 import { styleClass, type CssCollector } from '../styles.ts';
-import { EXT } from './hero.ts';
-export { EXT };
-import { defaultSampleProducts } from './collection.ts';
-import { renderShopifyFooter } from './action.ts';
+import type { Recipe } from '../recipes/recipe.ts';
+import { renderEmptyCollection } from './collection.ts';
+import * as FooterCard from './footer/card.ts';
+
+/** Media extension by mime type, for the `/media/<id>.<ext>` URLs the release ships. */
+export const EXT: Record<string, string> = {
+  'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/avif': 'avif',
+  'image/gif': 'gif', 'image/svg+xml': 'svg', 'video/mp4': 'mp4', 'video/webm': 'webm', 'font/woff2': 'woff2',
+};
+
+/**
+ * What a section holds, read once. Every hero used to walk these nodes itself; the walk
+ * lives here so a recipe's slot names mean the same thing in every renderer. A later node
+ * wins over an earlier one, which is how the documents already on disk were built.
+ *
+ * Only the slots the recipe declares are claimed: a widget node the recipe does not ask for
+ * stays in the section and renders, instead of silently becoming the hero's caption.
+ */
+export type SlotValues = Record<string, string | string[]>;
+
+/** Containers a slot may be nested in. Widgets keep their own contents. */
+const WRAPPERS = ['flex', 'stack', 'grid', 'card'];
+
+export interface SectionSlots {
+  values: SlotValues;
+  /** Nodes a slot already drew; the rest still has to reach the page. */
+  used: Set<string>;
+  /** The style the merchant put on the node a slot drew, by slot name. */
+  styles: Record<string, StyleSet>;
+}
+
+export function slotsOf(section: Section, doc: SiteDocument, recipe?: Recipe): SectionSlots {
+  const slots: SlotValues = { brand: doc.pages[0]?.title || '' };
+  const used = new Set<string>();
+  const styles: Record<string, StyleSet> = {};
+  const points: string[] = [];
+  const wanted = recipe ? new Set(Object.keys(recipe.slots)) : null;
+  const claim = (name: string, node: Node): boolean => {
+    if (wanted && !wanted.has(name)) return false;
+    used.add(node.id);
+    if (node.style) styles[name] = node.style;
+    return true;
+  };
+  const visit = (nodes: Node[] | undefined): void => {
+    for (const node of nodes || []) {
+      const props = (node.props || {}) as Record<string, unknown>;
+      const text = typeof props.text === 'string' ? props.text : typeof props.label === 'string' ? props.label : '';
+      if (node.kind === 'heading' && text && claim('headline', node)) slots.headline = text;
+      else if (node.kind === 'text' && text && claim('body', node)) slots.body = text;
+      else if (node.kind === 'button' && typeof props.href === 'string' && claim('cta', node)) {
+        slots.cta = text;
+        slots.ctaHref = safeHref(props.href) || '';
+      } else if (node.kind === 'image' && typeof props.asset === 'string') {
+        const asset = doc.assets.find((entry) => entry.id === props.asset);
+        if (asset && claim('media', node)) {
+          slots.media = `/media/${asset.id}.${EXT[asset.mime] || 'jpg'}`;
+          slots.mediaAlt = typeof props.alt === 'string' ? props.alt : (asset.alt || '');
+          if (asset.width && asset.height) {
+            slots.mediaWidth = String(asset.width);
+            slots.mediaHeight = String(asset.height);
+          }
+        }
+      } else if (node.kind === 'list' && Array.isArray(props.items) && props.items.length && claim('points', node)) {
+        for (const item of props.items) if (typeof item === 'string' && item.trim()) points.push(item);
+      }
+      if (WRAPPERS.includes(node.kind)) visit(node.children);
+    }
+  };
+  visit(section.nodes);
+  if (points.length) slots.points = points;
+  return { values: slots, used, styles };
+}
+
+/** The classes a slot's own node carried, so a merchant's radius survives the recipe. */
+export function slotStyle(context: RenderContext, slots: SectionSlots, name: string): string {
+  const set = slots.styles[name];
+  return set ? styleClass(context.collector, set) : '';
+}
+
+/** The nodes a recipe's slots did not draw, with containers whose children were all drawn. */
+export function unusedNodes(nodes: Node[] | undefined, used: Set<string>): Node[] {
+  const out: Node[] = [];
+  for (const node of nodes || []) {
+    if (used.has(node.id)) continue;
+    if (!node.children?.length) { out.push(node); continue; }
+    const rest = unusedNodes(node.children, used);
+    if (rest.length) out.push({ ...node, children: rest });
+  }
+  return out;
+}
+
+/** The first image the store owns, for layouts whose media slot may be filled from anywhere. */
+export function firstImage(doc: SiteDocument): { src: string; alt: string } | null {
+  const asset = doc.assets.find((entry) => entry.kind === 'image');
+  if (!asset) return null;
+  return { src: `/media/${asset.id}.${EXT[asset.mime] || 'jpg'}`, alt: asset.alt || '' };
+}
+
+export function slotText(slots: SlotValues, name: string, fallback = ''): string {
+  const value = slots[name];
+  if (typeof value === 'string' && value.trim()) return value;
+  if (Array.isArray(value) && value.length) return value[0];
+  return fallback;
+}
+
+export function slotList(slots: SlotValues, name: string): string[] {
+  const value = slots[name];
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'string' && value.trim()) return [value];
+  return [];
+}
+
+/**
+ * One line of shop words: what the merchant typed beats what the build wrote into the slot,
+ * which beats the recipe's own default (parai D10). A renderer reads copy only through here,
+ * so a saved setting shows in the next preview instead of waiting for a regeneration.
+ */
+export function wordsOf(section: Section, recipe: Recipe | undefined, slots: SlotValues, setting: string, slot: string, floor = ''): string {
+  const turned = section.recipe?.settings?.[setting];
+  if (typeof turned === 'string' && turned.trim()) return turned.trim();
+  const built = slotText(slots, slot);
+  if (built.trim()) return built;
+  return String(recipe?.settings[setting]?.default ?? floor) || floor;
+}
+
+/** `width` / `height` for a slot's image, so a hero cannot shift the page while it paints. */
+export function mediaSize(slots: SlotValues): string {
+  const width = slotText(slots, 'mediaWidth');
+  const height = slotText(slots, 'mediaHeight');
+  return width && height ? ` width="${escapeAttribute(width)}" height="${escapeAttribute(height)}"` : '';
+}
+
+/**
+ * The merchant's turn of the recipe, over the defaults the recipe declares. A renderer reads
+ * a setting and nothing else, so an override cannot smuggle in a colour or a length.
+ */
+export function settingsOf(section: Section, recipe?: Recipe): Record<string, boolean | string> {
+  const out: Record<string, boolean | string> = {};
+  for (const [name, setting] of Object.entries(recipe?.settings || {})) out[name] = setting.default;
+  const stored = section.recipe?.settings;
+  if (stored && typeof stored === 'object') {
+    for (const [name, value] of Object.entries(stored as Record<string, unknown>)) {
+      if (typeof value === 'boolean' || typeof value === 'string') out[name] = value;
+    }
+  }
+  return out;
+}
 
 export interface ResolvedItem {
   id?: string;
@@ -28,6 +171,8 @@ export interface RenderContext {
   item?: ResolvedItem;
   index: number;
   sectionLayout?: SectionLayoutSpec;
+  /** The recipe chosen for this section, when one exists. */
+  recipe?: Recipe;
 }
 
 export const ICONS: Record<string, string> = {
@@ -123,14 +268,13 @@ export function renderNode(node: Node, context: RenderContext): string {
     case 'grid': return `<div id="${id}" class="tar-grid${style}">${renderChildren(node, context)}</div>`;
     case 'card': return `<div id="${id}" class="tar-card${style}">${renderChildren(node, context)}</div>`;
     case 'collection': {
-      let items = Array.isArray(merged.items) ? merged.items as (ResolvedItem & { whatsapp?: string; badge?: string })[] : [];
-      const hasPriorHeading = context.doc.pages?.some((p) => p.sections?.some((s) => s.nodes?.some((n) => n.kind === 'heading' && String(n.props?.text).trim().toLowerCase() === String(merged.title || '').trim().toLowerCase())));
-      const title = (merged.title && !hasPriorHeading) ? `<div class="tar-collection-header"><h2 class="tar-title tar-collection-title">${escapeHtml(merged.title)}</h2></div>` : '';
+      const items = Array.isArray(merged.items) ? merged.items as (ResolvedItem & { whatsapp?: string; badge?: string })[] : [];
       const binding = context.binding;
       const detail = binding?.detail?.path;
-      if (!items.length) {
-        items = defaultSampleProducts(context.doc.pages[0]?.title || 'Store', (merged.whatsappPhone as string) || (context.doc.brief as unknown as Record<string, unknown>)?.phone as string);
-      }
+      const emptyNotice = (merged.whatsappPhone as string) || (context.doc.brief as unknown as Record<string, unknown>)?.phone as string;
+      if (!items.length) return `<div id="${id}" class="tar-stack${style}">${renderEmptyCollection(String(merged.title || ''), binding?.empty?.text, emptyNotice)}</div>`;
+      const hasPriorHeading = context.doc.pages?.some((p) => p.sections?.some((s) => s.nodes?.some((n) => n.kind === 'heading' && String(n.props?.text).trim().toLowerCase() === String(merged.title || '').trim().toLowerCase())));
+      const title = (merged.title && !hasPriorHeading) ? `<div class="tar-collection-header"><h2 class="tar-title tar-collection-title">${escapeHtml(merged.title)}</h2></div>` : '';
       const cards = items.map((entry, index) => {
         const slug = itemSlug(entry, index);
         const cardImg = entry.image && /^https?:\/\//.test(entry.image) ? entry.image : (entry.image ? `/media/${entry.image}` : '');
@@ -165,11 +309,10 @@ export function renderNode(node: Node, context: RenderContext): string {
       const secCols = (merged.columns as number | undefined) || context.sectionLayout?.columns || context.doc.design.layout.columns;
       const secKind = context.sectionLayout?.kind;
       const isStack = secKind === 'stack' && secCols === 1;
-      const cols = isStack ? 1 : (typeof secCols === 'number' && secCols > 0 ? secCols : 3);
-      const gridStyle = isStack
-        ? 'display:flex;flex-direction:column;gap:24px;max-width:720px;margin:0 auto;width:100%;'
-        : `grid-template-columns:repeat(auto-fill, minmax(min(260px, 100%), 1fr));gap:20px;width:100%;`;
-      return `<div id="${id}" class="tar-stack${style}" style="width:100%">${title}<div class="${isStack ? 'tar-stack' : 'tar-grid tar-product-grid'}" style="${gridStyle}">${cards}</div></div>`;
+      const isRail = secKind === 'rail';
+      const inner = isStack ? 'tar-stack' : isRail ? 'tar-rail' : 'tar-grid tar-product-grid';
+      const innerStyle = isStack ? ' style="display:flex;flex-direction:column;gap:24px;max-width:720px;margin:0 auto;width:100%"' : '';
+      return `<div id="${id}" class="tar-stack${style}" style="width:100%">${title}<div class="${inner}"${innerStyle}>${cards}</div></div>`;
     }
     case 'navigation': {
       const links = Array.isArray(merged.links) ? merged.links as { label?: string; href?: string }[] : [];
@@ -188,7 +331,18 @@ export function renderNode(node: Node, context: RenderContext): string {
       </header>`;
     }
     case 'footer': {
-      return renderShopifyFooter(context.doc, context.doc.pages[0] || { sections: [] } as never, merged, node.id);
+      // Documents that predate sections carried their footer as a node; render it through
+      // the same primitive the section uses so a store never gets two footers.
+      const brand = typeof merged.brand === 'string' && merged.brand
+        ? [{ id: `${node.id}-brand`, kind: 'heading' as const, props: { text: merged.brand, level: 3 } }]
+        : [];
+      const legacy: Section = {
+        id: node.id,
+        purpose: 'footer',
+        layout: { kind: 'row' },
+        nodes: [...brand, ...(node.children || [])],
+      };
+      return FooterCard.render(legacy, context);
     }
     case 'menu': {
       const links = Array.isArray(merged.links) ? merged.links as { label?: string; href?: string }[] : [];

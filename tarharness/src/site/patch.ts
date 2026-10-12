@@ -8,8 +8,30 @@
  */
 
 import { badRequest, conflict, notFound } from '../errors.ts';
-import { resolveToken, TOKENS } from './design.ts';
+import { pruneLayout } from './document.ts';
+import { resolveDesign, resolveToken, TOKENS } from './design.ts';
 import type { Journey, Lock, Node, Persona, Section, SiteDocument, StyleSet } from './document.ts';
+import {
+  applySectionOverrides,
+  defaultBlueprint,
+  modelsOf,
+  normalizeOverrides,
+  OPTIONAL_SECTIONS,
+  SECTION_KINDS,
+  SECTION_SEQUENCE,
+  sectionsForModels,
+  type Blueprint,
+  type Overrides,
+  type SectionKind,
+} from './blueprint.ts';
+import { stampRecipe, stampText } from './build.ts';
+import { canonicalDesignId, tokensFor } from './designs/library.ts';
+import { recipeOfType, sectionType } from './recipes/library.ts';
+import { projectLook } from './shortlist.ts';
+
+/** What a merchant can decide for themselves, and keep across every regeneration. */
+export type OverrideKind = 'design' | 'recipe' | 'settings' | 'text' | 'hide' | 'show' | 'order';
+export const OVERRIDE_KINDS: readonly OverrideKind[] = ['design', 'recipe', 'settings', 'text', 'hide', 'show', 'order'] as const;
 
 export type PatchOperation =
   | { op: 'set_text'; target: string; value: string }
@@ -35,6 +57,8 @@ export type PatchOperation =
   | { op: 'set_asset_rights'; target: string; value: { approved?: boolean; license?: string; source?: string; alt?: string } }
   | { op: 'add_asset'; asset: SiteDocument['assets'][number] }
   | { op: 'remove_asset'; target: string }
+  | { op: 'set_override'; kind: OverrideKind; target?: string; value?: unknown }
+  | { op: 'clear_override'; kind: OverrideKind | 'all'; target?: string }
   | { op: 'lock'; target: string; kind: Lock['kind'] }
   | { op: 'unlock'; target: string };
 
@@ -47,7 +71,7 @@ export interface PatchInput {
 
 export interface DiffEntry {
   target: string;
-  kind: 'text' | 'prop' | 'style' | 'structure' | 'token' | 'journey' | 'persona' | 'policy' | 'lock' | 'brief' | 'asset';
+  kind: 'text' | 'prop' | 'style' | 'structure' | 'token' | 'journey' | 'persona' | 'policy' | 'lock' | 'brief' | 'asset' | 'override';
   from: string;
   to: string;
 }
@@ -335,6 +359,14 @@ export function applyPatch(doc: SiteDocument, input: PatchInput): SiteDocument {
         next.assets.splice(index, 1);
         break;
       }
+      case 'set_override': {
+        setOverride(next, operation, locked, respect);
+        break;
+      }
+      case 'clear_override': {
+        clearOverride(next, operation, locked, respect);
+        break;
+      }
       case 'lock': {
         if (!['section', 'node', 'token', 'component', 'brand'].includes(operation.kind)) throw badRequest('Choose a registered lock kind.');
         const exists = operation.kind === 'token'
@@ -365,6 +397,293 @@ function sectionHeading(doc: SiteDocument, id: string): FoundNode | null {
   if (!section) return null;
   const node = section.section.nodes.find((entry) => entry.kind === 'heading');
   return node ? { node, parent: section.section.nodes, index: section.section.nodes.indexOf(node), section: section.section } : null;
+}
+
+const record = (value: unknown): Record<string, unknown> =>
+  value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+
+/** The section type a stored section renders as; generated documents use it as the id too. */
+const kindOf = (section: Section): SectionKind => sectionType(section.purpose);
+
+const sequenced = (list: Iterable<SectionKind>): SectionKind[] => {
+  const wanted = new Set(list);
+  return SECTION_SEQUENCE.filter((kind) => wanted.has(kind));
+};
+
+/** The blueprint with its overrides normalized, so a caller can write to one object. */
+function blueprintOf(doc: SiteDocument): Blueprint {
+  const blueprint: Blueprint = doc.blueprint ? { ...doc.blueprint } : defaultBlueprint();
+  const overrides = normalizeOverrides(blueprint.overrides);
+  if (Object.keys(overrides).length) blueprint.overrides = overrides;
+  else delete blueprint.overrides;
+  doc.blueprint = blueprint;
+  return blueprint;
+}
+
+/** The blueprint as a renderer sees it: the merchant's recipes over the store's picks. */
+function effective(blueprint: Blueprint): Blueprint {
+  return { ...blueprint, recipes: { ...(blueprint.recipes || {}), ...(blueprint.overrides?.recipes || {}) } };
+}
+
+/** Re-stamp every section of one kind. False when the document has not built it yet. */
+function restamp(doc: SiteDocument, kind: SectionKind, blueprint: Blueprint): boolean {
+  const view = effective(blueprint);
+  let found = false;
+  for (const page of doc.pages) {
+    page.sections = page.sections.map((section) => {
+      if (kindOf(section) !== kind) return section;
+      found = true;
+      return stampRecipe(section, view);
+    });
+  }
+  return found;
+}
+
+function pend(overrides: Overrides, key: string): void {
+  overrides.pending = [...new Set([...(overrides.pending || []), key])];
+}
+
+function unpend(overrides: Overrides, key: string): void {
+  const rest = (overrides.pending || []).filter((entry) => entry !== key);
+  if (rest.length) overrides.pending = rest;
+  else delete overrides.pending;
+}
+
+function sectionKind(value: unknown): SectionKind {
+  const kind = typeof value === 'string' ? value.trim() : '';
+  if (!(SECTION_KINDS as readonly string[]).includes(kind)) throw badRequest('Choose a section this store has.');
+  return kind as SectionKind;
+}
+
+/** Recompute the section list and put the page back in that order. */
+function reshape(doc: SiteDocument, blueprint: Blueprint): void {
+  blueprint.sections = applySectionOverrides(blueprint.sections, modelsOf(blueprint), blueprint.overrides);
+  const rank = (section: Section) => {
+    const at = blueprint.sections.indexOf(kindOf(section));
+    return at < 0 ? blueprint.sections.length : at;
+  };
+  for (const page of doc.pages) page.sections = [...page.sections].sort((left, right) => rank(left) - rank(right));
+}
+
+function textTarget(doc: SiteDocument, target: unknown): string {
+  const id = typeof target === 'string' ? target.trim() : '';
+  if (!id) throw badRequest('Name the text to keep.');
+  const node = findNode(doc, id)?.node;
+  if (node && (node.kind === 'heading' || node.kind === 'text')) return node.id;
+  const heading = sectionHeading(doc, id)?.node;
+  if (heading) return heading.id;
+  throw notFound('Site text target was not found.');
+}
+
+/**
+ * A merchant decision, written where it survives every regeneration (parai §8, D10).
+ * What can be applied to the stored document is applied here, so the change is visible
+ * without a rebuild; what needs content the document does not have is left pending.
+ */
+function setOverride(doc: SiteDocument, operation: Extract<PatchOperation, { op: 'set_override' }>, locked: Set<string>, respect: boolean): void {
+  if (!(OVERRIDE_KINDS as readonly string[]).includes(operation.kind)) throw badRequest('Choose an override to change.');
+  const blueprint = blueprintOf(doc);
+  const overrides: Overrides = blueprint.overrides || (blueprint.overrides = {});
+  const models = modelsOf(blueprint);
+
+  if (operation.kind === 'design') {
+    const id = canonicalDesignId(typeof operation.value === 'string' ? operation.value.trim() : '');
+    if (!tokensFor(id)) throw badRequest('Choose a design from the library.');
+    overrides.design = id;
+    blueprint.style = id;
+    const projected = projectLook(id);
+    blueprint.typography = projected.typography;
+    blueprint.tone = projected.tone;
+    blueprint.density = projected.density;
+    const design = resolveDesign(id);
+    // An imported reference keeps its provenance; only the tokens change hands.
+    doc.design = doc.design?.source ? { ...design, source: doc.design.source } : design;
+    unpend(overrides, 'design');
+    return;
+  }
+
+  if (operation.kind === 'text') {
+    const id = textTarget(doc, operation.target);
+    const words = (typeof operation.value === 'string' ? operation.value : '').trim().slice(0, 4000);
+    if (!words) throw badRequest('Give the words to keep.');
+    guard(locked, id, respect);
+    overrides.text = { ...(overrides.text || {}), [id]: words };
+    stampText(doc, { [id]: words });
+    unpend(overrides, `text:${id}`);
+    return;
+  }
+
+  const kind = sectionKind(operation.target);
+  guard(locked, kind, respect);
+
+  if (operation.kind === 'recipe') {
+    const id = typeof operation.value === 'string' ? operation.value.trim() : '';
+    const recipe = recipeOfType(kind, id);
+    if (!recipe || recipe.id !== id) throw badRequest('Choose a layout this section has.');
+    overrides.recipes = { ...(overrides.recipes || {}), [kind]: id };
+    if (restamp(doc, kind, blueprint)) unpend(overrides, `recipe:${kind}`);
+    else pend(overrides, `recipe:${kind}`);
+    return;
+  }
+
+  if (operation.kind === 'settings') {
+    const value = record(operation.value);
+    if (!Object.keys(value).length) throw badRequest('Give a setting to turn.');
+    const recipe = recipeOfType(kind, overrides.recipes?.[kind] || blueprint.recipes?.[kind]);
+    if (!recipe) throw badRequest('That section has no settings.');
+    const turned = { ...(overrides.settings?.[kind] || {}) };
+    for (const [key, entry] of Object.entries(value)) {
+      const setting = recipe.settings[key];
+      if (!setting) throw badRequest('Choose a setting this layout has.');
+      if (setting.type === 'boolean') {
+        if (typeof entry !== 'boolean') throw badRequest('That setting is either on or off.');
+        turned[key] = entry;
+      } else if (setting.type === 'choice') {
+        const choice = typeof entry === 'string' ? entry.trim() : '';
+        if (!(setting.options || []).includes(choice)) throw badRequest('Choose one of the listed options.');
+        turned[key] = choice;
+      } else {
+        const words = (typeof entry === 'string' ? entry : '').trim().slice(0, setting.max || 200);
+        if (!words) throw badRequest('Give the words for that setting.');
+        // A colour or a length here would be a design decision in disguise (parai D7).
+        if (/^#[0-9a-f]{3,8}$/i.test(words)) throw badRequest('A setting carries words; colours belong to the design.');
+        turned[key] = words;
+      }
+    }
+    overrides.settings = { ...(overrides.settings || {}), [kind]: turned };
+    // Stamped at once, so a saved choice shows in the preview instead of waiting for a rebuild.
+    if (restamp(doc, kind, blueprint)) unpend(overrides, `settings:${kind}`);
+    else pend(overrides, `settings:${kind}`);
+    return;
+  }
+
+  if (operation.kind === 'order') {
+    const asked = Array.isArray(operation.value)
+      ? sequenced(operation.value.filter((entry) => (SECTION_KINDS as readonly string[]).includes(String(entry))) as SectionKind[])
+      : [];
+    if (!asked.length) throw badRequest('Give the section order.');
+    overrides.order = asked;
+    reshape(doc, blueprint);
+    unpend(overrides, 'order');
+    return;
+  }
+
+  const hidden = new Set(overrides.hidden || []);
+  const shown = new Set(overrides.shown || []);
+  const required = sectionsForModels(models).required;
+  if (operation.kind === 'hide') {
+    if (required.includes(kind)) throw badRequest('That section is required for the way you sell.');
+    hidden.add(kind);
+    shown.delete(kind);
+    let kept = 0;
+    for (const page of doc.pages) {
+      page.sections = page.sections.filter((section) => kindOf(section) !== kind);
+      kept += page.sections.length;
+    }
+    if (!kept) throw badRequest('A page keeps at least one section.');
+    unpend(overrides, `show:${kind}`);
+  } else {
+    hidden.delete(kind);
+    if (!required.includes(kind) && (OPTIONAL_SECTIONS as readonly string[]).includes(kind)) shown.add(kind);
+    // Turning a section back on can need content this document never built.
+    if (doc.pages.some((page) => page.sections.some((section) => kindOf(section) === kind))) unpend(overrides, `show:${kind}`);
+    else pend(overrides, `show:${kind}`);
+  }
+  overrides.hidden = sequenced(hidden);
+  overrides.shown = sequenced(shown);
+  if (!overrides.hidden.length) delete overrides.hidden;
+  if (!overrides.shown.length) delete overrides.shown;
+  reshape(doc, blueprint);
+}
+
+/**
+ * Hand a decision back to the system. The document keeps what was already built —
+ * undo is the way back — and the next regeneration is free to choose again.
+ */
+function clearOverride(doc: SiteDocument, operation: Extract<PatchOperation, { op: 'clear_override' }>, locked: Set<string>, respect: boolean): void {
+  const kind = operation.kind;
+  if (kind !== 'all' && !(OVERRIDE_KINDS as readonly string[]).includes(kind)) throw badRequest('Choose an override to clear.');
+  const blueprint = blueprintOf(doc);
+  const overrides = blueprint.overrides;
+  if (!overrides) return;
+
+  if (kind === 'all') {
+    const waiting = [...new Set([...(overrides.hidden || []), ...(overrides.shown || [])].map((entry) => `show:${entry}`))];
+    if (waiting.length) blueprint.overrides = { pending: waiting };
+    else delete blueprint.overrides;
+    reshape(doc, blueprint);
+    return;
+  }
+
+  if (kind === 'text') {
+    const rest = { ...(overrides.text || {}) };
+    const id = typeof operation.target === 'string' ? operation.target.trim() : '';
+    if (id) {
+      if (!Object.hasOwn(rest, id)) throw notFound('Merchant text for that slot was not found.');
+      delete rest[id];
+    } else if (!Object.keys(rest).length) {
+      throw notFound('Merchant text was not found.');
+    }
+    // The words already written stay written; a regeneration writes fresh copy.
+    if (Object.keys(rest).length) overrides.text = rest;
+    else delete overrides.text;
+    return;
+  }
+
+  if (kind === 'design') {
+    delete overrides.design;
+    return;
+  }
+
+  const target = sectionKind(operation.target);
+  guard(locked, target, respect);
+
+  if (kind === 'recipe') {
+    const rest = { ...(overrides.recipes || {}) };
+    if (!Object.hasOwn(rest, target)) throw notFound('That section was not overridden.');
+    delete rest[target];
+    if (Object.keys(rest).length) overrides.recipes = rest;
+    else delete overrides.recipes;
+    restamp(doc, target, blueprint);
+    unpend(overrides, `recipe:${target}`);
+    return;
+  }
+
+  if (kind === 'settings') {
+    const rest = { ...(overrides.settings || {}) };
+    if (!Object.keys(rest).length) throw notFound('That section was not overridden.');
+    if (Object.hasOwn(rest, target)) delete rest[target];
+    if (Object.keys(rest).length) overrides.settings = rest;
+    else delete overrides.settings;
+    restamp(doc, target, blueprint);
+    unpend(overrides, `settings:${target}`);
+    return;
+  }
+
+  if (kind === 'order') {
+    delete overrides.order;
+    reshape(doc, blueprint);
+    unpend(overrides, 'order');
+    return;
+  }
+
+  const hidden = new Set(overrides.hidden || []);
+  const shown = new Set(overrides.shown || []);
+  if (kind === 'hide') {
+    if (!hidden.has(target)) throw notFound('That section was not hidden.');
+    hidden.delete(target);
+    if ((OPTIONAL_SECTIONS as readonly string[]).includes(target)) shown.add(target);
+    if (!doc.pages.some((page) => page.sections.some((section) => kindOf(section) === target))) pend(overrides, `show:${target}`);
+  } else {
+    if (!shown.has(target)) throw notFound('That section was not turned on.');
+    shown.delete(target);
+    unpend(overrides, `show:${target}`);
+  }
+  overrides.hidden = sequenced(hidden);
+  overrides.shown = sequenced(shown);
+  if (!overrides.hidden.length) delete overrides.hidden;
+  if (!overrides.shown.length) delete overrides.shown;
+  reshape(doc, blueprint);
 }
 
 const text = (value: unknown): string => typeof value === 'string' ? value : '';
@@ -422,5 +741,10 @@ export function diffSummary(before: SiteDocument, after: SiteDocument): DiffEntr
   if (JSON.stringify(before.redirects) !== JSON.stringify(after.redirects)) entries.push({ target: 'redirects', kind: 'structure', from: `${before.redirects.length}`, to: `${after.redirects.length}` });
   if (JSON.stringify(before.locks) !== JSON.stringify(after.locks)) entries.push({ target: 'locks', kind: 'lock', from: `${before.locks.length}`, to: `${after.locks.length}` });
   if (JSON.stringify(before.assets) !== JSON.stringify(after.assets)) entries.push({ target: 'assets', kind: 'asset', from: `${before.assets.length}`, to: `${after.assets.length}` });
+  const beforeOverrides = before.blueprint?.overrides;
+  const afterOverrides = after.blueprint?.overrides;
+  if (JSON.stringify(beforeOverrides || {}) !== JSON.stringify(afterOverrides || {})) {
+    entries.push({ target: 'overrides', kind: 'override', from: Object.keys(beforeOverrides || {}).join(' ') || 'none', to: Object.keys(afterOverrides || {}).join(' ') || 'none' });
+  }
   return entries;
 }

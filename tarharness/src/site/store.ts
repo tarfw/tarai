@@ -8,20 +8,28 @@ import { readDocument } from './adapt.ts';
 import { inspectDocument } from './inspect.ts';
 import { assetReader } from './asset.ts';
 import { applyPexels } from './pexels.ts';
-import { CATEGORY_IDS } from './design.ts';
-import { type Blueprint, type BusinessKind, type DensityToken, type HeaderStyle, type HeroPattern, type LeadSection, type ToneToken, type TypographyToken, compileSectionOrder, catalogLayoutFor, checkPublishGate, hashState } from './blueprint.ts';
+import { type Blueprint, type CommerceModel, type DensityToken, type GateNeed, type LeadSection, type Overrides, type SectionKind, type ToneToken, type TypographyToken, SECTION_KINDS, applySectionOverrides, catalogLayoutFor, checkModelsGate, compileSectionOrder, forcedSections, kindForModels, normalizeOverrides, sectionsForModels } from './blueprint.ts';
 import { BudgetExceeded, DEFAULT_BUDGET, GROQ_DEFAULT_MODEL, ModelRunner, SITE_MODEL_FALLBACKS, readClaims, writeCopy } from './model.ts';
 import { buildSite, briefBias, type Facts, type Slot } from './build.ts';
 import { defaultBlueprint } from './blueprint.ts';
+import { canonicalDesignId, designOptions, libraryDefault } from './designs/library.ts';
+import { defaultRecipe, projectLook, shortlistRecipes } from './shortlist.ts';
+import { canonicalRecipeId, recipeSettings } from './recipes/library.ts';
+import type { RecipeSetting } from './recipes/recipe.ts';
 import { slugify } from './html.ts';
-import { checkClaims, fanOut, flagDrift } from './judgment.ts';
+import { checkClaims, flagDrift, judgeLook, judgeProfile } from './judgment.ts';
+import { merchantProfile, readModels } from './profile.ts';
+import { drift, gateReport, isDirty, merchantPhotos, stateHash } from './state.ts';
 import { DOCUMENT_VERSION, type Asset, type Node, type Page, type PersonaRule, type ReleaseFile, type ReleaseManifest, type Section, type SiteDocument } from './document.ts';
 
 const now = () => Date.now();
 const reserved = new Set(['www', 'api', 'app', 'admin', 'mail', 'static', 'assets', 'preview', 'support', 'help', 'status']);
 const object = (value: unknown): Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 const text = (value: unknown, max = 240) => typeof value === 'string' ? value.trim().slice(0, max) : '';
-const strings = (value: unknown, max = 12): string[] => Array.isArray(value) ? value.map((entry) => text(entry, 300)).filter(Boolean).slice(0, max) : [];
+const strings = (value: unknown, max = 12): string[] => Array.isArray(value)
+  ? value.map((entry) => text(entry, 300)).filter(Boolean).slice(0, max)
+  : typeof value === 'string' ? value.split(/[,\n]+/).map((entry) => text(entry, 300)).filter(Boolean).slice(0, max)
+  : [];
 
 export async function getSiteRecord(client: Client, siteId?: string): Promise<{ id: string; version: number; state: string; data: unknown } | null> {
   const result = await client.execute(siteId
@@ -243,31 +251,45 @@ async function activatePublication(control: D1Database | undefined, domain: stri
   return origin;
 }
 
-async function saveEvent(client: Client, context: AccessContext, action: string, record: string, key: string, inputHash: string, result: Record<string, unknown>) {
-  await client.execute(eventStatement({ action, actor: context.identity.id, recordId: record, key, hash: inputHash, result }));
+/** Everything a site action can reach: its buckets, its model keys, its publication authority. */
+export interface SiteEnv {
+  readonly control?: D1Database;
+  readonly domain?: string;
+  readonly releases?: R2Bucket;
+  readonly content?: R2Bucket;
+  readonly ai?: Ai;
+  readonly typesafe?: string;
+  readonly model?: string;
+  readonly groqApiKey?: string;
+  readonly pexelsApiKey?: string;
+}
+
+/** The audit row one step writes: which action, under which idempotency key. */
+export interface StepEvent {
+  readonly action: string;
+  readonly key: string;
+  readonly hash: string;
+}
+/** The audit row of a step that changes no record of its own (a compile writes releases, not rows). */
+async function saveEvent(client: Client, context: AccessContext, record: string, event: StepEvent, result: Record<string, unknown>): Promise<void> {
+  await client.execute(eventStatement({ action: event.action, actor: context.identity.id, recordId: record, key: event.key, hash: event.hash, result }));
 }
 
 /**
- * Create: one fan-out. Jev answers every independent question about the brief in
- * a single batched call, the builder composes a valid document from approved
- * facts, one prose pass rewrites the copy slots, and claims are checked in one
- * batched call. With no model key the deterministic defaults still produce a
- * valid site.
+ * Create: two bounded Jev calls — what the business is, then how it looks — the builder
+ * composes a valid document from approved facts, one prose pass rewrites the copy slots,
+ * and claims are checked in one batched call. With no model key the deterministic defaults
+ * still produce a valid site. `event` is the audit row this build writes; a composed action
+ * gives it its own derived key so one merchant tap stays one idempotency key.
  */
-export async function executeSiteGenerate(
+async function runGenerate(
   client: Client,
   context: AccessContext,
   input: Record<string, unknown>,
-  key: string,
-  inputHash: string,
-  typesafe?: string,
-  ai?: Ai,
-  control?: D1Database,
-  model?: string,
-  groqApiKey?: string,
-  content?: R2Bucket,
-  pexelsApiKey?: string,
+  event: StepEvent,
+  env: SiteEnv,
 ): Promise<Record<string, unknown>> {
+  const { typesafe, ai, control, model, groqApiKey, content, pexelsApiKey } = env;
   const title = text(input.title) || context.workspace.name || 'Workspace';
   const prompt = text(input.prompt ?? input.description, 2000);
   if (input.reset === true) {
@@ -277,7 +299,7 @@ export async function executeSiteGenerate(
   const previous = existing ? readDocument(existing.data).doc : null;
   const brief = { goal: prompt || `${title} online`, audience: text(input.audience, 200), tone: text(input.tone, 120) };
   const gathered = await publicFacts(client, input, previous, context);
-  const cache = { control, workspace: context.workspace.id, version: 'create-2' };
+  const cache = { control, workspace: context.workspace.id, version: 'create-3' };
   const inputBriefProvided = Array.isArray(input.brief);
   const inputBrief = inputBriefProvided ? strings(input.brief, 20) : [];
   let bullets = inputBriefProvided ? inputBrief : ((previous?.brief?.bullets || previous?.brief?.accepted || []) as string[]);
@@ -300,53 +322,91 @@ export async function executeSiteGenerate(
   }
   const avoided = [...briefBias(previous?.brief)];
 
-  const judged = await fanOut(typesafe, cache, {
-    trade: trade || brief.audience,
+  // The merchant's own picks, carried across every regeneration (parai §8, D10). A caller
+  // may post a fresh set; anything it does not name is kept from the stored blueprint.
+  const posted = object(input.overrides);
+  delete posted.pending;
+  const overrides = normalizeOverrides({ ...(previous?.blueprint?.overrides || {}), ...posted });
+  if (overrides.design) overrides.design = canonicalDesignId(overrides.design);
+  const settled: Overrides = { ...overrides };
+  delete settled.pending;
+
+  // JEV #1 — what this business is. What the merchant stated beats the proposal,
+  // and code owns every rule that reads the answer.
+  const profile = merchantProfile(await judgeProfile(typesafe, cache, {
+    description: prompt,
+    bullets,
+    city: text(input.city, 120),
+    hours: (gathered.facts.hours || []).join(', '),
+  }), input);
+  const models = profile.models;
+  const kind = kindForModels(models);
+
+  const judged = await judgeLook(typesafe, cache, {
+    models,
+    industry: profile.industry,
     facts: {
       ...gathered.judged,
       items: gathered.facts.items?.length ?? 0,
       proofs: gathered.facts.proofs || [],
       season: gathered.facts.season || '',
+      notice: gathered.facts.notice || '',
     },
-    brief: { ...brief, bullets },
-    assets: gathered.assets,
+    brief: { goal: brief.goal, audience: brief.audience, bullets },
     avoid: avoided,
+    // Overridden picks are fixed for Jev, so it neither fights them nor caches around them.
+    overrides: {
+      ...(overrides.design ? { design: overrides.design } : {}),
+      ...(overrides.recipes ? { recipes: overrides.recipes } : {}),
+    },
   });
 
-  const kind = (input.kind as BusinessKind) || judged.kind || 'goods';
-  const defaults = defaultBlueprint(kind);
-  const style = (input.style as string) || (input.tone ? undefined : (judged.style || previous?.blueprint?.style || defaults.style || 'dark-luxury'));
-  const typography = (input.typography as TypographyToken) || judged.typography || defaults.typography;
-  const tone = (input.tone as ToneToken) || judged.tone || defaults.tone;
-  const density = (typeof input.density === 'number' ? input.density as DensityToken : undefined) || judged.density || defaults.density;
+  const defaults = defaultBlueprint(models, gathered.facts.items?.length ?? 0);
+  // Palette and spacing are the design's, projected in code — never a model's call (D7). An
+  // explicit `input.tone` still synthesizes a one-off design (createDesign), and `input.style`
+  // stays for one app release so a cached snapshot posting a legacy id resolves. A stored
+  // design override beats both, because it is the merchant's own word (parai D10).
+  const style = overrides.design || (input.style as string) || (input.tone ? undefined : (judged.design || previous?.blueprint?.style || defaults.style || libraryDefault()));
+  const projected = projectLook(style || libraryDefault());
+  const typography = (input.typography as TypographyToken) || projected.typography;
+  const tone = (input.tone as ToneToken) || projected.tone;
+  const density = (typeof input.density === 'number' ? input.density as DensityToken : undefined) || projected.density;
   const lead = (input.lead as LeadSection) || judged.lead || defaults.lead;
 
-  const gate = checkPublishGate(gathered.facts);
+  const gate = checkModelsGate(models, gathered.facts);
   const catalogLayout = catalogLayoutFor(gathered.facts.items?.length ?? 0);
-  const sections = compileSectionOrder(kind, lead, {
-    notice: Boolean(input.notice || gathered.facts.notice),
-    spotlight: judged.spotlight,
+  const forced = forcedSections(overrides);
+  const sections = applySectionOverrides(compileSectionOrder(models, lead, {
+    announcement: Boolean(input.notice || gathered.facts.notice) || forced.has('announcement'),
+    spotlight: judged.spotlight || forced.has('spotlight'),
     catalog: (gathered.facts.items?.length ?? 0) > 0,
-    story: judged.story,
-    trust: judged.trust && (gathered.facts.proofs?.length ?? 0) > 0,
-  });
+    story: judged.story || forced.has('story'),
+    trust: (judged.trust && (gathered.facts.proofs?.length ?? 0) > 0) || forced.has('trust'),
+  }), models, overrides);
 
-  const heroPattern = (input.heroPattern as HeroPattern) || (previous?.blueprint?.heroPattern as HeroPattern) || judged.heroPattern || defaults.heroPattern || 'split';
+  // An app snapshot from before recipes can still post an option name for a section; it
+  // arrives as that section's pick, so the old vocabulary has one translation point.
+  const recipes: Partial<Record<SectionKind, string>> = { ...judged.recipes, ...overrides.recipes };
+  for (const [field, kind] of [['headerStyle', 'header'], ['heroPattern', 'hero'], ['footerStyle', 'footer']] as const) {
+    const value = input[field];
+    if (typeof value === 'string' && value) recipes[kind] = canonicalRecipeId(kind, value);
+  }
   const blueprintPre: Omit<Blueprint, 'hash'> = {
     kind,
+    profile,
     style,
     typography,
     tone,
     density,
     lead,
-    headerStyle: (input.headerStyle as HeaderStyle) || (previous?.blueprint?.headerStyle as HeaderStyle) || (heroPattern === 'centered_atmospheric' ? 'floating_pill' : heroPattern === 'split' ? 'split' : 'fullbleed'),
-    heroPattern,
+    recipes,
+    ...(Object.keys(settled).length ? { overrides: settled } : {}),
     catalogLayout,
     sections,
     gate,
     revision: previous ? (previous.revision || 1) + 1 : 1,
   };
-  const hash = await hashState(bullets, gathered.facts);
+  const hash = await stateHash({ bullets, facts: gathered.facts, photos: merchantPhotos(gathered.assetsRegistered), models });
   const blueprint: Blueprint = {
     ...blueprintPre,
     hash,
@@ -366,12 +426,24 @@ export async function executeSiteGenerate(
     previous,
   });
   const site = built.doc;
+  // This build owns the draft until a hand edit says otherwise; the sweep reads that to
+  // decide whether a rebuild would overwrite the merchant's own work (parai §7).
+  site.provenance = { state: hash, revision: site.revision, at: now(), generator: 'agent' };
   site.brief = {
     ...site.brief,
     bullets,
     accepted: bullets,
     rejected: previous?.brief?.rejected || [],
   };
+  // An override this build could not honour stays pending, so publishing and the regenerate
+  // sweep can tell that the stored site is not yet the site the merchant asked for. `shown`
+  // sections the builder dropped (no content to fill them) are the ones that stay outstanding.
+  const unbuilt = (settled.shown || []).filter((kind) => !site.blueprint.sections.includes(kind));
+  if (Object.keys(settled).length) {
+    const withPending: Overrides = { ...settled, ...(unbuilt.length ? { pending: unbuilt.map((kind) => `show:${kind}`) } : {}) };
+    site.blueprint.overrides = withPending;
+    blueprint.overrides = withPending;
+  }
 
   const prose = await writeDraft(ai, model, groqApiKey, site, built.slots, gathered.judged);
   let note = prose.note;
@@ -389,7 +461,7 @@ export async function executeSiteGenerate(
   const preview = { html: rawHtml.replace('</head>', `<style>${css}</style></head>`), css, hash: compiled.hash };
   const version = existing ? existing.version + 1 : 1;
   const state = existing?.state === 'live' ? 'live' : 'draft';
-  const result = { siteId, version, state, site, preview, composed: Boolean(prose.wrote), blueprint, gate: built.gate, ...(note ? { note } : {}) };
+  const result = { siteId, version, state, site, preview, composed: Boolean(prose.wrote), blueprint, gate: built.gate, missing: built.gate.missing, ...(note ? { note } : {}) };
 
   // Placeholder photography lands as a follow-up revision so creation stays fast.
   const withPlaceholders = async (): Promise<Record<string, unknown>> => {
@@ -408,7 +480,7 @@ export async function executeSiteGenerate(
     const saved = await client.batch([
       { sql: 'UPDATE records SET title=?,data=?,version=?,updated=? WHERE id=? AND version=?', args: [title, JSON.stringify(site), version, at, siteId, existing.version] },
       { sql: `INSERT INTO events(id,kind,record_id,action_id,state,actor_id,input_hash,idempotency_key,data,created_at,updated_at)
-        SELECT ?, 'action', ?, 'site.generate', 'accepted', ?, ?, ?, ?, ?, ? WHERE changes()=1`, args: [`evt_${crypto.randomUUID()}`, siteId, context.identity.id, inputHash, key, JSON.stringify({ result }), at, at] },
+        SELECT ?, 'action', ?, ?, 'accepted', ?, ?, ?, ?, ?, ? WHERE changes()=1`, args: [`evt_${crypto.randomUUID()}`, siteId, event.action, context.identity.id, event.hash, event.key, JSON.stringify({ result }), at, at] },
     ], 'write');
     if (saved[0].rowsAffected !== 1 || saved[1].rowsAffected !== 1) throw conflict('Site was modified concurrently. Refresh and try again.');
     return withPlaceholders();
@@ -416,10 +488,28 @@ export async function executeSiteGenerate(
   const created = await client.batch([
     { sql: "INSERT INTO records(id,type,title,state,data,owner,version,created,updated) SELECT ?,'site',?,'draft',?,?,1,?,? WHERE NOT EXISTS(SELECT 1 FROM records WHERE type='site' AND archived IS NULL)", args: [siteId, title, JSON.stringify(site), context.identity.id, at, at] },
     { sql: `INSERT INTO events(id,kind,record_id,action_id,state,actor_id,input_hash,idempotency_key,data,created_at,updated_at)
-      SELECT ?, 'action', ?, 'site.generate', 'accepted', ?, ?, ?, ?, ?, ? WHERE changes()=1`, args: [`evt_${crypto.randomUUID()}`, siteId, context.identity.id, inputHash, key, JSON.stringify({ result }), at, at] },
+      SELECT ?, 'action', ?, ?, 'accepted', ?, ?, ?, ?, ?, ? WHERE changes()=1`, args: [`evt_${crypto.randomUUID()}`, siteId, event.action, context.identity.id, event.hash, event.key, JSON.stringify({ result }), at, at] },
   ], 'write');
   if (created[0].rowsAffected !== 1 || created[1].rowsAffected !== 1) throw conflict('A site was created concurrently. Refresh and edit that site.');
   return withPlaceholders();
+}
+
+/** The public `site.generate` action: one build, recorded under the caller's own key. */
+export async function executeSiteGenerate(
+  client: Client,
+  context: AccessContext,
+  input: Record<string, unknown>,
+  key: string,
+  inputHash: string,
+  typesafe?: string,
+  ai?: Ai,
+  control?: D1Database,
+  model?: string,
+  groqApiKey?: string,
+  content?: R2Bucket,
+  pexelsApiKey?: string,
+): Promise<Record<string, unknown>> {
+  return runGenerate(client, context, input, { action: 'site.generate', key, hash: inputHash }, { typesafe, ai, control, model, groqApiKey, content, pexelsApiKey });
 }
 
 export async function executeSiteBriefAdd(
@@ -531,76 +621,81 @@ export async function executeSiteSectionsSet(
   input: Record<string, unknown>,
   key: string,
   inputHash: string,
+  typesafe?: string,
+  ai?: Ai,
+  control?: D1Database,
+  model?: string,
+  groqApiKey?: string,
+  content?: R2Bucket,
+  pexelsApiKey?: string,
 ): Promise<Record<string, unknown>> {
   const current = await getSiteRecord(client, text(input.siteId, 160) || undefined);
   if (!current) throw notFound('Site was not found.');
-  const order = strings(input.order, 10);
-  const hidden = new Set(strings(input.hidden, 10));
   const doc = readDocument(current.data).doc;
-  const home = doc.pages.find((p) => p.id === 'home' || p.path === '/');
-  if (home && order.length) {
-    const existingMap = new Map(home.sections.map((s) => [s.id, s]));
-    const nextSections: Section[] = [];
-    for (const sid of order) {
-      const sec = existingMap.get(sid);
-      if (sec && !hidden.has(sid)) nextSections.push(sec);
-    }
-    for (const s of home.sections) {
-      if (!order.includes(s.id) && !hidden.has(s.id) && !nextSections.includes(s)) nextSections.push(s);
-    }
-    home.sections = nextSections;
-  }
-  doc.revision += 1;
-  validateDocument(doc);
-  const version = current.version + 1;
-  const at = now();
-  const compiled = await compileDocument(doc);
-  const rawHtml = String(compiled.files.find((file) => file.path === '/index.html')?.body || '');
-  const css = String(compiled.files.find((file) => file.path === '/style.css')?.body || '');
-  const preview = { html: rawHtml.replace('</head>', `<style>${css}</style></head>`), css, hash: compiled.hash };
-  const result = { siteId: current.id, version, state: current.state, site: doc, preview };
-  const saved = await client.batch([
-    { sql: 'UPDATE records SET data=?,version=?,updated=? WHERE id=? AND version=?', args: [JSON.stringify(doc), version, at, current.id, current.version] },
-    { sql: `INSERT INTO events(id,kind,record_id,action_id,state,actor_id,input_hash,idempotency_key,data,created_at,updated_at)
-      SELECT ?, 'action', ?, 'site.sections.set', 'accepted', ?, ?, ?, ?, ?, ? WHERE changes()=1`, args: [`evt_${crypto.randomUUID()}`, current.id, context.identity.id, inputHash, key, JSON.stringify({ result }), at, at] },
-  ], 'write');
-  if (saved[0].rowsAffected !== 1 || saved[1].rowsAffected !== 1) throw conflict('Site was modified concurrently. Refresh and try again.');
+  // Section shape is an override, not a one-off edit: folding it into the stored overrides and
+  // regenerating is what stops the next generate from silently rebuilding the merchant's choice
+  // away (parai §8). Only the lists this call names are changed; the rest are kept.
+  const posted: Record<string, unknown> = {};
+  if (input.order !== undefined) posted.order = strings(input.order, SECTION_KINDS.length);
+  if (input.hidden !== undefined) posted.hidden = strings(input.hidden, SECTION_KINDS.length);
+  if (input.shown !== undefined) posted.shown = strings(input.shown, SECTION_KINDS.length);
+  return runGenerate(client, context, {
+    ...input,
+    siteId: current.id,
+    title: text(input.title) || doc.pages[0]?.title,
+    overrides: posted,
+  }, { action: 'site.sections.set', key, hash: inputHash }, { typesafe, ai, control, model, groqApiKey, content, pexelsApiKey });
+}
+
+/** Build one immutable candidate from the current draft and hand back a preview of it. */
+async function runCompile(client: Client, context: AccessContext, input: Record<string, unknown>, event: StepEvent, env: SiteEnv): Promise<Record<string, unknown>> {
+  if (!env.releases) throw unavailable('Site release storage is not configured.');
+  const current = await getSiteRecord(client, text(input.siteId, 160) || undefined); if (!current) throw notFound('Site was not found.');
+  const authority = env.control ? await env.control.withSession('first-primary').prepare('SELECT site,epoch FROM sites WHERE workspace=?')
+    .bind(context.workspace.id).first<{ site: string; epoch: number }>() : null;
+  const releaseId = `rel_${crypto.randomUUID()}`;
+  const currentDocument = readDocument(current.data).doc;
+  const { manifest } = await saveRelease(client, env.releases, env.content, context, current, releaseId, (currentDocument.releases?.length || 0) + 1, env.domain, authority?.epoch || 0);
+  const token = crypto.randomUUID();
+  if (env.control) await env.control.prepare('INSERT INTO previews(token,workspace,site,release,expires) VALUES(?,?,?,?,?)')
+    .bind(token, context.workspace.id, current.id, releaseId, now() + 30 * 60_000).run();
+  const result = { releaseId, hash: manifest.hash, version: current.version, ...(env.control ? { previewUrl: `/v1/site-previews/${token}/` } : {}) };
+  await saveEvent(client, context, current.id, event, result);
   return result;
 }
 
 export async function executeSiteCompile(client: Client, bucket: R2Bucket | undefined, context: AccessContext, input: Record<string, unknown>, key: string, inputHash: string, control?: D1Database, domain?: string, content?: R2Bucket): Promise<Record<string, unknown>> {
-  if (!bucket) throw unavailable('Site release storage is not configured.');
-  const current = await getSiteRecord(client, text(input.siteId, 160) || undefined); if (!current) throw notFound('Site was not found.');
-  const authority = control ? await control.withSession('first-primary').prepare('SELECT site,epoch FROM sites WHERE workspace=?')
-    .bind(context.workspace.id).first<{ site: string; epoch: number }>() : null;
-  const releaseId = `rel_${crypto.randomUUID()}`;
-  const currentDocument = readDocument(current.data).doc;
-  const { manifest } = await saveRelease(client, bucket, content, context, current, releaseId, (currentDocument.releases?.length || 0) + 1, domain, authority?.epoch || 0);
-  const token = crypto.randomUUID();
-  if (control) await control.prepare('INSERT INTO previews(token,workspace,site,release,expires) VALUES(?,?,?,?,?)')
-    .bind(token, context.workspace.id, current.id, releaseId, now() + 30 * 60_000).run();
-  const result = { releaseId, hash: manifest.hash, version: current.version, ...(control ? { previewUrl: `/v1/site-previews/${token}/` } : {}) };
-  await saveEvent(client, context, 'site.compile', current.id, key, inputHash, result);
-  return result;
+  return runCompile(client, context, input, { action: 'site.compile', key, hash: inputHash }, { releases: bucket, control, domain, content });
 }
 
-async function publishCurrent(client: Client, bucket: R2Bucket | undefined, context: AccessContext, input: Record<string, unknown>, key: string, inputHash: string, action: 'site.publish' | 'site.refresh', control?: D1Database, domain?: string, content?: R2Bucket): Promise<Record<string, unknown>> {
-  if (!bucket) throw unavailable('Site release storage is not configured.');
+/**
+ * Make one reviewed candidate the live site. `event.action` says which way it was asked:
+ * `site.publish` puts a fresh candidate live, `site.refresh` re-points the live release at
+ * facts that changed since it was compiled.
+ */
+async function publishCurrent(client: Client, env: SiteEnv, context: AccessContext, input: Record<string, unknown>, event: StepEvent): Promise<Record<string, unknown>> {
+  if (!env.releases) throw unavailable('Site release storage is not configured.');
+  const bucket = env.releases;
+  const { control, domain, content } = env;
+  const refresh = event.action === 'site.refresh';
   const current = await getSiteRecord(client, text(input.siteId, 160) || undefined); if (!current) throw notFound('Site was not found.');
   const document = readDocument(current.data).doc;
-  if (action === 'site.refresh' && (current.state !== 'live' || !document.currentRelease)) throw badRequest('Publish the site before refreshing its public bindings.');
+  if (!refresh && document.blueprint?.gate && document.blueprint.gate.ok === false) {
+    throw conflict(`This store is not ready to publish: ${document.blueprint.gate.missing.map((entry) => entry.message).join(' ')}`);
+  }
+  if (refresh && (current.state !== 'live' || !document.currentRelease)) throw badRequest('Publish the site before refreshing its public bindings.');
   let epoch = 0;
   if (control) {
     const live = await control.withSession('first-primary').prepare('SELECT site,release,status,epoch FROM sites WHERE workspace=?')
       .bind(context.workspace.id).first<{ site: string; release: string; status: string; epoch: number }>();
-    if (action === 'site.refresh' && (!live || live.site !== current.id || live.status !== 'active' || live.release !== document.currentRelease)) {
+    if (refresh && (!live || live.site !== current.id || live.status !== 'active' || live.release !== document.currentRelease)) {
       throw conflict('Live publication changed. Refresh the site state before updating public facts.');
     }
     if (live) epoch = live.epoch;
   }
   let source: unknown = current.data;
   let candidate: ReleaseManifest | undefined;
-  if (action === 'site.publish') {
+  if (!refresh) {
     const release = text(input.releaseId, 160);
     const reviewed = await readCandidate(bucket, context, current.id, release);
     if (reviewed.manifest.version !== current.version || reviewed.manifest.hash !== input.hash) throw conflict('The reviewed candidate is stale or does not match this draft. Compile and review it again.');
@@ -616,9 +711,9 @@ async function publishCurrent(client: Client, bucket: R2Bucket | undefined, cont
     const blocking = parsed.inspection?.blocking || [];
     if (blocking.length) throw conflict(`This candidate has ${blocking.length} blocking check${blocking.length === 1 ? '' : 's'}: ${String(blocking[0]?.message || 'resolve the blocking checks')}. Compile again after fixing them.`);
   }
-  if (action === 'site.refresh') {
-    const key = `workspaces/${context.workspace.id}/sites/${current.id}/releases/${document.currentRelease}/source.json`;
-    const snapshot = await bucket.get(key);
+  if (refresh) {
+    const sourceKey = `workspaces/${context.workspace.id}/sites/${current.id}/releases/${document.currentRelease}/source.json`;
+    const snapshot = await bucket.get(sourceKey);
     if (!snapshot) throw unavailable('Published source snapshot is unavailable. Publish the site again before refreshing.');
     source = JSON.parse(await snapshot.text()) as unknown;
     validateDocument(readDocument(source).doc);
@@ -630,21 +725,131 @@ async function publishCurrent(client: Client, bucket: R2Bucket | undefined, cont
   const itemCount = built?.itemCount || 0;
   const site = { ...document, currentRelease: releaseId, releases: [...(document.releases || []), manifest] }; const at = now(); const version = current.version + 1;
   const common = { siteId: current.id, releaseId, liveUrl: `/v1/sites/${encodeURIComponent(context.workspace.slug)}`, generation, state: 'live' };
-  const result: Record<string, unknown> = action === 'site.refresh' ? { ...common, refreshed: true, itemCount } : common;
+  const result: Record<string, unknown> = refresh ? { ...common, refreshed: true, itemCount } : common;
   const publicUrl = await activatePublication(control, domain, context, current.id, manifest, candidate ? manifest.epoch : undefined);
   if (publicUrl) { result.publicUrl = publicUrl; result.liveUrl = publicUrl; }
   const saved = await client.batch([
     { sql: "UPDATE records SET state='live',data=?,version=?,updated=? WHERE id=? AND version=?", args: [JSON.stringify(site), version, at, current.id, current.version] },
     { sql: `INSERT INTO events(id,kind,record_id,action_id,state,actor_id,input_hash,idempotency_key,data,created_at,updated_at)
-      SELECT ?, 'action', ?, ?, 'accepted', ?, ?, ?, ?, ?, ? WHERE changes()=1`, args: [`evt_${crypto.randomUUID()}`, current.id, action, context.identity.id, inputHash, key, JSON.stringify({ result }), at, at] },
-    { sql: "UPDATE records SET state='replaced',version=version+1,updated=? WHERE type='site' AND state='live' AND id<>? AND EXISTS(SELECT 1 FROM events WHERE action_id=? AND idempotency_key=? AND record_id=?)", args: [at, current.id, action, key, current.id] },
+      SELECT ?, 'action', ?, ?, 'accepted', ?, ?, ?, ?, ?, ? WHERE changes()=1`, args: [`evt_${crypto.randomUUID()}`, current.id, event.action, context.identity.id, event.hash, event.key, JSON.stringify({ result }), at, at] },
+    { sql: "UPDATE records SET state='replaced',version=version+1,updated=? WHERE type='site' AND state='live' AND id<>? AND EXISTS(SELECT 1 FROM events WHERE action_id=? AND idempotency_key=? AND record_id=?)", args: [at, current.id, event.action, event.key, current.id] },
   ], 'write');
   if (saved[0].rowsAffected !== 1 || saved[1].rowsAffected !== 1) throw conflict('The reviewed release may be live, but the workspace projection changed. Reload the site before retrying.');
   return publicUrl ? { ...result, publicUrl } : result;
 }
 
 export async function executeSitePublish(client: Client, bucket: R2Bucket | undefined, context: AccessContext, input: Record<string, unknown>, key: string, inputHash: string, control?: D1Database, domain?: string, content?: R2Bucket): Promise<Record<string, unknown>> {
-  return publishCurrent(client, bucket, context, input, key, inputHash, 'site.publish', control, domain, content);
+  return publishCurrent(client, { releases: bucket, control, domain, content }, context, input, { action: 'site.publish', key, hash: inputHash });
+}
+
+/**
+ * Publish in one call (parai §11). Rebuild only when the owner changed something the build
+ * reads, compile the draft, then put that candidate live under the checks it has to pass.
+ * A store that is not ready is not an error: it stays a draft and answers with the list of
+ * what the merchant still has to supply. Each step records its own audit row under a derived
+ * key, so the merchant's one tap stays one idempotency key and a retry replays the outcome.
+ */
+export async function executeSitePublishLatest(client: Client, context: AccessContext, input: Record<string, unknown>, key: string, inputHash: string, env: SiteEnv): Promise<Record<string, unknown>> {
+  if (!env.releases) throw unavailable('Site release storage is not configured.');
+  const current = await getSiteRecord(client, text(input.siteId, 160) || undefined);
+  if (!current) throw notFound('Site was not found.');
+  const stored = readDocument(current.data).doc;
+  const gathered = await publicFacts(client, input, stored, context);
+  const bullets = (stored.brief?.bullets || stored.brief?.accepted || []) as string[];
+  const readyNow = gateReport(stored, gathered.facts);
+
+  // The draft drifts from the merchant in three ways: the state they recorded moved, the gate
+  // reads differently than the stored draft claims, or an override is still unfulfilled.
+  const stale = await isDirty(stored, { bullets, facts: gathered.facts, photos: merchantPhotos(stored.assets) })
+    || readyNow.ok !== (stored.blueprint?.gate?.ok ?? true)
+    || readyNow.missing.length !== (stored.blueprint?.gate?.missing?.length ?? 0)
+    || Boolean(stored.blueprint?.overrides?.pending?.length);
+  if (stale) {
+    // The owner's own words carry over, so a publish tap rebuilds the store they described
+    // rather than a blank one titled after their shop.
+    await runGenerate(client, context, carriedInput(stored, input, current.id), { action: 'site.generate', key: `${key}:gen`, hash: inputHash }, env);
+  }
+
+  const draft = await getSiteRecord(client, current.id);
+  if (!draft) throw notFound('Site was not found.');
+  const document = readDocument(draft.data).doc;
+  const gate = gateReport(document, gathered.facts);
+  const siteId = draft.id;
+
+  const notPublished = (missing: GateNeed[], blocking: string[] = []): Record<string, unknown> => ({
+    siteId,
+    published: false,
+    state: draft.state === 'live' ? 'live' : 'draft',
+    gate: { ok: false, missing },
+    missing,
+    ...(blocking.length ? { blocking } : {}),
+  });
+
+  let result: Record<string, unknown>;
+  if (!gate.ok) {
+    result = notPublished(gate.missing);
+  } else {
+    const compiled = await runCompile(client, context, { siteId }, { action: 'site.compile', key: `${key}:cmp`, hash: inputHash }, env);
+    const releaseId = String(compiled.releaseId);
+    const blocking = await blockingFindings(env.releases, context, siteId, releaseId);
+    if (blocking.length) {
+      result = notPublished([], blocking);
+    } else {
+      const published = await publishCurrent(client, env, context, { siteId, releaseId, hash: compiled.hash }, { action: 'site.publish', key: `${key}:pub`, hash: inputHash });
+      result = { ...published, published: true, state: 'live', gate: { ok: true, missing: [] }, missing: [], ...(stale ? { regenerated: true } : {}) };
+    }
+  }
+
+  await saveEvent(client, context, siteId, { action: 'site.publishLatest', key, hash: inputHash }, result);
+  return result;
+}
+
+/**
+ * The owner's own words, so a rebuild with no merchant present writes the store they
+ * described rather than a blank one titled after their shop. What the caller names still wins.
+ */
+function carriedInput(stored: SiteDocument, input: Record<string, unknown>, siteId: string): Record<string, unknown> {
+  return {
+    ...input,
+    siteId,
+    title: text(input.title) || stored.pages[0]?.title || '',
+    prompt: text(input.prompt ?? input.description, 2000) || stored.brief?.goal || '',
+    audience: text(input.audience, 200) || stored.brief?.audience || '',
+    tone: text(input.tone, 120) || stored.brief?.tone || '',
+    brief: Array.isArray(input.brief) ? strings(input.brief, 20) : (stored.brief?.bullets || stored.brief?.accepted || []) as string[],
+  };
+}
+
+/**
+ * Rebuild a draft because the merchant's own state moved (parai §7). This never publishes: a
+ * live store keeps serving the release it has until its owner taps Publish. Dirtiness is
+ * reported, not stored, and the rebuild writes the state it read into the blueprint, so the
+ * next tick finds nothing moved and passes the store by.
+ */
+export async function siteRegenerate(client: Client, context: AccessContext, env: SiteEnv, siteId?: string): Promise<Record<string, unknown>> {
+  const current = await getSiteRecord(client, siteId || undefined);
+  if (!current) throw notFound('Site was not found.');
+  const stored = readDocument(current.data).doc;
+  const gathered = await publicFacts(client, {}, stored, context);
+  const moved = await drift(stored, {
+    bullets: (stored.brief?.bullets || stored.brief?.accepted || []) as string[],
+    facts: gathered.facts,
+    photos: merchantPhotos(stored.assets),
+  });
+  if (!moved.dirty) return { siteId: current.id, dirty: false, ...(moved.held ? { held: moved.held } : {}) };
+  const missing = gateReport(stored, gathered.facts).missing;
+  // A hand edit or a lock is the owner's work; the sweep says so instead of overwriting it.
+  if (moved.held) return { siteId: current.id, dirty: true, held: moved.held, missing };
+  const built = await runGenerate(client, context, carriedInput(stored, {}, current.id), { action: 'site.generate', key: `regen-${current.id}-${moved.state}`, hash: moved.state }, env);
+  return { siteId: current.id, dirty: true, rebuilt: true, state: moved.state, version: built.version, missing: (built.missing ?? []) as GateNeed[] };
+}
+
+/** The check report beside a release: what must not go live, and why. */
+async function blockingFindings(releases: R2Bucket, context: AccessContext, siteId: string, releaseId: string): Promise<string[]> {
+  const report = await releases.get(`workspaces/${context.workspace.id}/sites/${siteId}/releases/${releaseId}/report.json`);
+  if (!report) return ['Compile and review this candidate before publishing it.'];
+  const parsed = JSON.parse(await report.text()) as { inspection?: { blocking?: { message?: string }[] } };
+  return (parsed.inspection?.blocking || []).map((entry) => String(entry.message || 'Resolve the blocking checks.'));
 }
 
 export async function executeSiteRollback(client: Client, context: AccessContext, input: Record<string, unknown>, key: string, inputHash: string, control?: D1Database, domain?: string, bucket?: R2Bucket, content?: R2Bucket): Promise<Record<string, unknown>> {
@@ -677,7 +882,7 @@ export async function executeSiteRollback(client: Client, context: AccessContext
 }
 
 export async function executeSiteRefresh(client: Client, bucket: R2Bucket | undefined, context: AccessContext, input: Record<string, unknown>, key: string, inputHash: string, control?: D1Database, domain?: string, content?: R2Bucket): Promise<Record<string, unknown>> {
-  return publishCurrent(client, bucket, context, input, key, inputHash, 'site.refresh', control, domain, content);
+  return publishCurrent(client, { releases: bucket, control, domain, content }, context, input, { action: 'site.refresh', key, hash: inputHash });
 }
 
 export async function executeSiteUnpublish(client: Client, context: AccessContext, input: Record<string, unknown>, key: string, inputHash: string, control?: D1Database): Promise<Record<string, unknown>> {
@@ -741,6 +946,8 @@ async function publicFacts(client: Client, input: Record<string, unknown>, previ
     ...(text(input.notice, 300) ? { notice: text(input.notice, 300) } : {}),
     ...(Array.isArray(input.proofs) ? { proofs: strings(input.proofs, 6) } : {}),
     ...(text(input.season, 80) ? { season: text(input.season, 80) } : {}),
+    ...(strings(input.terms, 6).length ? { terms: strings(input.terms, 6) } : {}),
+    ...(text(input.minimum, 40) ? { minimum: text(input.minimum, 40) } : {}),
   };
   const judged = {
     catalog: items.slice(0, 20).map((item) => ({ title: item.title, price: item.price, currency: item.currency })),
@@ -794,6 +1001,49 @@ async function writeDraft(
       : 'The model was unavailable, so plain brief copy was used.';
     return { wrote: false, claims: [], note: reason };
   }
+}
+
+/**
+ * The reviewed design library, as a merchant sees it: one name, one sentence, four
+ * colours, plus the layout choices and their settings for every section the store presents.
+ * Brands, licences and token files stay in the build (parai D13); the editor renders its
+ * controls from the `settings` schemas shipped here, never from a recipe file.
+ */
+export async function executeSiteDesigns(client: Client, context: AccessContext, input: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const siteId = text(input.siteId, 160);
+  let models = readModels(input.models);
+  let overrides: Overrides = {};
+  if (siteId) {
+    const current = await getSiteRecord(client, siteId);
+    if (!current) throw notFound('Site was not found.');
+    const doc = readDocument(current.data).doc;
+    overrides = doc.blueprint.overrides || {};
+    if (!models.length) models = doc.blueprint.profile?.models || [];
+  }
+  const sections = sectionsForModels(models);
+  // Every section the store presents — the ones its models require plus the optional toggles —
+  // with the layouts a merchant may pick and the settings each layout exposes. Listing all of a
+  // type's recipes (no model filter) is right here: this is the merchant's picker, not Jev's
+  // shortlist, and a layout renders the same whatever models declared it.
+  const types = [...new Set([...sections.required, ...sections.optional])];
+  const recipes: Record<string, { id: string; pattern: string }[]> = {};
+  const settings: Record<string, Record<string, Record<string, RecipeSetting>>> = {};
+  const defaults: Record<string, string> = {};
+  for (const type of types) {
+    recipes[type] = shortlistRecipes(type);
+    settings[type] = recipeSettings(type);
+    defaults[type] = defaultRecipe(type);
+  }
+  return {
+    designs: designOptions(),
+    default: libraryDefault(),
+    models,
+    sections,
+    recipes,
+    settings,
+    defaults,
+    overrides,
+  };
 }
 
 /** Release history retained for rollback, newest last. */

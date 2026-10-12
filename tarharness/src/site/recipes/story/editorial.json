@@ -1,0 +1,27 @@
+{
+  "id": "editorial",
+  "type": "story",
+  "models": ["products", "food", "booking", "quote", "digital", "bulk"],
+  "needs": {
+    "body": "required",
+    "media": "optional"
+  },
+  "layout": { "kind": "split", "ratio": "40/60", "collapse": "stack" },
+  "slots": {
+    "body": { "source": "brief.goal", "max": 400 },
+    "media": { "source": "photos[0]" }
+  },
+  "tokens": {
+    "text": "color.ink",
+    "background": "color.canvas",
+    "muted": "color.muted",
+    "radius": "shape.lg",
+    "heading": "type.heading"
+  },
+  "settings": {},
+  "fallback": {},
+  "source": {
+    "pattern": "a photo beside two short paragraphs, generous space, no buttons",
+    "reference": "structural pattern only; no copy, colour or asset came from anywhere"
+  }
+}

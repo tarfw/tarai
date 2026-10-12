@@ -1,55 +1,42 @@
 import type { Section } from '../../document.ts';
-import { escapeAttribute, escapeHtml, safeHref } from '../../html.ts';
-import type { RenderContext } from '../nodes.ts';
-import { styleClass } from '../../styles.ts';
-import { EXT } from '../hero.ts';
+import { escapeAttribute, escapeHtml } from '../../html.ts';
+import { firstImage, mediaSize, renderNodes, settingsOf, wordsOf, slotStyle, slotText, slotsOf, unusedNodes, type RenderContext } from '../nodes.ts';
+import { layoutStyle, styleClass } from '../../styles.ts';
 
+/** The split hero: the shop's name and one line beside one large photo. */
 export function render(section: Section, context: RenderContext): string {
-  const doc = context.doc;
+  const found = slotsOf(section, context.doc, context.recipe);
+  const slots = found.values;
+  const settings = settingsOf(section, context.recipe);
+  const headline = slotText(slots, 'headline', context.recipe?.fallback.headline || 'Your store name');
+  const subline = slotText(slots, 'body');
+  const eyebrow = typeof settings.eyebrow === 'string' ? settings.eyebrow : '';
+  const href = slotText(slots, 'ctaHref', context.recipe?.fallback.cta || '#catalog');
+  const label = wordsOf(section, context.recipe, slots, 'label', 'cta', 'See the shop');
+  const image = firstImage(context.doc);
+  const src = slotText(slots, 'media') || image?.src || '';
+  const alt = slotText(slots, 'mediaAlt') || headline;
+
   const style = styleClass(context.collector, section.style);
   const id = escapeAttribute(section.id || 'hero');
-
-  let headline = doc.pages[0]?.title || '';
-  let subline = doc.brief?.goal || '';
-  let catalogHref = '#catalog';
-  let imgSrc = '';
-  let imgAlt = '';
-
-  for (const node of section.nodes || []) {
-    if (node.kind === 'heading' && node.props?.text) headline = String(node.props.text);
-    else if (node.kind === 'text' && node.props?.text) subline = String(node.props.text);
-    else if (node.kind === 'button' && node.props?.href) catalogHref = safeHref(node.props.href) || '#catalog';
-    else if (node.kind === 'image' && node.props?.asset) {
-      const asset = doc.assets.find((a) => a.id === node.props?.asset);
-      if (asset) {
-        imgSrc = `/media/${asset.id}.${EXT[asset.mime] || 'jpg'}`;
-        imgAlt = node.props.alt !== undefined ? String(node.props.alt) : (asset.alt || '');
-      }
-    }
-  }
-
-  if (!imgSrc) {
-    const firstImgAsset = doc.assets.find((a) => a.kind === 'image');
-    if (firstImgAsset) {
-      imgSrc = `/media/${firstImgAsset.id}.${EXT[firstImgAsset.mime] || 'jpg'}`;
-      imgAlt = firstImgAsset.alt || '';
-    }
-  }
-
-  const altText = imgAlt || headline;
-  const actionsHtml = `<div class="tar-hero-actions"><a href="${escapeAttribute(catalogHref)}" class="tar-btn tar-btn-outline">View Collection</a></div>`;
-  const mediaHtml = imgSrc
-    ? `<img src="${escapeAttribute(imgSrc)}" alt="${escapeAttribute(altText)}" loading="eager" fetchpriority="high">`
+  const flip = settings.reverse === true ? ' tar-hero-flip' : '';
+  const rest = unusedNodes(section.nodes, found.used);
+  const extra = rest.length ? `<div class="tar-stack">${renderNodes(rest, context)}</div>` : '';
+  const actionsHtml = `<div class="tar-hero-actions"><a href="${escapeAttribute(href)}" class="tar-btn tar-btn-outline${slotStyle(context, found, 'cta')}">${escapeHtml(label)}</a></div>`;
+  const mediaClass = slotStyle(context, found, 'media').trim();
+  const mediaHtml = src
+    ? `<img${mediaClass ? ` class="${mediaClass}"` : ''} src="${escapeAttribute(src)}" alt="${escapeAttribute(alt)}"${mediaSize(slots)} loading="eager" fetchpriority="high">`
     : `<div class="tar-hero-placeholder"><div class="tar-brand-mark">${escapeHtml(headline.slice(0, 2).toUpperCase())}</div></div>`;
 
-  return `<section id="${id}" class="tar-hero tar-hero-split${style}" data-purpose="hero">
+  return `<section id="${id}" class="tar-hero tar-hero-split${style}${flip}" data-purpose="hero">
   <div class="tar-hero-inner">
-    <div class="tar-hero-grid">
+    <div class="tar-hero-grid"${layoutStyle(context.doc.design, section.layout)}>
       <div class="tar-hero-text">
-        <span class="tar-hero-eyebrow">Handcrafted & Verified</span>
-        <h1 class="tar-hero-title">${escapeHtml(headline)}</h1>
-        ${subline ? `<p class="tar-hero-desc">${escapeHtml(subline)}</p>` : ''}
+        ${eyebrow ? `<span class="tar-hero-eyebrow">${escapeHtml(eyebrow)}</span>` : ''}
+        <h1 class="tar-hero-title${slotStyle(context, found, 'headline')}">${escapeHtml(headline)}</h1>
+        ${subline ? `<p class="tar-hero-desc${slotStyle(context, found, 'body')}">${escapeHtml(subline)}</p>` : ''}
         ${actionsHtml}
+        ${extra}
       </div>
       <div class="tar-hero-media">
         ${mediaHtml}

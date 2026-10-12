@@ -28,6 +28,8 @@ async function createTestWorkspace() {
   const at = Date.now();
   await client.execute({ sql: "INSERT INTO records(id,type,title,state,data,owner,version,created,updated) VALUES('capability','capability','Capabilities','active',?, 'owner_1',1,?,?)",
     args: [JSON.stringify({ site: true, pos: false, commerce: false }), at, at] });
+  await client.execute({ sql: "INSERT INTO records(id,type,title,state,data,owner,version,created,updated) VALUES('settings','pos.settings','Store','active','{\"currency\":\"INR\"}','owner_1',1,?,?)", args: [at, at] });
+  await client.execute({ sql: "INSERT INTO records(id,type,title,state,data,owner,version,created,updated) VALUES('prod_garlic','pos.product','Garlic Bread','active','{\"price\":15000,\"shortDescription\":\"Fresh with herbs\"}','owner_1',1,?,?)", args: [at, at] });
   return client;
 }
 
@@ -37,8 +39,8 @@ const ownerAccess: AccessContext = {
   member: { workspaceId: 'ws_slice_house_0001', userId: 'owner_1', role: 'owner', state: 'active' },
 };
 
-// The builder composes hero-line and story-body as the two prose slots for a
-// brief with no catalogue or contact facts; the model may only rewrite those.
+// The builder composes hero-line and story-body as the two prose slots of this
+// brief; the model may only rewrite those.
 const COPY = { texts: [
   { id: 'hero-line', text: 'A wood fired pizza shop in the heart of the city.' },
   { id: 'story-body', text: 'Dough made fresh, fired in small batches.' },
@@ -59,7 +61,7 @@ function scriptedAi(responses: unknown[]): Ai {
 
 async function generate(client: Awaited<ReturnType<typeof createTestWorkspace>>, services: Record<string, unknown>, key: string) {
   return Effect.runPromise(executeGateway(client, ownerAccess, {
-    actionId: 'site.generate', idempotencyKey: key, input: { title: 'Slice House', prompt: 'A wood fired pizza shop' },
+    actionId: 'site.generate', idempotencyKey: key, input: { title: 'Slice House', prompt: 'A wood fired pizza shop', records: ['prod_garlic'] },
   }, services));
 }
 
@@ -87,7 +89,7 @@ describe('site prose and claims', () => {
     expect(result.composed).toBe(true);
     expect(heroLine(site)).toBe('A wood fired pizza shop in the heart of the city.');
     // Code keeps prices and layout out of model reach, so the structure stays the builder's.
-    expect(site.pages[0].sections.map((section) => section.id)).toEqual(['hero', 'story', 'contact']);
+    expect(site.pages[0].sections.map((section) => section.id)).toEqual(['header', 'catalog', 'hero', 'story', 'contact', 'footer']);
     // Without a judgment key an asserted claim stays unresolved rather than trusted.
     expect(site.claims?.[0].text).toContain('Wood fired every day');
     expect(site.claims?.[0].verdict).toBe('unsupported');

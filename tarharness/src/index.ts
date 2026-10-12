@@ -17,6 +17,7 @@ import { buildSite, defaultSite } from './site/build.ts';
 import { defaultBlueprint } from './site/blueprint.ts';
 import { exportDesign } from './site/design.ts';
 import { compileDocument } from './site/compile.ts';
+import { siteRegenerate } from './site/store.ts';
 import { canExecute, canReadRecord, canRunFlowStep, canUseWorkRole, isCook, managesMembers, workRoleNames } from './access.ts';
 import { inviteMember, listMembers, updateMember } from './team.ts';
 import { providers, providerStatus, verifyEvent, chatResponse, type ChannelEnv, type Provider } from './channels/providers.ts';
@@ -149,6 +150,40 @@ async function scoutPublishedSites(env: RuntimeEnv): Promise<void> {
       } finally { client.close(); }
     } catch (cause) {
       console.error(JSON.stringify({ event: 'site.scout.failed', workspace: item.workspace, error: cause instanceof Error ? cause.message : String(cause) }));
+    }
+  }
+}
+
+// The sweep re-reads what the owner has since recorded and rebuilds the draft when that state
+// moved. It never publishes: a live store keeps serving its release until its owner taps
+// Publish, and a draft a hand edit owns is left alone. CONTROL holds the last reading so the
+// pass throttles without opening every workspace database, and a rebuild writes the state it
+// read into the blueprint, so the next tick finds nothing moved.
+const REGEN_INTERVAL = 15 * 60_000;
+const REGEN_PER_TICK = 8;
+async function regenerateDriftedSites(env: RuntimeEnv): Promise<void> {
+  const due = await env.CONTROL.prepare(`SELECT s.workspace,s.site,s.regen,w.name,w.slug,w.database_name,w.database_host,w.owner_id FROM sites s JOIN workspaces w ON w.id=s.workspace WHERE w.state='active' AND w.database_host IS NOT NULL AND s.regen<? ORDER BY s.regen LIMIT ${REGEN_PER_TICK}`)
+    .bind(now() - REGEN_INTERVAL).all<{ workspace: string; site: string; regen: number; name: string; slug: string; database_name: string; database_host: string; owner_id: string }>();
+  for (const item of due.results) {
+    // Claim the slot first so overlapping crons never rebuild the same site twice.
+    const claim = await env.CONTROL.prepare('UPDATE sites SET regen=? WHERE workspace=? AND regen=?').bind(now(), item.workspace, item.regen).run();
+    if (claim.meta.changes !== 1) continue;
+    const context: AccessContext = {
+      identity: { id: item.owner_id, email: '', name: 'Site sweep' },
+      workspace: { id: item.workspace, name: item.name, slug: item.slug, mode: 'work', databaseName: item.database_name, databaseHost: item.database_host, state: 'active' },
+      member: { workspaceId: item.workspace, userId: item.owner_id, role: 'owner', state: 'active' },
+    };
+    try {
+      const client = await Effect.runPromise(openWorkspaceDatabase(tursoEnv(env), item.database_name, item.database_host));
+      try {
+        const result = await siteRegenerate(client, context, {
+          control: env.CONTROL, domain: env.SITE_WORKER_ORIGIN || env.SITE_BASE_DOMAIN, releases: env.SITE_RELEASES, content: env.PRODUCT_CONTENT,
+          ai: env.AI, typesafe: env.TYPESAFE_API_KEY, model: env.SITE_MODEL, groqApiKey: env.GROQ_API_KEY, pexelsApiKey: env.PEXELS_API_KEY,
+        }, item.site);
+        if (result.rebuilt || result.held) console.error(JSON.stringify({ event: 'site.regen', workspace: item.workspace, site: item.site, rebuilt: Boolean(result.rebuilt), held: result.held || '', missing: (result.missing as unknown[] | undefined)?.length ?? 0 }));
+      } finally { client.close(); }
+    } catch (cause) {
+      console.error(JSON.stringify({ event: 'site.regen.failed', workspace: item.workspace, error: cause instanceof Error ? cause.message : String(cause) }));
     }
   }
 }
@@ -819,9 +854,9 @@ async function handle(request: Request, env: RuntimeEnv, ctx: ExecutionContext):
         const tradeLower = inheritedTrade.toLowerCase();
         const isService = tradeLower.includes('service') || tradeLower.includes('consulting') || tradeLower.includes('tailor') || tradeLower.includes('clinic') || tradeLower.includes('salon');
         const isFood = tradeLower.includes('food') || tradeLower.includes('beverage') || tradeLower.includes('bakery') || tradeLower.includes('restaurant') || tradeLower.includes('cafe');
-        const kind = isService ? 'services' : isFood ? 'food' : 'goods';
+        const models = isFood ? ['food' as const] : isService ? ['booking' as const, 'quote' as const] : ['products' as const];
 
-        const blueprint = defaultBlueprint(kind);
+        const blueprint = defaultBlueprint(models);
         const built = buildSite({
           title: current.workspace.name,
           brief: { goal: `${current.workspace.name} online`, audience: inheritedTrade, tone: '' },
@@ -1002,6 +1037,7 @@ export default {
   async scheduled(_controller: ScheduledController, env: RuntimeEnv): Promise<void> {
     await sweepFlowDispatches(env);
     await scoutPublishedSites(env);
+    await regenerateDriftedSites(env);
     await env.CONTROL.prepare('DELETE FROM previews WHERE expires<=?').bind(Date.now()).run();
     await env.CONTROL.prepare('DELETE FROM channel_link_requests WHERE expires_at<=?').bind(Date.now()).run();
     await env.CONTROL.prepare("UPDATE channel_commands SET state='failed',result='Processing interrupted. Check TAR before retrying.' WHERE state='processing' AND attempts>=5 AND due_at<=?").bind(Date.now()).run();

@@ -1,6 +1,6 @@
 import { randomUUID } from 'expo-crypto';
 import { getValidIdToken, invalidateGoogleToken } from './auth';
-import type { AskOutcome, Asset, AssetSummary, Checks, EditOutcome, ReleaseManifest, SiteDocument, SiteSnapshot } from './site-schema';
+import type { AskOutcome, Asset, AssetSummary, Checks, DesignLibrary, EditOutcome, PublishOutcome, ReleaseManifest, SiteDocument, SiteGenerateInput, SiteGenerateResult, SiteSnapshot } from './site-schema';
 
 export const HARNESS_URL = (process.env.EXPO_PUBLIC_TARHARNESS_URL || 'https://tarharness.tar-54d.workers.dev').replace(/\/$/, '');
 export const SITES_URL = (process.env.EXPO_PUBLIC_SITES_URL || 'https://tar-sites.tar-54d.workers.dev').replace(/\/$/, '');
@@ -99,7 +99,7 @@ export class HarnessRequestError extends Error { constructor(readonly status: nu
 export function createOperationKey(prefix: string) { return `${prefix}:${randomUUID()}`; }
 let syncRouteAvailable = true;
 
-async function request<T>(path: string, options: { method?: 'GET' | 'POST' | 'PUT' | 'DELETE'; body?: Record<string, unknown>; key?: string; missingRouteOk?: boolean } = {}): Promise<T> {
+async function request<T>(path: string, options: { method?: 'GET' | 'POST' | 'PUT' | 'DELETE'; body?: object; key?: string; missingRouteOk?: boolean } = {}): Promise<T> {
   const method = options.method || 'GET';
   const route = path.split('?')[0];
   const started = Date.now();
@@ -241,8 +241,8 @@ export const harness = {
     get: (slug: string) => request<SiteSnapshot>(workspacePath(slug, 'site')),
     available: (slug: string) => request<{ site: unknown | null }>(workspacePath(slug, 'site'), { missingRouteOk: true }),
     reset: (slug: string) => request<{ reset: boolean; siteId: string; site: SiteDocument }>(workspacePath(slug, 'site'), { method: 'DELETE' }),
-    generate: (slug: string, input: { title?: string; prompt?: string; theme?: string; audience?: string; tone?: string; records?: string[]; brief?: string[]; reset?: boolean }, operationKey?: string) =>
-      request<{ siteId: string; version: number; state: string; site: SiteDocument; preview: { html: string; css: string; hash: string }; composed: boolean; note?: string }>(
+    generate: (slug: string, input: SiteGenerateInput = {}, operationKey?: string) =>
+      request<SiteGenerateResult>(
         workspacePath(slug, 'actions/site.generate'),
         { method: 'POST', body: input, key: operationKey || createOperationKey('site.generate') }
       ),
@@ -261,10 +261,10 @@ export const harness = {
         workspacePath(slug, 'actions/site.notice.set'),
         { method: 'POST', body: { siteId, notice }, key: operationKey || createOperationKey('site.notice.set') }
       ),
-    sectionsSet: (slug: string, siteId: string, order: string[], hidden?: string[], operationKey?: string) =>
+    sectionsSet: (slug: string, siteId: string, order: string[], hidden?: string[], shown?: string[], operationKey?: string) =>
       request<{ siteId: string; version: number; state: string; site: SiteDocument; preview: { html: string; css: string; hash: string } }>(
         workspacePath(slug, 'actions/site.sections.set'),
-        { method: 'POST', body: { siteId, order, ...(hidden ? { hidden } : {}) }, key: operationKey || createOperationKey('site.sections.set') }
+        { method: 'POST', body: { siteId, order, ...(hidden ? { hidden } : {}), ...(shown ? { shown } : {}) }, key: operationKey || createOperationKey('site.sections.set') }
       ),
     ask: (slug: string, siteId: string, command: string, target?: string, operationKey?: string) =>
       request<AskOutcome>(
@@ -303,15 +303,10 @@ export const harness = {
         workspacePath(slug, 'actions/site.checks'),
         { method: 'POST', body: { siteId, ...(releaseId ? { releaseId } : {}) }, key: createOperationKey('site.checks') }
       ),
-    compile: (slug: string, siteId: string, operationKey?: string) =>
-      request<{ releaseId: string; hash: string; version: number; previewUrl?: string }>(
-        workspacePath(slug, 'actions/site.compile'),
-        { method: 'POST', body: { siteId }, key: operationKey || createOperationKey('site.compile') }
-      ),
-    publish: (slug: string, siteId: string, releaseId: string, hash: string, operationKey?: string) =>
-      request<{ siteId: string; releaseId: string; liveUrl: string; publicUrl?: string; generation: number; state: string }>(
-        workspacePath(slug, 'actions/site.publish'),
-        { method: 'POST', body: { siteId, releaseId, hash }, key: operationKey || createOperationKey('site.publish') }
+    publishLatest: (slug: string, siteId?: string, operationKey?: string) =>
+      request<PublishOutcome>(
+        workspacePath(slug, 'actions/site.publishLatest'),
+        { method: 'POST', body: siteId ? { siteId } : {}, key: operationKey || createOperationKey('site.publishLatest') }
       ),
     rollback: (slug: string, siteId: string, releaseId: string, operationKey?: string) =>
       request<{ siteId: string; releaseId: string; rolledBack: boolean; publicUrl?: string }>(
@@ -330,5 +325,7 @@ export const harness = {
       ),
     releases: (slug: string, siteId: string) =>
       request<{ siteId: string; revision: number; releases: ReleaseManifest[] }>(workspacePath(slug, 'actions/site.releases'), { method: 'POST', body: { siteId }, key: createOperationKey('site.releases') }),
+    designs: (slug: string, input: { siteId?: string; models?: string[] } = {}) =>
+      request<DesignLibrary>(workspacePath(slug, 'actions/site.designs'), { method: 'POST', body: input, key: createOperationKey('site.designs') }),
   },
 };

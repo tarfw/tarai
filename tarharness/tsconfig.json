@@ -4,6 +4,7 @@
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "lib": ["ES2022", "WebWorker"],
+    "resolveJsonModule": true,
     "strict": true,
     "allowImportingTsExtensions": true,
     "noEmit": true,

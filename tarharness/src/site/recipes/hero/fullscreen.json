@@ -2,34 +2,35 @@
   "id": "fullscreen",
   "type": "hero",
   "models": ["products", "food", "booking", "quote", "digital", "bulk"],
-  "needs": { "media": "optional" },
-  "layout": { "kind": "overlay", "height": "viewport", "align": "bottom", "collapse": "stack" },
+  "needs": {
+    "headline": "required",
+    "body": "optional",
+    "media": "optional",
+    "cta": "optional"
+  },
+  "layout": { "kind": "overlay", "height": "full", "scrim": "color.ink" },
   "slots": {
-    "headline": { "source": "brief.headline", "max": 80 },
-    "body":     { "source": "brief.summary", "max": 200 },
-    "media":    { "source": "photos[0]", "optional": true },
-    "cta":      { "source": "route.primary", "label": "text" },
-    "points":   { "source": "brief.points", "max": 3, "optional": true }
+    "headline": { "source": "facts.name", "max": 60 },
+    "body": { "source": "brief.goal", "max": 220 },
+    "media": { "source": "photos[0]" },
+    "cta": { "source": "route.primary" }
   },
   "tokens": {
-    "scrim":   "color.ink",
-    "text":    "color.paper",
-    "accent":  "color.accent",
-    "radius":  "shape.md",
-    "display": "type.display",
-    "body":    "type.body"
+    "text": "color.canvas",
+    "background": "color.ink",
+    "accent": "color.accent",
+    "radius": "shape.pill",
+    "display": "type.display"
   },
   "settings": {
-    "scrimStrength": { "type": "choice", "options": ["light", "medium", "strong"], "default": "medium" },
-    "ctaLabel":      { "type": "text", "default": "View collection" },
-    "showPoints":    { "type": "boolean", "default": true }
+    "label": { "type": "text", "default": "See the shop", "max": 30 }
   },
   "fallback": {
-    "media": "token:color.surface",
-    "headline": "Your store name"
+    "headline": "Your store name",
+    "cta": "#catalog"
   },
   "source": {
-    "pattern": "full-screen hero with overlay text and a row of short points",
-    "reference": "structural description only; no copy, colors or assets taken"
+    "pattern": "one photo behind the name, one line and one action, centred near the bottom",
+    "reference": "structural pattern only; no copy, colour, photo or font came from anywhere"
   }
 }

@@ -1,0 +1,34 @@
+{
+  "id": "typography",
+  "type": "hero",
+  "models": ["products", "food", "booking", "quote", "digital", "bulk"],
+  "needs": {
+    "headline": "required",
+    "body": "optional",
+    "cta": "optional"
+  },
+  "layout": { "kind": "stack" },
+  "slots": {
+    "headline": { "source": "facts.name", "max": 60 },
+    "body": { "source": "brief.goal", "max": 220 },
+    "cta": { "source": "route.primary" }
+  },
+  "tokens": {
+    "text": "color.ink",
+    "background": "color.canvas",
+    "accent": "color.accent",
+    "display": "type.display",
+    "body": "type.body"
+  },
+  "settings": {
+    "label": { "type": "text", "default": "See the shop", "max": 30 }
+  },
+  "fallback": {
+    "headline": "Your store name",
+    "cta": "#catalog"
+  },
+  "source": {
+    "pattern": "one large line of type, one supporting line, one action, nothing else",
+    "reference": "structural pattern only; no copy, colour, photo or font came from anywhere"
+  }
+}

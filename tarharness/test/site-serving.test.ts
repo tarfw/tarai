@@ -45,11 +45,14 @@ async function workspace(slug: string) {
   clients.push(client);
   for (const statement of WORKSPACE_SCHEMA) await client.execute(statement);
   await client.execute("INSERT INTO records(id,type,title,state,data,owner,version,created,updated) VALUES('capability','capability','Capabilities','active','{\"site\":true}','owner',1,1,1)");
+  // A real published record: the storefront shows what the owner sells, never a stand-in.
+  await client.execute("INSERT INTO records(id,type,title,state,data,owner,version,created,updated) VALUES('store','pos.settings','Store','active','{\"currency\":\"INR\"}','owner',1,1,1)");
+  await client.execute("INSERT INTO records(id,type,title,state,data,owner,version,created,updated) VALUES('loaves','pos.product','Sourdough Loaf','active','{\"price\":25000,\"shortDescription\":\"Wood fired daily\"}','owner',1,1,1)");
   const run = (actionId: Parameters<typeof executeGateway>[2]['actionId'], key: string, input: Record<string, unknown>, domain = origin) =>
     Effect.runPromise(executeGateway(client, context, { actionId, idempotencyKey: key, input }, {
       publication: control, siteReleases: bucket, siteDomain: domain,
     }));
-  const generated = await run('site.generate', `${slug}-generate`, { title: slug, prompt: 'A supplied business description' });
+  const generated = await run('site.generate', `${slug}-generate`, { title: slug, prompt: 'A supplied business description', records: ['loaves'] });
   const compiled = await run('site.compile', `${slug}-compile`, { siteId: generated.siteId });
   await run('site.publish', `${slug}-publish`, { siteId: generated.siteId, releaseId: compiled.releaseId, hash: compiled.hash });
   return { run, client, siteId: String(generated.siteId), releaseId: String(compiled.releaseId) };

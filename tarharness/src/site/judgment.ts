@@ -7,8 +7,12 @@
  * Code owns thresholds, permissions and verification; models never touch money.
  */
 
-import { askSystemOne, choiceOf, noulOf, scoreOf, JEV_MODEL, type SystemOneQuestion } from '../brain/systemone.ts';
-import type { BusinessKind, DensityToken, HeroPattern, LeadSection, ToneToken, TypographyToken } from './blueprint.ts';
+import { askSystemOne, choiceOf, noulOf, JEV_MODEL, type SystemOneQuestion } from '../brain/systemone.ts';
+import { TRADE_TAXONOMY } from '../brain/workspace-ai.ts';
+import { COMMERCE_MODELS, type CommerceModel, type LeadSection, type ModelProfile, type SectionKind } from './blueprint.ts';
+import { MODEL_MEANING, acceptedModels, buildProfile, confidenceIn, fallbackProfile, readIndustry } from './profile.ts';
+import { canonicalDesignId, libraryDefault, libraryIndex } from './designs/library.ts';
+import { defaultRecipe, presentSectionTypes, shortlistDesigns, shortlistRecipes } from './shortlist.ts';
 
 export const JUDGMENT = {
   noulThreshold: 0.65,
@@ -60,203 +64,212 @@ async function answers(
   return outcome.value.answers;
 }
 
-export interface CreateJudgment {
-  kind: BusinessKind | null;
-  style?: string | null;
+const CAPABILITY_ASK: Record<'pos' | 'commerce' | 'site' | 'team', string> = {
+  pos: 'take counter or table payments through a point of sale',
+  commerce: 'track catalog, stock, orders, invoices and payments',
+  site: 'publish a storefront site for customers',
+  team: 'coordinate staff through shared work',
+};
+
+/**
+ * Jev #1: what this business is. One batched call proposes the commerce model
+ * set, the trade and the capabilities; code validates every answer against
+ * COMMERCE_MODELS and keeps the set non-empty.
+ */
+export async function judgeProfile(
+  apiKey: string | undefined,
+  cache: JudgmentCache,
+  input: { description: string; bullets?: readonly string[]; city?: string; hours?: string },
+): Promise<ModelProfile> {
+  const text = [input.description, ...(input.bullets || [])].filter(Boolean).join('. ').slice(0, 2000);
+  const fallback = fallbackProfile(text);
+  if (!text) return fallback;
+
+  const questions: Record<string, SystemOneQuestion> = {
+    ...Object.fromEntries(COMMERCE_MODELS.map((model) => [model, {
+      type: 'noul' as const,
+      instructions: `Does this business ${MODEL_MEANING[model]}? Answer yes only when the description or the facts say so.`,
+    }])),
+    industry: {
+      type: 'choice',
+      instructions: 'Which trade best names what this business sells or does?',
+      criteria: { ...TRADE_TAXONOMY },
+    },
+    ...Object.fromEntries((Object.keys(CAPABILITY_ASK) as (keyof typeof CAPABILITY_ASK)[]).map((capability) => [capability, {
+      type: 'choice' as const,
+      instructions: `Does this business need to ${CAPABILITY_ASK[capability]}?`,
+      criteria: { include: 'Yes, needed now.', skip: 'No, not needed.', unsure: 'The description does not say.' },
+    }])),
+  };
+
+  const result = await answers(apiKey, cache, 'site.profile', { description: text, city: input.city || '', hours: input.hours || '' }, questions);
+  if (!result) return fallback;
+
+  const probabilities = Object.fromEntries(COMMERCE_MODELS.map((model) => [
+    model,
+    noulOf(result[model]).probability ?? (fallback.models.includes(model) ? 0.9 : 0.1),
+  ])) as Record<CommerceModel, number>;
+  const models = acceptedModels(probabilities, JUDGMENT.noulThreshold);
+
+  const industry = choiceOf(result.industry);
+  const answer = (capability: keyof typeof CAPABILITY_ASK) => choiceOf(result[capability]).choice;
+  const capability = (name: keyof typeof CAPABILITY_ASK, fallbackValue: boolean) => {
+    const choice = answer(name);
+    return choice === 'include' ? true : choice === 'skip' ? false : fallbackValue;
+  };
+
+  return buildProfile({
+    models,
+    industry: readIndustry(industry.choice, fallback.industry),
+    capabilities: {
+      pos: capability('pos', fallback.capabilities.pos),
+      commerce: capability('commerce', fallback.capabilities.commerce),
+      site: capability('site', fallback.capabilities.site),
+      team: capability('team', fallback.capabilities.team),
+    },
+    confidence: {
+      models: confidenceIn(probabilities, models),
+      industry: industry.confidence ?? fallback.confidence.industry,
+    },
+  });
+}
+
+export interface LookJudgment {
+  /** The chosen design id, or null when the caller's own precedence should decide. */
+  design: string | null;
+  /** Recipe id per present section type; absent means the code default. */
+  recipes: Partial<Record<SectionKind, string>>;
+  lead: LeadSection;
   spotlight: boolean;
   story: boolean;
   trust: boolean;
-  lead: LeadSection | null;
-  typography: TypographyToken | null;
-  tone: ToneToken | null;
-  density: DensityToken | null;
-  heroPattern?: HeroPattern | null;
+  /** Overridden picks, recorded so a repeat generate stays fixed and the cache key moves (D10). */
+  fixed: { design?: string; recipes: Partial<Record<SectionKind, string>> };
+}
+
+export interface LookInput {
+  models: readonly CommerceModel[];
+  industry: string;
+  facts: { items?: number | unknown[]; proofs?: string[]; season?: string; notice?: string; [key: string]: unknown };
+  brief?: { goal?: string; audience?: string; bullets?: readonly string[] };
+  avoid?: readonly string[];
+  overrides?: { design?: string; recipes?: Partial<Record<SectionKind, string>> };
 }
 
 /**
- * Single batched parallel Jev System One fan-out (agenticsite.md §5).
- * Questions run in parallel over the same state; code applies the answers.
+ * Jev #2: how the store looks. One batched call chooses a design and one recipe per present
+ * section type from shortlists code built (D6), plus the lead and the optional sections. It
+ * never names a colour, a font or a measurement — palette and spacing are projected from the
+ * chosen design in code (D7). An answer is taken only when it is one of the offered options and
+ * confident enough; otherwise the deterministic default stands, so the no-key path is the tested
+ * path and a merchant override is never argued with.
  */
-export async function fanOut(
+export async function judgeLook(
   apiKey: string | undefined,
   cache: JudgmentCache,
-  input: {
-    trade?: string;
-    facts: { items?: number | unknown[]; proofs?: string[]; season?: string; [key: string]: unknown };
-    brief?: { goal: string; audience: string; tone: string; bullets?: readonly string[] };
-    assets?: readonly { id: string; description: string }[];
-    avoid?: readonly string[];
-    purposes?: readonly string[];
-  },
-): Promise<CreateJudgment> {
-  const bullets = [...(input.brief?.bullets || [])];
-  if (!bullets.length && input.brief?.goal) bullets.push(input.brief.goal);
-  if (input.brief?.tone) bullets.push(input.brief.tone);
+  input: LookInput,
+): Promise<LookJudgment> {
+  const index = libraryIndex();
+  const avoid = new Set((input.avoid || []).map((entry) => canonicalDesignId(entry)));
+  const overrideDesign = input.overrides?.design ? canonicalDesignId(input.overrides.design) : undefined;
+  const overrideRecipes = input.overrides?.recipes || {};
 
-  const itemCount = Array.isArray(input.facts.items) ? input.facts.items.length : Number(input.facts.items || 0);
   const proofs = Array.isArray(input.facts.proofs) ? input.facts.proofs : [];
   const season = typeof input.facts.season === 'string' ? input.facts.season : '';
-  const trade = input.trade || input.brief?.audience || 'Retail & Trade';
-
+  const notice = typeof input.facts.notice === 'string' ? input.facts.notice : '';
+  const itemCount = Array.isArray(input.facts.items) ? input.facts.items.length : Number(input.facts.items || 0);
   const hasProof = proofs.length > 0;
 
-  const questions: Record<string, SystemOneQuestion> = {
-    kind: {
-      type: 'choice',
-      instructions: 'What does this business mainly do?',
-      criteria: {
-        goods: 'Sells physical goods',
-        food: 'Sells prepared food',
-        services: 'Sells time or skill',
-        wholesale: 'Sells in bulk',
-      },
-    },
-    style: {
-      type: 'choice',
-      instructions: 'Which store design system best matches the trade, products, and brand vibe?',
-      criteria: {
-        'dark-luxury': 'Luxury & High-End Retail (Mollie): Paper canvas, black ink, oat surface, ledger brown controls, copper links. Ideal for fine silk sarees, jewelry, watches, atelier, premium craftsmanship.',
-        'neon-pop': 'Neon Pop & Playful Energy (Magic Spoon): Lilac canvas, deep concord ink, marshmallow cards, electric grape gradients, chunky pill buttons. Ideal for confectionery, snacks, youth streetwear, playful modern brands.',
-        'harvest-editorial': 'Sunlit Harvest & Earth Editorial (arte*): Wheat cream canvas, harvest copper ink, citron beam accent, rounded display typography. Ideal for heritage craft, organic farm, bakeries, cafes, handloom.',
-      },
-    },
-    spotlight: {
-      type: 'noul',
-      instructions: 'Do the brief or season call for a festival or offer section now?',
-    },
-    story: {
-      type: 'noul',
-      instructions: 'Do the brief or facts call for a craft or owner story?',
-    },
-    lead: {
-      type: 'choice',
-      instructions: 'What should lead the page after the header?',
-      criteria: {
-        spotlight: 'Festival or offer',
-        catalog: 'Products first',
-        story: 'Craft story',
-      },
-    },
-    typography: {
-      type: 'choice',
-      instructions: 'Which heading style fits the brief?',
-      criteria: {
-        serif: 'Classic display',
-        sans: 'Clean modern',
-        grotesk: 'Bold geometric',
-      },
-    },
-    tone: {
-      type: 'choice',
-      instructions: 'Which surface tone fits the brief?',
-      criteria: {
-        ink: 'Dark luxury',
-        canvas: 'Light clean',
-        surface: 'Warm tinted',
-      },
-    },
-    density: {
-      type: 'score',
-      instructions: 'How airy should spacing be?',
-      criteria: ['1: Compact', '2: Balanced', '3: Airy'],
-    },
-    heroPattern: {
-      type: 'choice',
-      instructions: 'Which hero section pattern fits the brief, trade and media?',
-      criteria: {
-        split: 'Split 50/50: editorial headline left with visual right (#4)',
-        commerce: 'Commerce hero: product spotlight with price pill and direct order CTA (#16)',
-        typography: 'Typography hero: oversized serif statement, dark luxury ink canvas (#24)',
-        bg_image: 'Atmospheric hero: full background photography with auto-contrast scrim (#7)',
-        minimal: 'Minimal hero: clean balanced spacing and refined navigation (#23)',
-      },
-    },
-  };
+  const presentTypes = presentSectionTypes(input.models, { proofs });
+  const designOptions = shortlistDesigns(index, input.models, input.industry)
+    .filter((row) => !avoid.has(row.id) && row.id !== overrideDesign)
+    .slice(0, 6);
 
-  // Trust is asked ONLY if code finds proof. Never inferred without proof!
-  if (hasProof) {
-    questions.trust = {
-      type: 'noul',
-      instructions: 'Is the listed proof strong enough to show a trust section?',
-    };
+  const recipeChoices: { type: SectionKind; options: { id: string; pattern: string }[] }[] = [];
+  for (const type of presentTypes) {
+    if (overrideRecipes[type]) continue;
+    const options = shortlistRecipes(type, input.models);
+    if (options.length >= 2) recipeChoices.push({ type, options });
   }
 
-  const statePayload = {
-    trade,
-    bullets,
-    facts: {
-      items: itemCount,
-      proofs,
-      ...(season ? { season } : {}),
-    },
-  };
-
-  const result = await answers(apiKey, cache, 'site.fanout', statePayload, questions);
-  if (!result) {
-    return {
-      kind: 'goods',
-      style: 'dark-luxury',
-      spotlight: false,
-      story: Boolean(input.brief?.goal),
-      trust: false,
-      lead: 'catalog',
-      typography: 'sans',
-      tone: 'canvas',
-      density: 2,
-      heroPattern: 'split',
+  const questions: Record<string, SystemOneQuestion> = {};
+  if (!overrideDesign && designOptions.length >= 2) {
+    questions.design = {
+      type: 'choice',
+      instructions: 'Which reviewed design best fits this trade and what it sells? Judge only the supplied descriptions.',
+      criteria: Object.fromEntries(designOptions.map((row) => [row.id, `${row.label}: ${row.desc}`])),
     };
   }
+  for (const { type, options } of recipeChoices) {
+    questions[`recipe:${type}`] = {
+      type: 'choice',
+      instructions: `Which ${type} layout best presents this store's own content? Judge only the supplied structural descriptions.`,
+      criteria: Object.fromEntries(options.map((option) => [option.id, option.pattern])),
+    };
+  }
+  questions.lead = {
+    type: 'choice',
+    instructions: 'What should lead the page after the header?',
+    criteria: { catalog: 'Products or services first', spotlight: 'A festival or offer', story: 'The craft or owner story' },
+  };
+  questions.spotlight = { type: 'noul', instructions: 'Do the brief or season call for a festival or offer section now?' };
+  questions.story = { type: 'noul', instructions: 'Do the brief or facts call for a craft or owner story?' };
+  // Trust is asked ONLY when code finds proof. Never inferred without it.
+  if (hasProof) questions.trust = { type: 'noul', instructions: 'Is the listed proof strong enough to show a trust section?' };
 
-  const kindChoice = choiceOf(result.kind);
-  const styleChoice = choiceOf(result.style);
-  const spotlightProb = noulOf(result.spotlight).probability ?? 0;
-  const storyProb = noulOf(result.story).probability ?? 0;
-  const trustProb = hasProof ? (noulOf(result.trust).probability ?? 0) : 0;
+  const state = {
+    models: [...input.models],
+    industry: input.industry,
+    avoid: [...avoid].sort(),
+    design: overrideDesign || '',
+    recipes: Object.fromEntries(Object.entries(overrideRecipes).sort()),
+    present: presentTypes,
+    facts: { items: itemCount, proofs, ...(season ? { season } : {}), ...(notice ? { notice } : {}) },
+    brief: { goal: input.brief?.goal || '', audience: input.brief?.audience || '', bullets: [...(input.brief?.bullets || [])] },
+  };
+
+  const fallbackRecipes: Partial<Record<SectionKind, string>> = {};
+  for (const type of presentTypes) fallbackRecipes[type] = overrideRecipes[type] || defaultRecipe(type);
+  const fixed = { design: overrideDesign, recipes: { ...overrideRecipes } };
+  const fallback: LookJudgment = {
+    design: overrideDesign || designOptions[0]?.id || libraryDefault(),
+    recipes: fallbackRecipes,
+    lead: 'catalog',
+    spotlight: false,
+    story: Boolean(input.brief?.goal),
+    trust: false,
+    fixed,
+  };
+
+  const result = await answers(apiKey, cache, 'site.look', state, questions);
+  if (!result) return fallback;
+
+  const designIds = new Set(designOptions.map((row) => row.id));
+  const designAnswer = choiceOf(result.design);
+  const design = overrideDesign
+    || (designAnswer.choice && designIds.has(designAnswer.choice) && (designAnswer.confidence ?? 0) >= JUDGMENT.optionConfidence
+      ? designAnswer.choice
+      : fallback.design);
+
+  const recipes: Partial<Record<SectionKind, string>> = { ...fallbackRecipes };
+  for (const { type, options } of recipeChoices) {
+    const answer = choiceOf(result[`recipe:${type}`]);
+    const ids = new Set(options.map((option) => option.id));
+    if (answer.choice && ids.has(answer.choice) && (answer.confidence ?? 0) >= JUDGMENT.optionConfidence) recipes[type] = answer.choice;
+  }
+
+  const spotlight = (noulOf(result.spotlight).probability ?? 0) >= JUDGMENT.noulThreshold;
+  const story = (noulOf(result.story).probability ?? 0) >= JUDGMENT.noulThreshold;
+  const trust = hasProof && (noulOf(result.trust).probability ?? 0) >= JUDGMENT.noulThreshold;
+
   const leadChoice = choiceOf(result.lead);
-  const typeChoice = choiceOf(result.typography);
-  const toneChoice = choiceOf(result.tone);
-  const densityScore = scoreOf(result.density);
-  const heroChoice = choiceOf(result.heroPattern);
-
-  const kind: BusinessKind = (kindChoice.choice === 'food' || kindChoice.choice === 'services' || kindChoice.choice === 'wholesale')
-    ? kindChoice.choice
-    : 'goods';
-
-  const style = (styleChoice.choice === 'neon-pop' || styleChoice.choice === 'harvest-editorial')
-    ? styleChoice.choice
-    : 'dark-luxury';
-
-  const spotlight = spotlightProb >= JUDGMENT.noulThreshold;
-  const story = storyProb >= JUDGMENT.noulThreshold;
-  const trust = hasProof && trustProb >= JUDGMENT.noulThreshold;
-
   const lead: LeadSection = (leadChoice.choice === 'spotlight' && spotlight)
     ? 'spotlight'
     : (leadChoice.choice === 'story' && story)
       ? 'story'
       : 'catalog';
 
-  const typography: TypographyToken = (typeChoice.choice === 'serif' || typeChoice.choice === 'grotesk')
-    ? typeChoice.choice
-    : (style === 'harvest-editorial' ? 'serif' : style === 'neon-pop' ? 'grotesk' : 'sans');
-
-  const tone: ToneToken = (toneChoice.choice === 'surface' || toneChoice.choice === 'ink')
-    ? toneChoice.choice
-    : (style === 'neon-pop' || style === 'harvest-editorial' ? 'surface' : 'canvas');
-
-  const densityVal = densityScore.score;
-  const density: DensityToken = densityVal === 1 ? 1 : densityVal === 3 ? 3 : 2;
-
-  const heroPattern: HeroPattern = (
-    heroChoice.choice === 'commerce' ||
-    heroChoice.choice === 'typography' ||
-    heroChoice.choice === 'bg_image' ||
-    heroChoice.choice === 'minimal'
-  )
-    ? heroChoice.choice
-    : 'split';
-
-  return { kind, style, spotlight, story, trust, lead, typography, tone, density, heroPattern };
+  return { design, recipes, lead, spotlight, story, trust, fixed };
 }
 
 export interface EditJudgment {

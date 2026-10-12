@@ -1,15 +1,15 @@
 /**
  * Deterministic site builder.
  *
- * Implements the Autonomous Site Agent contract (agenticsite.md):
- * Facts (records) + Brief (bullets) -> 1 Jev fan-out -> Blueprint -> code -> static page.
+ * Implements the Autonomous Commerce Store contract (parai.md):
+ * Facts (records) + Brief (bullets) -> commerce model -> Blueprint -> code -> static page.
  *
  * It invents nothing: every block carries supplied facts or plain text derived
  * from the owner's own brief. A block whose evidence is missing is
  * omitted, never faked. Prices and money stay strictly code-owned.
  */
 
-import { createDesign, resolveDesign, THEMES, TONE_STYLE, type Design } from './design.ts';
+import { createDesign, resolveDesign, TONE_STYLE, type Design } from './design.ts';
 import {
   DOCUMENT_VERSION,
   type Asset,
@@ -18,18 +18,25 @@ import {
   type Node,
   type Page,
   type Section,
+  type SectionLayoutSpec,
   type SiteDocument,
   type StyleSet,
 } from './document.ts';
+import { recipeOfType, sectionType } from './recipes/library.ts';
+import { tokenRef } from './recipes/slots.ts';
 import {
+  applySectionOverrides,
   catalogLayoutFor,
-  catalogSectionFor,
-  checkPublishGate,
+  checkModelsGate,
   compileSectionOrder,
   defaultBlueprint,
+  kindForModels,
+  lockedText,
+  modelsOf,
   type Blueprint,
   type BusinessKind,
   type DensityToken,
+  type GateResult,
   type SectionKind,
   type SiteFacts,
   type ToneToken,
@@ -66,6 +73,8 @@ export interface Facts extends SiteFacts {
   features?: string[];
   proof?: { quote: string; author: string }[];
   questions?: { q: string; a: string }[];
+  terms?: string[];
+  minimum?: string;
   hours?: string[];
   address?: string;
   phone?: string;
@@ -114,6 +123,51 @@ function whatsappUrl(phone: string | undefined, message: string): string {
   return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
 }
 
+/**
+ * The recipe chooses the section's layout and is stamped on the section, so a renderer reads
+ * its settings back without guessing. A number the builder worked out from the content —
+ * how many columns a catalog needs — still beats the recipe's standing default.
+ */
+export function stampRecipe(section: Section, blueprint: Blueprint): Section {
+  const type = sectionType(section.purpose);
+  const recipe = recipeOfType(type, blueprint.recipes?.[type]);
+  if (!recipe) return section;
+  const layout: SectionLayoutSpec = {
+    ...recipe.layout,
+    ...(typeof section.layout?.columns === 'number' ? { columns: section.layout.columns } : {}),
+    ...(recipe.layout.scrim ? { scrim: tokenRef(recipe.layout.scrim) } : {}),
+  };
+  // The merchant's settings win over anything already stamped, and only the settings the
+  // chosen recipe declares survive, so switching a layout cannot orphan a value.
+  const turned: Record<string, boolean | string> = {};
+  for (const [key, value] of Object.entries({ ...(section.recipe?.settings || {}), ...(blueprint.overrides?.settings?.[type] || {}) })) {
+    if (Object.hasOwn(recipe.settings, key)) turned[key] = value;
+  }
+  const recipeStamp = Object.keys(turned).length ? { id: recipe.id, settings: turned } : { id: recipe.id };
+  return { ...section, layout, recipe: recipeStamp };
+}
+
+/**
+ * Merchant copy is stamped last and is never offered to the prose model, so a
+ * regeneration keeps what the owner wrote instead of overwriting it (parai D10).
+ * Returns the slot ids it wrote.
+ */
+export function stampText(doc: SiteDocument, text: Record<string, string>): string[] {
+  const written: string[] = [];
+  const walk = (nodes: Node[]) => {
+    for (const node of nodes) {
+      const value = text[node.id];
+      if (value && (node.kind === 'heading' || node.kind === 'text')) {
+        node.props = { ...node.props, text: value };
+        written.push(node.id);
+      }
+      walk(node.children || []);
+    }
+  };
+  for (const page of doc.pages) for (const section of page.sections) walk(section.nodes);
+  return written;
+}
+
 function block(
   purpose: SectionKind | string,
   at: string,
@@ -128,11 +182,27 @@ function block(
   const density = blueprint.density || 2;
 
   switch (purpose) {
-    case 'header':
+    case 'header': {
+      // The navigation primitive reads the document's own sections; the section only
+      // has to exist so the compiler never has to invent one.
+      return {
+        id: at,
+        purpose: 'header',
+        layout: { kind: 'stack' },
+        style: style(density, tone),
+        nodes: [],
+      };
+    }
+
     case 'hero': {
       const headline = input.title;
       const subline = brief.goal || plain;
-      slots.push({ id: `${at}-line`, limit: 220, purpose: 'header', current: subline });
+      slots.push({ id: `${at}-line`, limit: 220, purpose: 'hero', current: subline });
+
+      const shop = blueprint.sections.find((kind) => kind === 'catalog' || kind === 'menu' || kind === 'booking');
+      const cta = shop
+        ? { label: shop === 'menu' ? 'See the menu' : shop === 'booking' ? 'Book a service' : 'View Collection', href: `#${shop}` }
+        : { label: 'Chat on WhatsApp', href: whatsappUrl(phone, `Hello ${input.title}, I have a question.`) };
 
       const nodes: Node[] = [
         { id: `${at}-title`, kind: 'heading', props: { text: headline, level: 1 } },
@@ -145,14 +215,15 @@ function block(
             {
               id: `${at}-cta-catalog`,
               kind: 'button',
-              props: { label: 'View Collection', href: '#catalog', variant: 'outline' },
+              props: { label: cta.label, href: cta.href, variant: 'outline' },
             },
           ],
         },
       ];
 
       const photos = (input.assets || []).filter((a) => a.kind === 'image' && a.rights.approved);
-      if (photos.length >= 2 && blueprint.headerStyle === 'split') {
+      const heroRecipe = recipeOfType('hero', blueprint.recipes?.hero)?.id;
+      if (photos.length >= 2 && heroRecipe === 'split') {
         nodes.push({
           id: `${at}-split-photos`,
           kind: 'flex',
@@ -174,17 +245,17 @@ function block(
       return {
         id: at,
         purpose: 'hero',
-        layout: { kind: blueprint.heroPattern === 'split' || blueprint.headerStyle === 'split' ? 'flex' : 'stack' },
+        layout: { kind: 'stack' },
         style: style(density, tone),
         nodes,
       };
     }
 
-    case 'notice': {
+    case 'announcement': {
       if (!facts.notice) return null;
       return {
         id: at,
-        purpose: 'notice',
+        purpose: 'announcement',
         layout: { kind: 'stack' },
         style: { base: { pad: 'sm', ...TONE_STYLE.surface } },
         nodes: [
@@ -194,9 +265,14 @@ function block(
     }
 
     case 'spotlight': {
-      const bannerTitle = facts.season ? `${facts.season} Festival Offer` : 'Special Spotlight Collection';
-      const bannerText = brief.goal || 'Exclusive festive sarees and apparel with doorstep delivery.';
-      slots.push({ id: `${at}-text`, limit: 300, purpose: 'spotlight', current: bannerText });
+      // The banner recipe promises one featured thing, so it shows the shop's first item.
+      // With nothing to feature the section is not built at all, the same way an empty
+      // catalog is not (parai §5.4: a recipe renders or the section does not exist).
+      const feature = (facts.items || [])[0];
+      if (!feature) return null;
+      const bannerTitle = facts.season ? `${facts.season} offer` : `Featured at ${input.title}`;
+      const bannerText = brief.goal || '';
+      if (bannerText) slots.push({ id: `${at}-text`, limit: 300, purpose: 'spotlight', current: bannerText });
       return {
         id: at,
         purpose: 'spotlight',
@@ -204,7 +280,16 @@ function block(
         style: style(density, tone === 'ink' ? 'surface' : 'ink'),
         nodes: [
           { id: `${at}-title`, kind: 'heading', props: { text: bannerTitle, level: 2 } },
-          { id: `${at}-text`, kind: 'text', props: { text: bannerText } },
+          {
+            id: `${at}-feature`,
+            kind: 'collection',
+            props: {
+              slot: 'item',
+              layout: 'flat',
+              items: [{ ...feature, whatsapp: whatsappUrl(phone, `Hello ${input.title}, I want to order "${feature.title}".`) }],
+            },
+          },
+          ...(bannerText ? [{ id: `${at}-text`, kind: 'text' as const, props: { text: bannerText } }] : []),
           {
             id: `${at}-cta`,
             kind: 'button',
@@ -220,23 +305,17 @@ function block(
 
     case 'catalog':
     case 'menu':
-    case 'services': {
-      let items = (facts.items || []).map((item) => ({
-        ...item,
-        whatsapp: whatsappUrl(phone, `Hello ${input.title}, I want to order "${item.title}".`),
+    case 'booking': {
+      const source = purpose === 'booking' ? (facts.services || []) : (facts.items || []);
+      if (!source.length) return null;
+      const items = source.map((entry) => ({
+        ...entry,
+        whatsapp: whatsappUrl(phone, `Hello ${input.title}, I want to order "${entry.title}".`),
       }));
-      if (!items.length) {
-        items = [
-          { id: 'sample-1', title: 'Product 1', description: 'Handcrafted signature item made with premium materials.', price: 49900, currency: 'INR', badge: 'Best Seller', whatsapp: whatsappUrl(phone, `Hello ${input.title}, I want to order "Product 1".`) },
-          { id: 'sample-2', title: 'Product 2', description: 'Exclusive artisanal collection piece with authentic finish.', price: 79900, currency: 'INR', badge: 'Trending', whatsapp: whatsappUrl(phone, `Hello ${input.title}, I want to order "Product 2".`) },
-          { id: 'sample-3', title: 'Product 3', description: 'Popular everyday favourite verified for premium quality.', price: 129900, currency: 'INR', badge: 'Featured', whatsapp: whatsappUrl(phone, `Hello ${input.title}, I want to order "Product 3".`) },
-          { id: 'sample-4', title: 'Product 4', description: 'Limited edition seasonal release crafted to perfection.', price: 189900, currency: 'INR', whatsapp: whatsappUrl(phone, `Hello ${input.title}, I want to order "Product 4".`) },
-        ];
-      }
 
       const itemCount = items.length;
       const layoutKind = catalogLayoutFor(itemCount);
-      const sectionTitle = purpose === 'menu' ? 'Menu' : purpose === 'services' ? 'Services' : 'Catalog';
+      const sectionTitle = purpose === 'menu' ? 'Menu' : purpose === 'booking' ? 'Services' : 'Catalog';
 
       const nodes: Node[] = [
         { id: `${at}-title`, kind: 'heading', props: { text: sectionTitle, level: 2 } },
@@ -261,17 +340,76 @@ function block(
         bindings: [{
           id: `${at}-binding`,
           slot: 'items',
-          query: purpose === 'services' ? 'records.public' : 'catalog.public',
+          query: purpose === 'booking' ? 'records.public' : 'catalog.public',
           version: 1,
           access: 'public',
           freshness: 300,
           params: {
-            records: (facts.items || []).map((i) => i.id),
+            records: source.map((entry) => entry.id),
             channel: facts.channel || 'default',
-            ...(purpose === 'services' ? { type: 'pos.product' } : {}),
+            ...(purpose === 'booking' ? { type: 'pos.product' } : {}),
           },
           empty: { text: 'Availability is published here.' },
         }],
+      };
+    }
+
+    case 'faq': {
+      const questions = facts.questions || [];
+      if (!questions.length) return null;
+      return {
+        id: at,
+        purpose: 'faq',
+        layout: { kind: 'stack' },
+        style: style(density),
+        nodes: [
+          { id: `${at}-title`, kind: 'heading', props: { text: 'Questions customers ask', level: 2 } },
+          {
+            id: `${at}-list`,
+            kind: 'accordion',
+            props: {},
+            children: questions.map((entry, index) => ({
+              id: `${at}-q-${index + 1}`,
+              kind: 'stack' as const,
+              props: { label: entry.q },
+              children: [{ id: `${at}-a-${index + 1}`, kind: 'text' as const, props: { text: entry.a } }],
+            })),
+          },
+        ],
+      };
+    }
+
+    case 'policy': {
+      const terms = facts.terms || [];
+      if (!terms.length) return null;
+      return {
+        id: at,
+        purpose: 'policy',
+        layout: { kind: 'stack' },
+        style: style(density, 'surface'),
+        nodes: [
+          { id: `${at}-title`, kind: 'heading', props: { text: 'Shipping, returns and payment', level: 2 } },
+          { id: `${at}-list`, kind: 'list', props: { items: terms } },
+        ],
+      };
+    }
+
+    case 'location': {
+      const lines = [
+        facts.address,
+        facts.city && `City: ${facts.city}`,
+        ...(facts.hours || []),
+      ].filter((entry): entry is string => Boolean(entry));
+      if (!lines.length) return null;
+      return {
+        id: at,
+        purpose: 'location',
+        layout: { kind: 'stack' },
+        style: style(density),
+        nodes: [
+          { id: `${at}-title`, kind: 'heading', props: { text: 'Where to find us', level: 2 } },
+          { id: `${at}-list`, kind: 'list', props: { items: lines } },
+        ],
       };
     }
 
@@ -295,7 +433,6 @@ function block(
     case 'trust': {
       const proofs = facts.proofs || [];
       if (!proofs.length) return null;
-      const proofLabels = proofs.map((p) => p.toUpperCase());
       return {
         id: at,
         purpose: 'trust',
@@ -303,11 +440,13 @@ function block(
         style: style(density),
         nodes: [
           { id: `${at}-title`, kind: 'heading', props: { text: 'Authentic & Verified', level: 2 } },
-          ...proofLabels.map((badge, idx) => ({
+          ...proofs.map((proof, idx) => ({
             id: `${at}-badge-${idx + 1}`,
             kind: 'card' as const,
             props: {},
-            children: [{ id: `${at}-text-${idx + 1}`, kind: 'text' as const, props: { text: `✓ ${badge}` } }],
+            // The shop's own words, unchanged: a proof is a claim the merchant made, and
+            // shouting it or stamping a tick onto it is a design decision, not content.
+            children: [{ id: `${at}-text-${idx + 1}`, kind: 'text' as const, props: { text: proof } }],
           })),
         ],
       };
@@ -352,6 +491,25 @@ function block(
       };
     }
 
+    case 'footer': {
+      const lines = [
+        facts.phone && `Phone: ${facts.phone}`,
+        facts.email,
+        facts.address,
+        ...(facts.hours || []),
+      ].filter((entry): entry is string => Boolean(entry));
+      return {
+        id: at,
+        purpose: 'footer',
+        layout: { kind: 'row' },
+        style: style(density, 'ink'),
+        nodes: [
+          ...(brief.goal ? [{ id: `${at}-bio`, kind: 'text' as const, props: { text: brief.goal } }] : []),
+          ...(lines.length ? [{ id: `${at}-contact`, kind: 'list' as const, props: { items: lines } }] : []),
+        ],
+      };
+    }
+
     default:
       return null;
   }
@@ -367,8 +525,8 @@ function buildComingSoonPage(input: BuildInput): Page {
     meta: { description: `${input.title} - Coming soon with WhatsApp orders.` },
     sections: [
       {
-        id: 'header',
-        purpose: 'header',
+        id: 'hero',
+        purpose: 'hero',
         layout: { kind: 'stack' },
         style: style(input.blueprint.density || 2, tone),
         nodes: [
@@ -410,25 +568,35 @@ function buildComingSoonPage(input: BuildInput): Page {
   };
 }
 
-export function buildSite(input: BuildInput): { doc: SiteDocument; slots: Slot[]; gate: boolean } {
-  const gatePasses = checkPublishGate(input.facts);
+export function buildSite(input: BuildInput): { doc: SiteDocument; slots: Slot[]; gate: GateResult } {
+  const models = modelsOf(input.blueprint);
+  const gate = checkModelsGate(models, input.facts);
+  const itemCount = input.facts.items?.length ?? 0;
+  const catalogLayout = catalogLayoutFor(itemCount);
   const slots: Slot[] = [];
 
   const blueprint: Blueprint = {
     ...input.blueprint,
-    gate: gatePasses,
-    catalogLayout: catalogLayoutFor(input.facts.items?.length ?? 0),
-    sections: compileSectionOrder(
-      input.blueprint.kind || 'goods',
+    kind: kindForModels(models),
+    profile: { ...input.blueprint.profile, models },
+    gate,
+    catalogLayout,
+    recipes: {
+      catalog: catalogLayout === 'rails' ? 'rail' : 'grid',
+      ...input.blueprint.recipes,
+      ...input.blueprint.overrides?.recipes,
+    },
+    sections: applySectionOverrides(compileSectionOrder(
+      models,
       input.blueprint.lead || 'catalog',
       {
-        notice: Boolean(input.facts.notice),
+        announcement: Boolean(input.facts.notice),
         spotlight: input.blueprint.sections.includes('spotlight'),
-        catalog: (input.facts.items?.length ?? 0) > 0,
+        catalog: itemCount > 0,
         story: input.blueprint.sections.includes('story'),
         trust: input.blueprint.sections.includes('trust') && (input.facts.proofs?.length ?? 0) > 0,
       },
-    ),
+    ), models, input.blueprint.overrides),
   };
 
   const design: Design = blueprint.style
@@ -440,21 +608,28 @@ export function buildSite(input: BuildInput): { doc: SiteDocument; slots: Slot[]
         input.brief,
       );
 
+  const buildInput: BuildInput = { ...input, blueprint };
   const homeSections: Section[] = [];
   for (const sectionKind of blueprint.sections) {
-    const at = sectionKind === 'header' ? 'hero' : slug(sectionKind, 'section');
-    const section = block(sectionKind, at, { ...input, blueprint }, ['/'], slots);
+    const section = block(sectionKind, slug(sectionKind, 'section'), buildInput, ['/'], slots);
     if (section) homeSections.push(section);
   }
-  const pages: Page[] = [
-    {
-      id: 'home',
-      path: '/',
-      title: input.title,
-      meta: { description: (input.brief.goal || `${input.title} online`).slice(0, 300) },
-      sections: homeSections,
-    },
-  ];
+
+  // A storefront that sells items shows them or says it is coming; it never shows stand-ins.
+  const sellsItems = models.some((model) => model !== 'booking' && model !== 'quote');
+  const page = sellsItems && !itemCount
+    ? buildComingSoonPage(buildInput)
+    : {
+        id: 'home',
+        path: '/',
+        title: input.title,
+        meta: { description: (input.brief.goal || `${input.title} online`).slice(0, 300) },
+        sections: homeSections,
+      };
+  const pages: Page[] = [{
+    ...page,
+    sections: page.sections.map((section) => stampRecipe(section, blueprint)),
+  }];
 
   const carried = input.previous;
   const doc: SiteDocument = {
@@ -479,7 +654,11 @@ export function buildSite(input: BuildInput): { doc: SiteDocument; slots: Slot[]
     releases: structuredClone(carried?.releases || []),
   };
 
-  return { doc, slots, gate: gatePasses };
+  stampText(doc, blueprint.overrides?.text || {});
+  // A slot the merchant wrote is never offered to the prose model, so generated
+  // copy cannot overwrite it and no later pass has to undo the damage.
+  const locked = lockedText(blueprint.overrides);
+  return { doc, slots: slots.filter((slot) => !locked.has(slot.id)), gate };
 }
 
 export function defaultSite(title: string, goal: string): SiteDocument {
@@ -488,7 +667,7 @@ export function defaultSite(title: string, goal: string): SiteDocument {
     title,
     brief,
     facts: {},
-    blueprint: defaultBlueprint('goods'),
+    blueprint: defaultBlueprint(),
     assets: [],
   }).doc;
 }

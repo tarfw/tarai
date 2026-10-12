@@ -45,7 +45,7 @@ export interface MemberSuggestionResult {
   readonly review: true;
 }
 
-function fallbackTrade(brief: string): TradeClassification {
+export function fallbackTrade(brief: string): TradeClassification {
   const text = brief.toLowerCase();
   if (/\b(saree|handloom|silk|apparel|boutique|tailor|cloth|weaving|garment|textile)\b/i.test(text)) {
     return { id: 'apparel', title: TRADE_TAXONOMY.apparel, confidence: 0.95 };
@@ -71,7 +71,9 @@ function fallbackTrade(brief: string): TradeClassification {
   return { id: 'general', title: TRADE_TAXONOMY.general, confidence: 0.85 };
 }
 
-function fallbackCapabilities(brief: string): { pos: boolean; commerce: boolean; site: boolean; register: boolean; team: boolean } {
+export interface FallbackCapabilities { pos: boolean; commerce: boolean; site: boolean; register: boolean; team: boolean }
+
+export function fallbackCapabilities(brief: string): FallbackCapabilities {
   const text = brief.toLowerCase();
   const posKeywords = /\b(pos|point of sale|cashier|counter|register|restaurant|cafe|bar|kitchen|dining|food|table|takeout|retail|checkout|shop|store)\b/i;
   const commerceKeywords = /\b(commerce|catalog|item|items|variant|variants|product|products|inventory|stock|supplier|suppliers|purchase|purchases|order|orders|invoice|invoices|billing|payment|payments|refund|refunds|quote|quotes|warehouse|shipment|shipments|sales)\b/i;

@@ -1,0 +1,69 @@
+{
+  "version": 1,
+  "id": "luxury",
+  "tone": "light",
+  "density": "balanced",
+  "direction": {
+    "audience": "Premium retail and gifting customers",
+    "purpose": "Polished storefront",
+    "voice": "Refined, precise, tactile",
+    "idea": "Cashmere counter, dark ledger"
+  },
+  "color": {
+    "canvas": "#ffffff",
+    "ink": "#000000",
+    "accent": "#3b281d",
+    "accentink": "#ffffff",
+    "surface": "#f7f4f1",
+    "border": "#e2e0dd",
+    "muted": "#6e6e6e",
+    "success": "#1e681d",
+    "danger": "#99001c"
+  },
+  "gradients": [
+    {
+      "name": "Harbor Depth Gradient",
+      "value": "linear-gradient(45deg, #060b0e 0%, #254764 100%)"
+    }
+  ],
+  "type": {
+    "display": "\"Inter Variable\", \"Inter\", -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, \"Mukta Malar\", sans-serif",
+    "heading": "\"Inter\", \"Arial\", -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, \"Mukta Malar\", sans-serif",
+    "body": "\"Inter\", \"Arial\", -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, \"Mukta Malar\", sans-serif",
+    "base": 16,
+    "scale": 1.25,
+    "leading": 1.4,
+    "weight": 600,
+    "tracking": -0.03
+  },
+  "space": {
+    "unit": 4,
+    "section": 80,
+    "container": 1200
+  },
+  "shape": {
+    "sm": 4,
+    "md": 16,
+    "lg": 24,
+    "pill": 9999
+  },
+  "guidance": [
+    "Keep the canvas white and let one dark fill carry the buttons",
+    "Pill buttons only; never square conversion controls",
+    "No heavy outer drop shadows",
+    "Hairline borders and soft card corners"
+  ],
+  "notes": [
+    "Hairline border #f7f4f1 deepened to #e2e0dd so it reads on paper.",
+    "Secondary text #919191 darkened to #6e6e6e to hold 4.5:1."
+  ],
+  "source": {
+    "file": "DESIGN1.md",
+    "hash": "ca43d768a8786498",
+    "brand": "Mollie",
+    "license": {
+      "kind": "reference",
+      "note": "Style measurements only. Named faces are substituted with local system stacks; no fonts, photos or marks are shipped."
+    }
+  }
+}

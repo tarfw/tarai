@@ -1,0 +1,39 @@
+{
+  "id": "commerce",
+  "type": "hero",
+  "models": ["products", "digital", "bulk"],
+  "needs": {
+    "headline": "required",
+    "body": "optional",
+    "media": "optional",
+    "cta": "optional"
+  },
+  "layout": { "kind": "split", "ratio": "60/40", "collapse": "stack" },
+  "slots": {
+    "headline": { "source": "facts.name", "max": 60 },
+    "body": { "source": "brief.goal", "max": 220 },
+    "media": { "source": "photos[0]" },
+    "cta": { "source": "route.primary" }
+  },
+  "tokens": {
+    "text": "color.ink",
+    "background": "color.canvas",
+    "accent": "color.accent",
+    "surface": "color.surface",
+    "border": "color.border",
+    "radius": "shape.lg",
+    "shadow": "elevation.low"
+  },
+  "settings": {
+    "eyebrow": { "type": "text", "default": "Featured", "max": 40 },
+    "label": { "type": "text", "default": "See the shop", "max": 30 }
+  },
+  "fallback": {
+    "headline": "Your store name",
+    "cta": "#catalog"
+  },
+  "source": {
+    "pattern": "name and one line beside one framed product card, stacked on a narrow screen",
+    "reference": "structural pattern only; no copy, colour, photo or font came from anywhere"
+  }
+}

@@ -11,8 +11,11 @@
 import type { Client } from '@libsql/client/web';
 import { badRequest, conflict, notFound, unavailable } from '../errors.ts';
 import type { AccessContext } from '../types.ts';
-import { ALIGN_VALUES, PAD_VALUES, SIZE_VALUES, WIDTH_VALUES, type Node, type Persona, type Section, type SectionLayoutSpec, type SiteDocument, type Style } from './document.ts';
+import { ALIGN_VALUES, PAD_VALUES, SIZE_VALUES, WIDTH_VALUES, pruneLayout, type Node, type Persona, type Section, type SectionLayoutSpec, type SiteDocument, type Style } from './document.ts';
 import { COLOR_KEYS, TONE_STYLE, exportDesign, parseDesign, TONE_COLORS } from './design.ts';
+import { SECTION_KINDS, sectionsForModels, type SectionKind } from './blueprint.ts';
+import { designOptions } from './designs/library.ts';
+import { recipesFor, sectionType } from './recipes/library.ts';
 import { applyPatch, diffSummary, type DiffEntry, type PatchOperation } from './patch.ts';
 import { interpret, type EditQuestion, type JudgmentCache } from './judgment.ts';
 import { DEFAULT_BUDGET, GROQ_DEFAULT_MODEL, ModelRunner, SITE_MODEL_FALLBACKS, draftCopy } from './model.ts';
@@ -76,6 +79,133 @@ const PROPERTY_WORDS: Record<string, string[]> = {
 };
 
 const DENSITY_PAD: Record<string, string> = { airy: 'token:space.section', balanced: 'lg', compact: 'token:space.unit' };
+
+/** Merchant words for a section kind, so "turn the products into rails" names `catalog`. */
+const KIND_WORDS: Record<SectionKind, string[]> = {
+  header: ['header', 'nav', 'navigation', 'top bar', 'menu bar'],
+  announcement: ['announcement', 'notice', 'ticker'],
+  hero: ['hero', 'intro', 'introduction', 'above the fold'],
+  spotlight: ['spotlight', 'promo', 'promotion', 'offer', 'sale'],
+  catalog: ['catalog', 'catalogue', 'product', 'products', 'collection', 'shop', 'items'],
+  menu: ['menu', 'dishes', 'dish list'],
+  booking: ['booking', 'bookings', 'appointment', 'appointments', 'reserve', 'service', 'services'],
+  story: ['story', 'about', 'about us'],
+  trust: ['trust', 'review', 'reviews', 'testimonial', 'testimonials', 'proof', 'proofs'],
+  faq: ['faq', 'faqs', 'question', 'questions'],
+  policy: ['policy', 'policies', 'terms', 'shipping', 'returns', 'refund'],
+  location: ['location', 'address', 'map', 'directions'],
+  contact: ['contact', 'whatsapp', 'enquiry', 'enquire', 'get in touch'],
+  footer: ['footer', 'foot', 'bottom bar'],
+};
+
+/** Merchant words for a recipe id. The id itself always counts; these are the nicknames. */
+const LAYOUT_WORDS: Record<string, string[]> = {
+  rail: ['rail', 'rails', 'carousel', 'slider', 'swipe'],
+  grid: ['grid', 'tiles', 'tile'],
+  list: ['list', 'rows', 'stacked'],
+  split: ['split', 'side by side'],
+  fullscreen: ['fullscreen', 'full screen', 'full bleed', 'edge to edge'],
+  typography: ['typography', 'type led', 'big type'],
+  commerce: ['commerce', 'shop first', 'buy first'],
+  pill: ['pill', 'floating', 'rounded bar'],
+  minimal: ['minimal', 'simple', 'plain'],
+  brand: ['brand', 'logo led', 'logo first'],
+  bar: ['bar', 'strip', 'marquee'],
+  banner: ['banner', 'band'],
+  editorial: ['editorial', 'magazine'],
+  proofs: ['testimonials', 'reviews', 'proofs'],
+  disclosure: ['disclosure', 'accordion', 'collapsible'],
+  card: ['card', 'cards'],
+  whatsapp: ['whatsapp'],
+  form: ['form'],
+  tiers: ['tiers', 'packages', 'pricing'],
+};
+
+const DESIGN_WORDS = ['design', 'theme', 'look', 'style', 'palette', 'library'];
+const HIDE_WORDS = ['hide', 'remove', 'delete', 'drop', 'take away', 'turn off', 'switch off', 'get rid of'];
+const SHOW_WORDS = ['show', 'reveal', 'bring back', 'add back', 'put back', 'turn on', 'switch on', 'restore'];
+
+/** Whole-word match against a normalized command, so "bold" never fires on "bolder". */
+const has = (words: string, term: string): boolean => ` ${words} `.includes(` ${term} `);
+
+/**
+ * The design a merchant named, if they named one. A bare colour or type adjective is not a
+ * design choice — it takes "design"/"theme"/"look" nearby, or the exact label — because the
+ * same words turn up in value commands like "bold title" that belong to the node lanes.
+ */
+function designNamed(words: string): string | null {
+  const intent = DESIGN_WORDS.some((entry) => has(words, entry));
+  for (const option of designOptions()) {
+    const label = option.name.toLowerCase();
+    if (words === option.id || (label && words === label)) return option.id;
+    if (intent && (has(words, option.id) || (label && words.includes(label)))) return option.id;
+  }
+  return null;
+}
+
+function namedKind(words: string): SectionKind | null {
+  let best: SectionKind | null = null;
+  let length = 0;
+  for (const kind of SECTION_KINDS) {
+    for (const term of KIND_WORDS[kind]) {
+      if (has(words, term) && term.length > length) { best = kind; length = term.length; }
+    }
+  }
+  return best;
+}
+
+interface OverrideAsk {
+  operations: PatchOperation[];
+  choices: Record<string, string>;
+  questions: string[];
+  target: string | null;
+  summary: string;
+}
+
+/**
+ * A merchant naming a design, a section layout, or a section they want on or off is making a
+ * choice the system must keep: it becomes an override, so the next regeneration honours it
+ * instead of choosing again (parai §8, D10). Only unambiguous words land here; anything else
+ * falls through to the value lanes, which edit the document in front of the merchant.
+ */
+function overrideLane(doc: SiteDocument, words: string): OverrideAsk | null {
+  const empty = { operations: [], choices: {}, questions: [], target: null, summary: '' };
+
+  const design = designNamed(words);
+  if (design) {
+    const label = designOptions().find((option) => option.id === design)?.name || design;
+    return { ...empty, operations: [{ op: 'set_override', kind: 'design', value: design }], choices: { design }, target: null, summary: `Remembered the ${label} design` };
+  }
+
+  const kind = namedKind(words);
+  if (!kind) return null;
+  const off = HIDE_WORDS.some((entry) => has(words, entry));
+  const on = SHOW_WORDS.some((entry) => has(words, entry));
+
+  if (off || on) {
+    const required = sectionsForModels(doc.blueprint.profile?.models || []).required;
+    if (off && required.includes(kind)) {
+      return { ...empty, questions: [`The ${kind} section is needed for the way you sell, so it stays. What would you like to change in it?`] };
+    }
+    return {
+      ...empty,
+      operations: [{ op: 'set_override', kind: off ? 'hide' : 'show', target: kind }],
+      choices: { section: kind, ...(off ? { hidden: kind } : { shown: kind }) },
+      target: kind,
+      summary: off ? `Remembered to leave out ${kind}` : `Remembered to show ${kind}`,
+    };
+  }
+
+  const recipe = recipesFor(sectionType(kind)).find((entry) => LAYOUT_WORDS[entry.id]?.some((term) => has(words, term)) || has(words, entry.id));
+  if (!recipe) return null;
+  return {
+    ...empty,
+    operations: [{ op: 'set_override', kind: 'recipe', target: kind, value: recipe.id }],
+    choices: { section: kind, recipe: recipe.id },
+    target: kind,
+    summary: `Remembered the ${recipe.id} layout for ${kind}`,
+  };
+}
 
 export interface AskResult {
   siteId: string;
@@ -252,7 +382,7 @@ function exact(doc: SiteDocument, command: string, target: string): { ops: Patch
       open.push({ key: property, label: property, values: allowed });
     }
   }
-  if (layout && changedLayout && layout.kind) ops.push({ op: 'set_layout', target, value: layout as unknown as SectionLayoutSpec });
+  if (layout && changedLayout && layout.kind) ops.push({ op: 'set_layout', target, value: pruneLayout(layout as unknown as SectionLayoutSpec) });
   if (changedStyle) ops.push({ op: 'set_style', target, value: { ...existing, base: base as unknown as Style } });
 
   const quote = /["“']([^"”']+)["”']/.exec(command);
@@ -345,6 +475,26 @@ export async function executeSiteAsk(
     if (targetKindOf(doc, requested)) target = requested;
   }
 
+  // Naming a design, a layout or a section to switch off is a choice to remember, so it is
+  // answered as an override before any tone or value lane reads the same words. An explicit
+  // target means the merchant is pointing at the document in front of them instead.
+  if (!requested || requested === 'all') {
+    const remembered = overrideLane(doc, normalizedCommand);
+    if (remembered && (remembered.operations.length || remembered.questions.length)) {
+      const asked: AskResult = {
+        siteId: current.id,
+        base: doc.revision,
+        target: remembered.target,
+        targetKind: remembered.target ? targetKindOf(doc, remembered.target) : null,
+        operations: remembered.operations,
+        summary: remembered.summary,
+        questions: remembered.questions,
+        choices: remembered.choices,
+      };
+      return { ...asked };
+    }
+  }
+
   if ((!target || requested === 'all') && (isDarkTone || isSurfaceTone || isCanvasTone)) {
     const tone: 'canvas' | 'surface' | 'ink' = isDarkTone ? 'ink' : isSurfaceTone ? 'surface' : 'canvas';
     const themeColor = TONE_COLORS[tone];
@@ -376,8 +526,9 @@ export async function executeSiteAsk(
   const PURPOSE_SYNONYMS: Record<string, string[]> = {
     collection: ['collection', 'product', 'products', 'grid', 'product grid', 'catalog', 'items', 'offer', 'shop', 'trending', 'new and trending', 'new & trending', 'what we offer', 'photo bigger', 'bigger photo', 'larger photo', 'photo size', 'image size', 'bigger image', 'larger image'],
     recommendations: ['recommendations', 'recommended', 'you will love', "you'll love", 'suggested', 'more pieces'],
-    introduction: ['hero', 'banner', 'intro', 'introduction', 'top', 'header'],
-    header: ['hero', 'banner', 'intro', 'introduction', 'top', 'header'],
+    introduction: ['hero', 'banner', 'intro', 'introduction', 'top'],
+    hero: ['hero', 'banner', 'intro', 'introduction', 'above the fold'],
+    header: ['navigation', 'nav bar', 'menu bar', 'top bar', 'brand bar'],
     split: ['split', 'editorial', 'two images', 'media break', 'two-up'],
     categories: ['categories', 'category', 'tabs', 'filter', 'shop by category'],
     promo: ['promo', 'promotion', 'cta band', 'call to action', 'strip', 'run festive sale', 'festive sale', 'sale', 'festive'],
@@ -415,9 +566,9 @@ export async function executeSiteAsk(
   // Deterministic purpose fallbacks when target is not directly mentioned
   if (!target) {
     if (/(?:photo|image|picture|col|column|grid|list\s*view)/.test(lower)) {
-      target = doc.pages[0]?.sections.find((s) => s.purpose === 'collection' || s.purpose === 'catalog' || s.purpose === 'split' || s.purpose === 'header' || s.purpose === 'introduction')?.id || doc.pages[0]?.sections[0]?.id || null;
+      target = doc.pages[0]?.sections.find((s) => s.purpose === 'collection' || s.purpose === 'catalog' || s.purpose === 'split' || s.purpose === 'hero')?.id || doc.pages[0]?.sections[0]?.id || null;
     } else if (/(?:festive|sale|discount|promo|special\s*offer)/.test(lower)) {
-      target = doc.pages[0]?.sections.find((s) => s.purpose === 'promo' || s.purpose === 'spotlight' || s.purpose === 'header' || s.purpose === 'introduction')?.id || doc.pages[0]?.sections[0]?.id || null;
+      target = doc.pages[0]?.sections.find((s) => s.purpose === 'promo' || s.purpose === 'spotlight' || s.purpose === 'hero')?.id || doc.pages[0]?.sections[0]?.id || null;
     } else if (/(?:location|address|hours|opening\s*hours|contact)/.test(lower)) {
       target = doc.pages[0]?.sections.find((s) => s.purpose === 'contact' || s.purpose === 'hours')?.id || doc.pages[0]?.sections[0]?.id || null;
     }
@@ -467,8 +618,9 @@ export async function executeSiteAsk(
         }
         choices[key] = value;
       }
-      if (layoutChanged && laid) laid.value = nextLayout as unknown as SectionLayoutSpec;
-      else if (layoutChanged) operations.push({ op: 'set_layout', target, value: nextLayout as unknown as SectionLayoutSpec });
+      const settled = pruneLayout(nextLayout as unknown as SectionLayoutSpec);
+      if (layoutChanged && laid) laid.value = settled;
+      else if (layoutChanged) operations.push({ op: 'set_layout', target, value: settled });
       if (styleChanged && styled) styled.value = { ...existing, base: base as unknown as Style };
       else if (styleChanged) operations.push({ op: 'set_style', target, value: { ...existing, base: base as unknown as Style } });
       for (const key of judged.open) if (!questions.some((entry) => entry.startsWith(`Which ${key}`))) questions.push(`Which ${key} should it use?`);
@@ -520,6 +672,14 @@ function remember(doc: SiteDocument, values: Record<string, string>, kind: 'acce
   return { ...doc, brief: { ...brief, [kind]: list } };
 }
 
+/**
+ * A hand edit is the owner's work: provenance says who wrote it, so the scheduled sweep
+ * leaves the draft alone instead of rebuilding over it. Publishing stays their call.
+ */
+function byMerchant(doc: SiteDocument): SiteDocument {
+  return { ...doc, provenance: { state: doc.blueprint?.hash || '', revision: doc.revision, at: now(), generator: 'merchant' } };
+}
+
 export async function executeSiteEdit(
   client: Client,
   context: AccessContext,
@@ -541,6 +701,7 @@ export async function executeSiteEdit(
   const choices = object(input.choices);
   const remembered = Object.fromEntries(Object.entries(choices).filter(([, value]) => typeof value === 'string') as [string, string][]);
   if (Object.keys(remembered).length) next = remember(next, remembered, 'accepted');
+  next = byMerchant(next);
   const diff = diffSummary(doc, next);
   const version = current.version + 1;
   const at = now();
@@ -614,13 +775,13 @@ export async function executeSiteUndo(
   if (!stored) throw notFound('The stored revision is unavailable.');
   const restored = JSON.parse(await stored.text()) as SiteDocument;
   const undone = text(entry.summary, 200);
-  const merged: SiteDocument = remember({
+  const merged: SiteDocument = byMerchant(remember({
     ...restored,
     revision: doc.revision + 1,
     currentRelease: doc.currentRelease ?? null,
     releases: doc.releases || [],
     brief: doc.brief || restored.brief,
-  }, { undo: undone }, 'rejected');
+  }, { undo: undone }, 'rejected'));
   validateDocument(merged);
   const diff = diffSummary(doc, merged);
   const version = current.version + 1;

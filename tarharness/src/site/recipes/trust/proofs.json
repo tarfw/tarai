@@ -1,0 +1,24 @@
+{
+  "id": "proofs",
+  "type": "trust",
+  "models": ["products", "food", "booking", "quote", "digital", "bulk"],
+  "needs": { "proofs": "required" },
+  "layout": { "kind": "row" },
+  "slots": {
+    "proofs": { "source": "facts.proofs", "count": 4 }
+  },
+  "tokens": {
+    "text": "color.ink",
+    "background": "color.canvas",
+    "muted": "color.muted",
+    "accent": "color.accent"
+  },
+  "settings": {
+    "points": { "type": "boolean", "default": true }
+  },
+  "fallback": {},
+  "source": {
+    "pattern": "three or four plain statements of evidence in one band",
+    "reference": "structural pattern only; no copy, colour or asset came from anywhere"
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "id": "tiers",
+  "type": "booking",
+  "models": ["booking", "quote", "bulk"],
+  "needs": { "services": "required" },
+  "layout": { "kind": "grid", "columns": 3 },
+  "slots": {
+    "services": { "source": "services[0..2]", "count": 3 }
+  },
+  "tokens": {
+    "text": "color.ink",
+    "background": "color.surface",
+    "accent": "color.accent",
+    "radius": "shape.lg",
+    "shadow": "elevation.low"
+  },
+  "settings": {
+    "label": { "type": "text", "default": "Ask about this", "max": 30 }
+  },
+  "fallback": {},
+  "source": {
+    "pattern": "three standing offers side by side, each with one way to ask",
+    "reference": "structural pattern only; no copy, colour or asset came from anywhere"
+  }
+}

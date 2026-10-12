@@ -1,0 +1,41 @@
+{
+  "id": "pill",
+  "type": "announcement",
+  "models": [
+    "products",
+    "food",
+    "booking",
+    "quote",
+    "digital",
+    "bulk"
+  ],
+  "needs": {
+    "body": "required",
+    "cta": "optional"
+  },
+  "layout": {
+    "kind": "row"
+  },
+  "slots": {
+    "body": {
+      "source": "facts.notice",
+      "max": 120
+    },
+    "cta": {
+      "source": "route.primary"
+    }
+  },
+  "tokens": {
+    "text": "color.accentink",
+    "background": "color.accent",
+    "radius": "shape.pill"
+  },
+  "settings": {},
+  "fallback": {
+    "cta": "#catalog"
+  },
+  "source": {
+    "pattern": "one line of news with a round arrow button at the end",
+    "reference": "structural pattern only; no copy, colour or asset came from anywhere"
+  }
+}

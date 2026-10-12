@@ -1,43 +1,26 @@
 import type { Section } from '../../document.ts';
 import { escapeAttribute, escapeHtml } from '../../html.ts';
-import type { RenderContext } from '../nodes.ts';
+import { settingsOf, slotText, slotsOf, type RenderContext } from '../nodes.ts';
+import { headerLinks } from './links.ts';
 
 export function render(section: Section, context: RenderContext): string {
-  const doc = context.doc;
-  const brand = doc.pages[0]?.title || 'Store';
+  const brand = slotText(slotsOf(section, context.doc, context.recipe).values, 'brand', context.recipe?.fallback.brand || 'Your store name');
   const listId = 'site-main-nav';
-  const page = doc.pages[0];
-
-  const links: { label: string; href: string }[] = [{ label: 'Home', href: '/' }];
-  for (const s of page?.sections || []) {
-    if (s.purpose === 'catalog' || s.purpose === 'collection' || s.id === 'catalog') {
-      const label = s.purpose === 'menu' ? 'Menu' : s.purpose === 'services' ? 'Services' : 'Catalog';
-      if (!links.some((l) => l.href.includes('catalog') || l.href.includes('menu'))) {
-        links.push({ label, href: `#${s.id || 'catalog'}` });
-      }
-    } else if (s.purpose === 'menu' || s.id === 'menu') {
-      if (!links.some((l) => l.href.includes('menu'))) links.push({ label: 'Menu', href: `#${s.id || 'menu'}` });
-    } else if (s.purpose === 'services' || s.id === 'services') {
-      if (!links.some((l) => l.href.includes('services'))) links.push({ label: 'Services', href: `#${s.id || 'services'}` });
-    } else if (s.purpose === 'spotlight' || s.id === 'spotlight') {
-      if (!links.some((l) => l.href.includes('spotlight'))) links.push({ label: 'Offers', href: `#${s.id || 'spotlight'}` });
-    }
-  }
-  if (!links.some((l) => l.href.includes('contact'))) {
-    links.push({ label: 'Contact', href: '#contact' });
-  }
-
+  const links = settingsOf(section, context.recipe).links === false ? [] : headerLinks(context.doc.pages[0]);
   const rendered = links.map((l) => `<li><a href="${escapeAttribute(l.href)}">${escapeHtml(l.label)}</a></li>`).join('');
-
-  return `<header id="site-header" class="tar-nav" data-purpose="navigation">
-  <div class="tar-wrap tar-nav-inner">
-    <a class="tar-brand" href="/">${escapeHtml(brand)}</a>
-    <nav class="tar-menu" data-menu="${listId}" aria-label="Main Navigation">
+  const menu = rendered
+    ? `<nav class="tar-menu" data-menu="${listId}" aria-label="Main Navigation">
       <button class="tar-menu-btn" type="button" aria-expanded="false" aria-label="Toggle navigation">☰</button>
       <ul id="${listId}" class="tar-navlinks">
         ${rendered}
       </ul>
-    </nav>
+    </nav>`
+    : '';
+
+  return `<header id="site-header" class="tar-nav" data-purpose="navigation">
+  <div class="tar-wrap tar-nav-inner">
+    <a class="tar-brand" href="/">${escapeHtml(brand)}</a>
+    ${menu}
   </div>
 </header>`;
 }

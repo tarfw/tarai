@@ -5,7 +5,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 async function main() {
-  const blueprint = defaultBlueprint('retail');
+  const blueprint = defaultBlueprint(['products']);
   const brief = {
     goal: 'Activewear, loungewear and contemporary lifestyle wardrobe.',
     audience: 'women seeking modern minimalist activewear',

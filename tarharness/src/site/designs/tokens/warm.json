@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "id": "warm",
+  "tone": "light",
+  "density": "airy",
+  "direction": {
+    "audience": "Neighbourhood diners and craft buyers",
+    "purpose": "Warm heritage storefront",
+    "voice": "Warm, authentic, farm-crafted",
+    "idea": "Sunlit paper and rounded display type"
+  },
+  "color": {
+    "canvas": "#e5dccd",
+    "ink": "#964c00",
+    "accent": "#e8e359",
+    "accentink": "#000000",
+    "surface": "#e5dccd",
+    "border": "#ab5700",
+    "muted": "#3d549c",
+    "success": "#16a34a",
+    "danger": "#dc2626"
+  },
+  "gradients": [],
+  "type": {
+    "display": "\"Parafina\", \"Bricolage Grotesque\", -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, \"Mukta Malar\", sans-serif",
+    "heading": "\"Parafina\", \"Bricolage Grotesque\", -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, \"Mukta Malar\", sans-serif",
+    "body": "\"Poppins\", \"Inter\", -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, \"Mukta Malar\", sans-serif",
+    "base": 16,
+    "scale": 1.25,
+    "leading": 1.4,
+    "weight": 500,
+    "tracking": 0
+  },
+  "space": {
+    "unit": 4,
+    "section": 140,
+    "container": 1200
+  },
+  "shape": {
+    "sm": 4,
+    "md": 20,
+    "lg": 64,
+    "pill": 9999
+  },
+  "guidance": [
+    "Cream paper with copper text",
+    "Rounded display headlines at large sizes",
+    "One bright accent, used sparingly",
+    "Photograph the real thing in daylight"
+  ],
+  "notes": [
+    "Section gap \"80-120px\" read as its midpoint 100px.",
+    "Body ink #ab5700 darkened to #964c00 to hold 4.5:1 on paper.",
+    "Button labels use #000000 rather than paper to hold 4.5:1 on the accent."
+  ],
+  "source": {
+    "file": "DESIGN3.md",
+    "hash": "1cbf06ff14b71f13",
+    "brand": "arte*",
+    "license": {
+      "kind": "reference",
+      "note": "Style measurements only. Named faces are substituted with local system stacks; no fonts, photos or marks are shipped."
+    }
+  }
+}

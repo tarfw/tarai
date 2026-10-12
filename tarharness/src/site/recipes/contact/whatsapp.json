@@ -1,0 +1,31 @@
+{
+  "id": "whatsapp",
+  "type": "contact",
+  "models": ["products", "food", "booking", "quote", "digital", "bulk"],
+  "needs": {
+    "phone": "optional",
+    "email": "optional",
+    "cta": "optional"
+  },
+  "layout": { "kind": "row" },
+  "slots": {
+    "phone": { "source": "facts.phone" },
+    "email": { "source": "facts.email" },
+    "cta": { "source": "route.contact" }
+  },
+  "tokens": {
+    "text": "color.ink",
+    "background": "color.canvas",
+    "accent": "color.accent",
+    "accentink": "color.accentink",
+    "radius": "shape.pill"
+  },
+  "settings": {
+    "label": { "type": "text", "default": "Message us", "max": 30 }
+  },
+  "fallback": { "cta": "/contact" },
+  "source": {
+    "pattern": "one line that says how to reach the shop, beside one large action",
+    "reference": "structural pattern only; no copy, colour or asset came from anywhere"
+  }
+}

@@ -4,7 +4,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { WORKSPACE_SCHEMA } from '../src/db/schema.ts';
 import { executeGateway } from '../src/gateway/actions.ts';
 import type { AccessContext } from '../src/types.ts';
-import { defaultSite } from '../src/site/build.ts';
 import type { SiteDocument } from '../src/site/document.ts';
 
 const clients: ReturnType<typeof createClient>[] = [];
@@ -30,6 +29,9 @@ async function createTestWorkspace() {
   const at = Date.now();
   await client.execute({ sql: "INSERT INTO records(id,type,title,state,data,owner,version,created,updated) VALUES('capability','capability','Capabilities','active',?, 'owner_1',1,?,?)",
     args: [JSON.stringify({ site: true, pos: false, commerce: false }), at, at] });
+  // A real published record: a storefront is built from what the owner sells.
+  await client.execute({ sql: "INSERT INTO records(id,type,title,state,data,owner,version,created,updated) VALUES('settings','pos.settings','Store','active','{\"currency\":\"INR\"}','owner_1',1,?,?)", args: [at, at] });
+  await client.execute({ sql: "INSERT INTO records(id,type,title,state,data,owner,version,created,updated) VALUES('prod_garlic','pos.product','Garlic Bread','active','{\"price\":15000,\"shortDescription\":\"Fresh with herbs\"}','owner_1',1,?,?)", args: [at, at] });
   return client;
 }
 
@@ -39,18 +41,9 @@ const ownerAccess: AccessContext = {
   member: { workspaceId: 'ws_slice_house_0001', userId: 'owner_1', role: 'owner', state: 'active' },
 };
 
-async function seed(client: Awaited<ReturnType<typeof createTestWorkspace>>, doc: SiteDocument, id = 'site_edit_0001') {
-  const at = Date.now();
-  await client.execute({
-    sql: "INSERT INTO records(id,type,title,state,data,owner,version,created,updated) VALUES(?, 'site','Slice House','draft',?, 'owner_1',1,?,?)",
-    args: [id, JSON.stringify(doc), at, at],
-  });
-  return id;
-}
-
 async function generatedSite(client: Awaited<ReturnType<typeof createTestWorkspace>>) {
   const result = await Effect.runPromise(executeGateway(client, ownerAccess, {
-    actionId: 'site.generate', idempotencyKey: `gen-${Math.random()}`, input: { title: 'Slice House', prompt: 'Pizza' },
+    actionId: 'site.generate', idempotencyKey: `gen-${Math.random()}`, input: { title: 'Slice House', prompt: 'Pizza', records: ['prod_garlic'] },
   }));
   const site = result.site as SiteDocument;
   return { siteId: String(result.siteId), site, version: Number(result.version) };
@@ -337,7 +330,7 @@ describe('site ask and edit', () => {
 
     // 6. Retail site with collection section
     const retailResult = await Effect.runPromise(executeGateway(client, ownerAccess, {
-      actionId: 'site.generate', idempotencyKey: `gen-retail-${Math.random()}`, input: { title: 'Kanchi Silks', prompt: 'Kanchi luxury silk sarees retail', category: 'goods' },
+      actionId: 'site.generate', idempotencyKey: `gen-retail-${Math.random()}`, input: { title: 'Kanchi Silks', prompt: 'Kanchi luxury silk sarees retail', models: ['products'], records: ['prod_garlic'] },
     }));
     const retailSiteId = String(retailResult.siteId);
     const retailSite = retailResult.site as SiteDocument;
@@ -367,17 +360,17 @@ describe('site checks gate publication', () => {
   it('stores checks with a candidate and refuses to publish blocking findings', async () => {
     const client = await createTestWorkspace();
     const bucket = releaseBucket();
-    const legacy = defaultSite('Slice House', 'Pizza');
-    const siteId = await seed(client, {
-      ...legacy,
-      assets: [{
-        id: 'logo', kind: 'image', key: 'workspaces/ws_slice_house_0001/sites/site_edit_0001/assets/logo.png',
-        mime: 'image/png', bytes: 64, hash: 'b'.repeat(64), width: 100, height: 100,
-        rights: { source: 'upload', license: 'owned', approved: false },
-      }],
-    });
+    const generated = await Effect.runPromise(executeGateway(client, ownerAccess, {
+      actionId: 'site.generate', idempotencyKey: 'checks-generate', input: { title: 'Slice House', prompt: 'Pizza', records: ['prod_garlic'] },
+    }));
+    const siteId = String(generated.siteId);
     const row = await client.execute({ sql: 'SELECT data FROM records WHERE id=?', args: [siteId] });
     const document = JSON.parse(String(row.rows[0].data)) as SiteDocument;
+    document.assets.push({
+      id: 'logo', kind: 'image', key: `workspaces/ws_slice_house_0001/sites/${siteId}/assets/logo.png`,
+      mime: 'image/png', bytes: 64, hash: 'b'.repeat(64), width: 100, height: 100, alt: 'Slice House logo',
+      rights: { source: 'upload', license: 'owned', approved: false },
+    });
     document.pages[0].sections.find((section) => section.id === 'hero')!.nodes.push({ id: 'hero-logo', kind: 'image', props: { asset: 'logo' } });
     await client.execute({ sql: 'UPDATE records SET data=? WHERE id=?', args: [JSON.stringify(document), siteId] });
 

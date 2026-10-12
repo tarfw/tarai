@@ -5,7 +5,8 @@ import { WORKSPACE_SCHEMA } from '../src/db/schema.ts';
 import { executeGateway } from '../src/gateway/actions.ts';
 import type { AccessContext } from '../src/types.ts';
 import { DEFAULT_DESIGN, auditDesign, exportDesign, parseDesign } from '../src/site/design.ts';
-import { DOCUMENT_VERSION, type Asset, type SiteDocument } from '../src/site/document.ts';
+import { DOCUMENT_VERSION, SECTION_LAYOUTS, type Asset, type Section, type SectionLayoutSpec, type SiteDocument } from '../src/site/document.ts';
+import { defaultBlueprint } from '../src/site/blueprint.ts';
 import { compileDocument } from '../src/site/compile.ts';
 import { collectIssues, validateDocument } from '../src/site/validate.ts';
 
@@ -33,6 +34,9 @@ async function createTestWorkspace() {
   const at = Date.now();
   await client.execute({ sql: "INSERT INTO records(id,type,title,state,data,owner,version,created,updated) VALUES('capability','capability','Capabilities','active',?, 'owner_1',1,?,?)",
     args: [JSON.stringify({ site: true, pos: false, commerce: false }), at, at] });
+  // The storefront publishes what the owner actually sells, so the fixture sells something.
+  await client.execute({ sql: "INSERT INTO records(id,type,title,state,data,owner,version,created,updated) VALUES('settings','pos.settings','Store','active','{\"currency\":\"INR\"}','owner_1',1,?,?)", args: [at, at] });
+  await client.execute({ sql: "INSERT INTO records(id,type,title,state,data,owner,version,created,updated) VALUES('prod_garlic','pos.product','Garlic Bread','active','{\"price\":15000,\"shortDescription\":\"Fresh with herbs\"}','owner_1',1,?,?)", args: [at, at] });
   return client;
 }
 
@@ -76,6 +80,7 @@ function document(overrides: Partial<SiteDocument> = {}): SiteDocument {
       ],
     }],
     journeys: [], redirects: [], locks: [], policy: {},
+    blueprint: defaultBlueprint(['food'], 1),
     ...overrides,
   };
 }
@@ -301,7 +306,9 @@ describe('site v2 compiler', () => {
     expect(home).toContain('&lt;/script&gt;');
     expect(home).not.toContain('javascript:');
     expect(home).not.toContain('onclick');
-    expect(compiled.files.find((file) => file.path === '/site.js')).toBeUndefined();
+    // Nothing above may reach the page as a handler; the one script the page carries is the
+    // bundled runtime, and this fixture earned it by drawing a menu.
+    expect(String(compiled.files.find((file) => file.path === '/site.js')?.body)).toContain("querySelectorAll('[data-menu]')");
   });
 
   it('expands collection detail templates and pagination at compile time', async () => {
@@ -339,7 +346,7 @@ describe('site generation and editing', () => {
   it('applies v2 patch operations to a generated draft', async () => {
     const client = await createTestWorkspace();
     const generated = await Effect.runPromise(executeGateway(client, ownerAccess, {
-      actionId: 'site.generate', idempotencyKey: 'edit-generate', input: { title: 'Slice House', prompt: 'Pizza' },
+      actionId: 'site.generate', idempotencyKey: 'edit-generate', input: { title: 'Slice House', prompt: 'Pizza', records: ['prod_garlic'] },
     }));
     const siteId = String(generated.siteId);
     const site = generated.site as SiteDocument;
@@ -365,6 +372,7 @@ describe('site generation and editing', () => {
       input: {
         title: 'Murugan Silks',
         prompt: 'Build a storefront for silk sarees in Salem.',
+        records: ['prod_garlic'],
         tone: 'ink',
         typography: 'serif',
         density: 3,
@@ -402,3 +410,64 @@ describe('site generation and editing', () => {
     expect(published.state).toBe('live');
   });
 });
+
+describe('layout grammar', () => {
+  function laidOut(layout: SectionLayoutSpec): SiteDocument {
+    const doc = document();
+    doc.pages[0].sections[1].layout = layout;
+    return doc;
+  }
+
+  it('accepts every primitive the engine implements', () => {
+    expect([...SECTION_LAYOUTS]).toEqual(['flow', 'flex', 'stack', 'row', 'grid', 'split', 'overlay', 'rail', 'disclosure']);
+    for (const kind of SECTION_LAYOUTS) {
+      expect(collectIssues(laidOut({ kind })).filter((issue) => issue.area === 'section')).toEqual([]);
+    }
+  });
+
+  it('keeps each knob with the layout that renders it', () => {
+    expect(collectIssues(laidOut({ kind: 'split', ratio: '60/40', collapse: 'keep' }))).toEqual([]);
+    expect(collectIssues(laidOut({ kind: 'overlay', height: 'tall', scrim: 'token:color.ink' }))).toEqual([]);
+    expect(collectIssues(laidOut({ kind: 'row', collapse: 'stack' }))).toEqual([]);
+    expect(collectIssues(laidOut({ kind: 'rail' }))).toEqual([]);
+    expect(collectIssues(laidOut({ kind: 'disclosure' }))).toEqual([]);
+
+    const unknown = laidOut({ kind: 'split', ratio: '75/25', height: 'huge', scrim: 'token:color.neon', collapse: 'nonsense' });
+    const words = collectIssues(unknown).map((issue) => issue.message);
+    expect(words).toContain('A ratio is one of 50/50, 60/40, 40/60, 2/1 or 1/2.');
+    expect(words).toContain('Height is short, tall or full.');
+    expect(words).toContain('Collapse is stack or keep.');
+    expect(words).toContain('Only an overlay has a height.');
+    expect(words).toContain('Only an overlay has a scrim.');
+
+    const misplaced = collectIssues(laidOut({ kind: 'grid', ratio: '50/50', columns: 2 }));
+    expect(misplaced.some((issue) => issue.message === 'Only a split has a ratio.')).toBe(true);
+    expect(collectIssues(laidOut({ kind: 'split', height: 'tall' })).some((issue) => issue.message === 'Only an overlay has a height.')).toBe(true);
+    expect(collectIssues(laidOut({ kind: 'stack', collapse: 'keep' })).some((issue) => issue.message === 'Only a split or a row says how it collapses.')).toBe(true);
+    expect(collectIssues(laidOut({ kind: 'rail', scrim: 'token:color.ink' })).some((issue) => issue.message === 'Only an overlay has a scrim.')).toBe(true);
+    expect(collectIssues(laidOut({ kind: 'overlay', scrim: '#000000' })).some((issue) => issue.message === 'A scrim is a colour token the design carries.')).toBe(true);
+    expect(collectIssues(laidOut({ kind: 'overlay', scrim: 'token:color.neon' })).some((issue) => issue.message === 'A scrim is a colour token the design carries.')).toBe(true);
+  });
+
+  it('carries the knobs onto the container as token-driven properties', async () => {
+    const doc = document();
+    doc.pages[0].sections.push(
+      { id: 'story', purpose: 'story', layout: { kind: 'split', ratio: '60/40', collapse: 'keep' }, nodes: [{ id: 'story-text', kind: 'text', props: { text: 'Baked since 1998.' } }] },
+      { id: 'proof', purpose: 'trust', layout: { kind: 'overlay', height: 'tall', scrim: 'token:color.ink' }, nodes: [{ id: 'proof-text', kind: 'text', props: { text: 'Wood fired' } }] },
+      { id: 'picks', purpose: 'spotlight', layout: { kind: 'rail' }, nodes: [{ id: 'picks-text', kind: 'text', props: { text: 'This week' } }] },
+    );
+    const compiled = await compileDocument(doc, { origin: 'https://slice.example.test' });
+    const html = String(compiled.files.find((file) => file.path === '/index.html')?.body || '');
+    expect(html).toContain('class="tar-wrap tar-split tar-keep" style="--split-ratio:3fr 2fr"');
+    expect(html).toContain('class="tar-wrap tar-overlay" style="--overlay-height:65vh;--overlay-scrim:#000000"');
+    expect(html).toContain('class="tar-wrap tar-rail"');
+    const css = String(compiled.files.find((file) => file.path === '/style.css')?.body || '');
+    expect(css).toContain('.tar-split { display: grid; grid-template-columns: var(--split-ratio, 1fr 1fr)');
+    expect(css).toContain('.tar-overlay > .tar-scrim { position: absolute; inset: 0;');
+    expect(css).toContain('scroll-snap-type: x mandatory');
+    expect(css).toContain('.tar-disclosure details[open] summary::after');
+    expect(css).toContain('.tar-split:not(.tar-keep) { grid-template-columns: 1fr');
+    expect(css).not.toMatch(/\.tar-(row|split|overlay|rail|disclosure)[^{]*#[0-9a-f]/i);
+  });
+});
+

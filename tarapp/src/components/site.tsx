@@ -11,6 +11,7 @@ import {
   Platform,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   TouchableOpacity,
@@ -18,7 +19,15 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { harness, SITES_URL } from '@/lib/harness';
-import type { HeaderStyle, HeroPattern, Section, SiteDocument, SiteSnapshot } from '@/lib/site-schema';
+import type {
+  DesignLibrary,
+  DesignOption,
+  PatchOperation,
+  Section,
+  SectionKind,
+  SiteDocument,
+  SiteSnapshot,
+} from '@/lib/site-schema';
 
 export interface SiteScreenProps {
   visible: boolean;
@@ -37,118 +46,50 @@ export interface ToastInfo {
 const siteSnapshotCache = new Map<string, SiteSnapshot>();
 const siteStorageKey = (slug: string) => `tar_site_snap_${slug}`;
 
-export interface ReferoDesignSystem {
-  key: string;
-  name: string;
-  desc: string;
-  swatches: string[];
+/** What a section is called in shop words; the owner never sees a layout name. */
+const SECTION_LABELS: Record<SectionKind, { title: string; icon: keyof typeof Ionicons.glyphMap }> = {
+  header: { title: 'Menu bar', icon: 'menu-outline' },
+  announcement: { title: 'Offer or notice line', icon: 'megaphone-outline' },
+  hero: { title: 'Top of the page', icon: 'sparkles-outline' },
+  spotlight: { title: 'Festival offer', icon: 'gift-outline' },
+  catalog: { title: 'Items for sale', icon: 'grid-outline' },
+  menu: { title: 'Food and menu', icon: 'restaurant-outline' },
+  booking: { title: 'Services and booking', icon: 'calendar-outline' },
+  story: { title: 'About your shop', icon: 'book-outline' },
+  trust: { title: 'Trust badges', icon: 'shield-checkmark-outline' },
+  faq: { title: 'Questions customers ask', icon: 'help-circle-outline' },
+  policy: { title: 'Shop rules', icon: 'document-text-outline' },
+  location: { title: 'Where to find you', icon: 'location-outline' },
+  contact: { title: 'WhatsApp and contact', icon: 'logo-whatsapp' },
+  footer: { title: 'Bottom of the page', icon: 'browsers-outline' },
+};
+
+const SECTION_KIND_LIST = Object.keys(SECTION_LABELS) as SectionKind[];
+
+/** Stored documents from before the section names settled may still carry an old purpose. */
+const LEGACY_KIND: Record<string, SectionKind> = {
+  navigation: 'header',
+  notice: 'announcement',
+  collection: 'catalog',
+  services: 'booking',
+  promo: 'spotlight',
+  introduction: 'hero',
+  action: 'contact',
+};
+
+function kindOf(section: Section): SectionKind | null {
+  const named = (section.id || '').toLowerCase();
+  if ((SECTION_KIND_LIST as string[]).includes(named)) return named as SectionKind;
+  const purpose = (section.purpose || '').toLowerCase();
+  if ((SECTION_KIND_LIST as string[]).includes(purpose)) return purpose as SectionKind;
+  const legacy = LEGACY_KIND[purpose];
+  return legacy || null;
 }
 
-export const REFERO_SYSTEMS: readonly ReferoDesignSystem[] = [
-  {
-    key: 'dark-luxury',
-    name: 'Rich and premium',
-    desc: 'Dark writing on cream, deep brown buttons, gold detail. Good for silk, jewellery and watches.',
-    swatches: ['#3b281d', '#e07122', '#000000', '#f7f4f1'],
-  },
-  {
-    key: 'neon-pop',
-    name: 'Bright and fun',
-    desc: 'Bold colours and big round buttons. Good for snacks, drinks and young clothing.',
-    swatches: ['#5b00ed', '#3f0791', '#dad9ff', '#ffffff'],
-  },
-  {
-    key: 'harvest-editorial',
-    name: 'Warm and simple',
-    desc: 'Soft cream, copper colours, easy to read. Good for bakeries, farms, crafts and salons.',
-    swatches: ['#ab5700', '#e5dccd', '#e8e359', '#7997ff'],
-  },
-] as const;
-
-export interface HeroOptionItem {
-  key: HeroPattern;
-  name: string;
-  desc: string;
-  icon: keyof typeof Ionicons.glyphMap;
+/** A setting key is one small word; the owner reads it as a sentence. */
+function settingLabel(key: string): string {
+  return key.charAt(0).toUpperCase() + key.slice(1);
 }
-export const HERO_OPTIONS: readonly HeroOptionItem[] = [
-  {
-    key: 'centered_atmospheric',
-    name: 'Big photo, name in the middle',
-    desc: 'One full photo with your shop name and button in the centre.',
-    icon: 'cloud-outline',
-  },
-  {
-    key: 'split',
-    name: 'Photo beside your name',
-    desc: 'Shop name on the left, one good photo on the right.',
-    icon: 'browsers-outline',
-  },
-  {
-    key: 'commerce',
-    name: 'One item first',
-    desc: 'A featured item with its price and a direct order button.',
-    icon: 'pricetag-outline',
-  },
-  {
-    key: 'typography',
-    name: 'Only your shop name',
-    desc: 'Large name and one line about the shop. No photo needed.',
-    icon: 'text-outline',
-  },
-  {
-    key: 'bg_image',
-    name: 'Photo behind the words',
-    desc: 'A full photo behind your shop name.',
-    icon: 'image-outline',
-  },
-  {
-    key: 'fullbleed',
-    name: 'Photo across the top',
-    desc: 'Wide photo stretching from edge to edge.',
-    icon: 'scan-outline',
-  },
-  {
-    key: 'minimal',
-    name: 'Small and tidy',
-    desc: 'Name, one line about the shop, and quick links to your items.',
-    icon: 'remove-outline',
-  },
-];
-
-export interface HeaderOptionItem {
-  key: HeaderStyle;
-  name: string;
-  desc: string;
-  icon: keyof typeof Ionicons.glyphMap;
-}
-
-export const HEADER_OPTIONS: readonly HeaderOptionItem[] = [
-  {
-    key: 'split',
-    name: 'Photo beside name',
-    desc: 'Logo on the left with navigation beside it.',
-    icon: 'grid-outline',
-  },
-  {
-    key: 'floating_pill',
-    name: 'Round menu button',
-    desc: 'Your shop mark in a rounded badge with a menu button.',
-    icon: 'tablet-landscape-outline',
-  },
-  {
-    key: 'minimal',
-    name: 'Name left, menu right',
-    desc: 'Plain bar: shop name on the left, links on the right.',
-    icon: 'menu-outline',
-  },
-  {
-    key: 'fullbleed',
-    name: 'Menu over the photo',
-    desc: 'Links sit on top of the photo at the very top of the page.',
-    icon: 'reorder-two-outline',
-  },
-];
 
 export default function SiteScreen({
   visible,
@@ -176,14 +117,16 @@ export default function SiteScreen({
   const [busy, setBusy] = useState(false);
   const [busyMessage, setBusyMessage] = useState<string>('');
   const [toast, setToast] = useState<ToastInfo | null>(null);
+  const [library, setLibrary] = useState<DesignLibrary | null>(null);
 
   // Modals
   const [designModalOpen, setDesignModalOpen] = useState(false);
-  const [selectedStyle, setSelectedStyle] = useState<string | null>(null);
   const [noticeModalOpen, setNoticeModalOpen] = useState(false);
+  const [openKind, setOpenKind] = useState<SectionKind | null>(null);
 
   // Inputs
   const [noticeText, setNoticeText] = useState('');
+  const [draft, setDraft] = useState<Record<string, string>>({});
 
   const site: SiteDocument | null = snapshot?.site?.data ?? null;
   const siteId = snapshot?.site?.id ?? '';
@@ -198,86 +141,70 @@ export default function SiteScreen({
     return homePage.sections || [];
   }, [site]);
 
+  // The page as it is stored: only the sections the site actually has.
+  const shown = useMemo(() => {
+    const seen = new Set<SectionKind>();
+    const rows: { kind: SectionKind; section: Section }[] = [];
+    for (const sec of sections) {
+      const kind = kindOf(sec);
+      if (!kind || seen.has(kind)) continue;
+      seen.add(kind);
+      rows.push({ kind, section: sec });
+    }
+    return rows;
+  }, [sections]);
+
   const activeNotice: string | null = useMemo(() => {
-    const noticeSec = sections.find((s) => s.purpose === 'notice');
+    const noticeSec = shown.find((entry) => entry.kind === 'announcement')?.section;
     if (!noticeSec) return null;
     const textNode = noticeSec.nodes?.find((n) => n.kind === 'text');
     return textNode?.props?.text ? String(textNode.props.text) : null;
-  }, [sections]);
+  }, [shown]);
 
-  const sectionMeta = useCallback((purpose: string) => {
-    switch (purpose) {
-      case 'navigation':
-      case 'nav':
-        return { title: 'Menu bar', icon: 'menu-outline' as const };
-      case 'header':
-      case 'hero':
-        return { title: 'Top of the page', icon: 'sparkles-outline' as const };
-      case 'notice':
-        return { title: 'Offer or notice line', icon: 'megaphone-outline' as const };
-      case 'spotlight':
-        return { title: 'Festival offer', icon: 'gift-outline' as const };
-      case 'catalog':
-        return { title: 'Items for sale', icon: 'grid-outline' as const };
-      case 'menu':
-        return { title: 'Food and menu', icon: 'restaurant-outline' as const };
-      case 'services':
-        return { title: 'Services and booking', icon: 'calendar-outline' as const };
-      case 'story':
-        return { title: 'About your shop', icon: 'book-outline' as const };
-      case 'trust':
-        return { title: 'Trust badges', icon: 'shield-checkmark-outline' as const };
-      case 'contact':
-        return { title: 'WhatsApp and contact', icon: 'logo-whatsapp' as const };
-      case 'footer':
-        return { title: 'Bottom of the page', icon: 'browsers-outline' as const };
-      default:
-        return { title: purpose.charAt(0).toUpperCase() + purpose.slice(1), icon: 'layers-outline' as const };
-    }
-  }, []);
+  // What the store could show: what its models require, plus the extras it may switch on.
+  const required = useMemo(() => library?.sections.required || [], [library]);
+  const optional = useMemo(() => library?.sections.optional || [], [library]);
+  const hiddenKinds = useMemo(() => new Set<SectionKind>(site?.blueprint?.overrides?.hidden || []), [site?.blueprint?.overrides?.hidden]);
 
-  const displaySections = useMemo(() => {
-    if (!sections.length) {
-      const defaultKind = site?.blueprint?.kind || site?.category || 'goods';
-      const mainSection = defaultKind === 'services' ? 'services' : defaultKind === 'food' ? 'menu' : 'catalog';
-      return [
-        { id: 'nav', purpose: 'navigation', layout: { kind: 'stack' }, nodes: [] },
-        { id: 'hero', purpose: 'hero', layout: { kind: 'stack' }, nodes: [] },
-        { id: 'notice', purpose: 'notice', layout: { kind: 'stack' }, nodes: [] },
-        { id: mainSection, purpose: mainSection, layout: { kind: 'stack' }, nodes: [] },
-        { id: 'footer', purpose: 'footer', layout: { kind: 'stack' }, nodes: [] },
-      ] as Section[];
+  // Every section the owner may switch on is offered, whether or not it is built yet: the
+  // choice is remembered as an override, so the store fills it when it has the content.
+  const rows = useMemo(() => {
+    const present = new Map<SectionKind, Section | null>();
+    for (const entry of shown) present.set(entry.kind, entry.section);
+    for (const kind of [...required, ...optional]) if (!present.has(kind)) present.set(kind, null);
+    const list: { kind: SectionKind; section: Section | null; at: number }[] = [];
+    for (const [kind, section] of present) {
+      if (section === null && hiddenKinds.has(kind)) continue;
+      const at = section ? sections.indexOf(section) : SECTION_KIND_LIST.indexOf(kind);
+      list.push({ kind, section, at });
     }
-    const hasNav = sections.some((s) => (s.purpose === 'navigation' || s.purpose === 'nav' || s.id === 'nav') && s.id !== 'hero');
-    const hasNotice = sections.some((s) => s.purpose === 'notice');
-    const hasFooter = sections.some((s) => s.purpose === 'footer' || s.id === 'footer');
-    const hasCatalog = sections.some((s) => s.purpose === 'catalog' || s.purpose === 'collection' || s.purpose === 'menu' || s.purpose === 'services' || s.id === 'catalog');
-    const defaultKind = site?.blueprint?.kind || site?.category || 'goods';
-    const mainCatalogSection = defaultKind === 'services' ? 'services' : defaultKind === 'food' ? 'menu' : 'catalog';
+    return list.sort((left, right) => left.at - right.at);
+  }, [shown, required, optional, hiddenKinds, sections]);
 
-    const result: Section[] = [];
-    if (!hasNav) {
-      result.push({ id: 'nav', purpose: 'navigation', layout: { kind: 'stack' }, nodes: [] });
+  const layoutOf = useCallback((kind: SectionKind): { id: string; pattern: string } | null => {
+    const section = shown.find((entry) => entry.kind === kind)?.section;
+    const id = section?.recipe?.id || site?.blueprint?.overrides?.recipes?.[kind]
+      || site?.blueprint?.recipes?.[kind] || library?.defaults?.[kind];
+    if (!id) return null;
+    const option = (library?.recipes?.[kind] || []).find((entry) => entry.id === id);
+    return { id, pattern: option?.pattern || id };
+  }, [shown, site?.blueprint?.overrides?.recipes, site?.blueprint?.recipes, library]);
+
+  const settingsOf = useCallback((kind: SectionKind): Record<string, boolean | string> => {
+    const section = shown.find((entry) => entry.kind === kind)?.section;
+    return { ...(section?.recipe?.settings || {}), ...(site?.blueprint?.overrides?.settings?.[kind] || {}) };
+  }, [shown, site?.blueprint?.overrides?.settings]);
+
+  // The design library is server-owned: the app reads names and colours, never .md files.
+  const loadDesigns = useCallback(async (id: string) => {
+    if (!slug) return;
+    try {
+      const next = await harness.site.designs(slug, id ? { siteId: id } : {});
+      if (mountedRef.current && next?.designs?.length) setLibrary(next);
+    } catch {
+      // Keep the last library; the store itself is unaffected.
     }
-    for (const sec of sections) {
-      if (sec.purpose === 'contact' || sec.id === 'contact') {
-        continue;
-      }
-      result.push(sec);
-      if (sec.purpose === 'header' || sec.purpose === 'hero') {
-        if (!hasNotice) {
-          result.push({ id: 'notice', purpose: 'notice', layout: { kind: 'stack' }, nodes: [] });
-        }
-      }
-    }
-    if (!hasCatalog && !result.some((s) => s.purpose === mainCatalogSection)) {
-      result.push({ id: mainCatalogSection, purpose: mainCatalogSection, layout: { kind: 'grid', columns: 3 }, nodes: [] });
-    }
-    if (!hasFooter) {
-      result.push({ id: 'footer', purpose: 'footer', layout: { kind: 'stack' }, nodes: [] });
-    }
-    return result;
-  }, [sections, site?.blueprint?.kind, site?.category]);
+  }, [slug]);
 
   // Load site snapshot
   const loadSite = useCallback(async () => {
@@ -288,6 +215,8 @@ export default function SiteScreen({
         siteSnapshotCache.set(slug, snap);
         void SecureStore.setItemAsync(siteStorageKey(slug), JSON.stringify(snap)).catch(() => undefined);
         setSnapshot(snap);
+        // The picker ships with the store it belongs to, so one fetch keeps both honest.
+        await loadDesigns(snap.site.id);
       }
     } catch {
       // Retain existing snapshot
@@ -298,7 +227,7 @@ export default function SiteScreen({
         setBusyMessage('');
       }
     }
-  }, [slug]);
+  }, [slug, loadDesigns]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -329,10 +258,72 @@ export default function SiteScreen({
     });
   }, [publicUrl, slug]);
 
-  // Look picks stay local until Publish applies them, so choosing costs no calls
+  // A merchant choice is stored as an override, so it survives every later rebuild (parai §8).
+  const applyChange = useCallback(async (operations: PatchOperation[], progress: string, done: string) => {
+    if (!slug || !siteId || !site || busy) return;
+    setBusy(true);
+    setBusyMessage(progress);
+    try {
+      const res = await harness.site.edit(slug, siteId, site.revision, operations, 'Merchant choice');
+      if (mountedRef.current) {
+        setSnapshot((prev) => {
+          if (!prev) return prev;
+          const nextSnap: SiteSnapshot = {
+            ...prev,
+            site: { id: siteId, version: res.version, state: prev.site?.state || 'draft', data: res.site },
+            html: res.html || prev.html,
+          };
+          siteSnapshotCache.set(slug, nextSnap);
+          void SecureStore.setItemAsync(siteStorageKey(slug), JSON.stringify(nextSnap)).catch(() => undefined);
+          return nextSnap;
+        });
+        setToast({ text: done, revision: res.revision });
+      }
+    } catch (err) {
+      if (mountedRef.current) {
+        Alert.alert('Could not save', err instanceof Error ? err.message : 'Could not save your change.');
+      }
+    } finally {
+      if (mountedRef.current) {
+        setBusy(false);
+        setBusyMessage('');
+      }
+    }
+  }, [slug, siteId, site, busy]);
+
+  // Switching look costs no model call and rewrites no words: it changes the stored choice.
   const handleSelectDesign = useCallback((styleKey: string) => {
-    setSelectedStyle(styleKey);
-  }, []);
+    setDesignModalOpen(false);
+    void applyChange(
+      [{ op: 'set_override', kind: 'design', value: styleKey }],
+      'Applying your look...',
+      'Look saved. Tap Publish to show it.',
+    );
+  }, [applyChange]);
+
+  const handleSelectLayout = useCallback((kind: SectionKind, recipeId: string) => {
+    void applyChange(
+      [{ op: 'set_override', kind: 'recipe', target: kind, value: recipeId }],
+      'Changing how that section looks...',
+      'Layout saved.',
+    );
+  }, [applyChange]);
+
+  const handleChangeSetting = useCallback((kind: SectionKind, key: string, value: boolean | string) => {
+    void applyChange(
+      [{ op: 'set_override', kind: 'settings', target: kind, value: { [key]: value } }],
+      'Saving...',
+      'Saved.',
+    );
+  }, [applyChange]);
+
+  const handleToggleSection = useCallback((kind: SectionKind, on: boolean) => {
+    void applyChange(
+      [{ op: 'set_override', kind: on ? 'show' : 'hide', target: kind }],
+      on ? 'Adding that part...' : 'Taking that part away...',
+      on ? 'Added. Tap Publish to show it.' : 'Taken away.',
+    );
+  }, [applyChange]);
 
   // Set or clear notice banner
   const handleSaveNotice = useCallback(async () => {
@@ -401,66 +392,41 @@ export default function SiteScreen({
     }
   }, [slug, siteId, busy]);
 
-  // Publish / Republish
+  // Publish / Republish: one call, three honest outcomes. The store rebuilds itself when the
+  // merchant changed something it reads, then goes live or says what is still missing.
   const publishSite = useCallback(async () => {
     if (!slug || busy) return;
     setBusy(true);
-    setBusyMessage('Getting your store ready...');
+    setBusyMessage('Building your store pages...');
     try {
-      setBusyMessage('Checking your store details...');
-      const freshSnap = await harness.site.get(slug).catch(() => null);
-      let activeSiteId = freshSnap?.site?.id || siteId;
-      if (!activeSiteId) throw new Error('Store was not found.');
-
-      const desiredStyle = selectedStyle || freshSnap?.site?.data?.blueprint?.style || currentStyleKey;
-
-      const needsUpdate = desiredStyle && freshSnap?.site?.data?.blueprint?.style !== desiredStyle;
-
-      if (needsUpdate) {
-        setBusyMessage('Applying your chosen look...');
-        const genRes = await harness.site.generate(slug, {
-          style: desiredStyle,
-        } as Record<string, unknown>);
-        activeSiteId = genRes.siteId || activeSiteId;
-      }
-
-      setBusyMessage('Building your store pages...');
-      const compiled = await harness.site.compile(slug, activeSiteId);
-
-      setBusyMessage('Making your store live...');
-      let published;
-      try {
-        published = await harness.site.publish(slug, activeSiteId, compiled.releaseId, compiled.hash);
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        if (msg.includes('stale') || msg.includes('does not match') || msg.includes('Compile and review')) {
-          setBusyMessage('Recompiling fresh candidate...');
-          const freshAgain = await harness.site.get(slug).catch(() => null);
-          const retryId = freshAgain?.site?.id || activeSiteId;
-          const recompiled = await harness.site.compile(slug, retryId);
-          published = await harness.site.publish(slug, retryId, recompiled.releaseId, recompiled.hash);
-        } else {
-          throw err;
-        }
-      }
-
-      if (mountedRef.current) {
-        const livePublicUrl = published.publicUrl || published.liveUrl || (slug ? `${SITES_URL}/${slug}` : '');
+      const outcome = await harness.site.publishLatest(slug, siteId || undefined);
+      if (!mountedRef.current) return;
+      if (outcome.published) {
+        const livePublicUrl = outcome.publicUrl || outcome.liveUrl || (slug ? `${SITES_URL}/${slug}` : '');
         setSnapshot((prev) => {
           if (!prev) return null;
           const nextSnap: SiteSnapshot = {
             ...prev,
             publicationState: 'active',
             publicUrl: livePublicUrl,
-            liveRelease: published.releaseId,
+            liveRelease: outcome.releaseId ?? prev.liveRelease,
             site: prev.site ? { ...prev.site, state: 'live' } : null,
           };
           siteSnapshotCache.set(slug, nextSnap);
           void SecureStore.setItemAsync(siteStorageKey(slug), JSON.stringify(nextSnap)).catch(() => undefined);
           return nextSnap;
         });
+        setToast({ text: 'Your store is live.' });
         void loadSite();
+        return;
       }
+      const lines = [...(outcome.missing ?? []).map((need) => need.message), ...(outcome.blocking ?? [])];
+      setToast({ text: outcome.regenerated ? 'Store rebuilt. Not live yet.' : 'Not live yet.' });
+      Alert.alert(
+        'Not ready to publish yet',
+        lines.length ? lines.join('\n') : 'Your store is saved as a draft. Add a few details and tap Publish again.',
+      );
+      void loadSite();
     } catch (err) {
       if (mountedRef.current) {
         Alert.alert('Publish failed', err instanceof Error ? err.message : 'Could not publish site.');
@@ -522,27 +488,33 @@ export default function SiteScreen({
     }
   }, [publicUrl, slug]);
 
-  // Active Design System resolution from the 3 Refero .md files
-  const currentStyleKey = selectedStyle ?? site?.blueprint?.style ?? 'dark-luxury';
-  const activeSystem =
-    REFERO_SYSTEMS.find(
-      (s) =>
-        s.key === currentStyleKey ||
-        s.name.toLowerCase() === currentStyleKey?.toLowerCase() ||
-        (currentStyleKey === 'mollie' && s.key === 'dark-luxury') ||
-        (currentStyleKey === 'magic-spoon' && s.key === 'neon-pop') ||
-        (currentStyleKey?.startsWith('arte') && s.key === 'harvest-editorial'),
-    ) || REFERO_SYSTEMS[0];
+  // The look a store shows, resolved from the library the server shipped.
+  const designs: DesignOption[] = library?.designs ?? [];
+  const currentStyleKey = site?.design?.theme ?? library?.default ?? '';
+  const activeSystem = designs.find((design) => design.id === currentStyleKey) ?? designs[0] ?? null;
 
-  // Active Header Style Option (decided by Jev in blueprint)
-  const currentHeaderKey: HeaderStyle = site?.blueprint?.headerStyle ?? (site?.blueprint?.heroPattern === 'centered_atmospheric' ? 'floating_pill' : 'minimal');
-  const activeHeaderOption =
-    HEADER_OPTIONS.find((h) => h.key === currentHeaderKey) || HEADER_OPTIONS[0];
+  // The open section, read entirely from what the server shipped for that section type.
+  const openEntry = openKind ? rows.find((entry) => entry.kind === openKind) || null : null;
+  const openLayout = openKind ? layoutOf(openKind) : null;
+  const openChoices = openKind ? library?.recipes?.[openKind] || [] : [];
+  const openSettings = openKind && openLayout ? library?.settings?.[openKind]?.[openLayout.id] || {} : {};
+  const openValues = openKind ? settingsOf(openKind) : {};
+  const openNeeded = openKind ? required.includes(openKind) : false;
+  const openShown = Boolean(openEntry?.section) && !(openKind && hiddenKinds.has(openKind));
 
-  // Active Hero Design Option (decided by Jev in blueprint)
-  const currentHeroKey: HeroPattern = site?.blueprint?.heroPattern ?? 'split';
-  const activeHeroOption =
-    HERO_OPTIONS.find((h) => h.key === currentHeroKey) || HERO_OPTIONS[0];
+  const closeSheet = () => {
+    setOpenKind(null);
+    setDraft({});
+  };
+
+  // A typed line is saved when the owner leaves the box; an empty box keeps the shop's own words.
+  const commitText = (key: string): void => {
+    if (!openKind) return;
+    const slot = `${openKind}:${key}`;
+    const next = (draft[slot] || '').trim();
+    if (!next || next === String(openValues[key] ?? '')) return;
+    void handleChangeSetting(openKind, key, next);
+  };
 
   return (
     <Modal
@@ -607,11 +579,21 @@ export default function SiteScreen({
               accessibilityLabel="Publish store"
             >
               <Text style={styles.navTextBtnLabel}>
-                {busy ? 'Publishing...' : 'Publish'}
+                {busy ? 'Working...' : 'Publish'}
               </Text>
             </TouchableOpacity>
           </View>
         </View>
+
+        {/* One line of progress so a tap always answers back. */}
+        {busy && !!busyMessage ? (
+          <View style={styles.statusBar}>
+            <ActivityIndicator size="small" color="#0284c7" />
+            <Text style={styles.statusText} numberOfLines={1}>
+              {busyMessage}
+            </Text>
+          </View>
+        ) : null}
 
         {/* MAIN SCROLL VIEW */}
         {initialLoading && !site ? (
@@ -642,135 +624,80 @@ export default function SiteScreen({
                 <View style={styles.designCardHeader}>
                   <View style={styles.designStyleBadge}>
                     <View style={styles.swatchRowMini}>
-                      {activeSystem.swatches.map((color, i) => (
+                      {(activeSystem?.swatches ?? []).map((color, i) => (
                         <View key={color + i} style={[styles.miniSwatchDot, { backgroundColor: color }]} />
                       ))}
                     </View>
-                    <Text style={styles.designStyleName} numberOfLines={1}>{activeSystem.name}</Text>
+                    <Text style={styles.designStyleName} numberOfLines={1}>{activeSystem?.name ?? 'Choose a look'}</Text>
                   </View>
                 </View>
-                <Text style={styles.designDescText}>{activeSystem.desc}</Text>
-                <Text style={styles.designApplyText}>Tap Publish and your store will show this look.</Text>
+                <Text style={styles.designDescText}>{activeSystem?.desc ?? 'Pick the look that fits your shop.'}</Text>
+                <Text style={styles.designApplyText}>Pick another look and it saves at once. Tap Publish to show it.</Text>
               </TouchableOpacity>
             </View>
 
             <View style={styles.divider} />
 
-            {/* 2. SECTIONS LIST */}
+            {/* 2. SECTIONS LIST: each row is a part of the store the owner may switch on */}
             <View style={styles.sectionsContainer}>
               <Text style={styles.sectionLabel}>WHAT CUSTOMERS SEE</Text>
               <View style={styles.sectionsList}>
-                {displaySections.map((sec, idx) => {
-                  const isLast = idx === displaySections.length - 1;
-                  const isNotice = sec.purpose === 'notice';
-                  if (isNotice) {
-                    return (
-                      <TouchableOpacity
-                        key={sec.id || `notice-${idx}`}
-                        style={[
-                          styles.sectionRow,
-                          activeNotice ? styles.sectionRowActiveNotice : null,
-                          isLast ? styles.sectionRowLast : null,
-                        ]}
-                        activeOpacity={0.7}
-                        onPress={() => {
+                {rows.map((entry, idx) => {
+                  const label = SECTION_LABELS[entry.kind];
+                  const isLast = idx === rows.length - 1;
+                  const needed = required.includes(entry.kind);
+                  const notice = entry.kind === 'announcement';
+                  const layout = entry.section ? layoutOf(entry.kind) : null;
+                  return (
+                    <TouchableOpacity
+                      key={entry.kind}
+                      style={[
+                        styles.sectionRow,
+                        isLast ? styles.sectionRowLast : null,
+                        notice && activeNotice ? styles.sectionRowActiveNotice : null,
+                      ]}
+                      activeOpacity={0.7}
+                      disabled={busy}
+                      onPress={() => {
+                        if (notice) {
                           setNoticeText(activeNotice || '');
                           setNoticeModalOpen(true);
-                        }}
-                      >
-                        <View style={styles.sectionRowLeft}>
-                          <Ionicons
-                            name="megaphone-outline"
-                            size={18}
-                            color={activeNotice ? '#b45309' : '#0f172a'}
-                          />
-                          <Text
-                            style={[
-                              styles.sectionRowTitle,
-                              activeNotice ? styles.sectionRowActiveNoticeText : null,
-                            ]}
-                            numberOfLines={1}
-                          >
-                            {activeNotice ? `"${activeNotice}"` : 'Offer or notice line'}
-                          </Text>
-                        </View>
-                        <Text style={styles.plusActionText}>{activeNotice ? 'Edit' : '+'}</Text>
-                      </TouchableOpacity>
-                    );
-                  }
-
-                  const isHeader = (sec.purpose === 'navigation' || sec.purpose === 'nav' || sec.id === 'nav') && sec.id !== 'hero';
-                  if (isHeader) {
-                    return (
-                      <View
-                        key={sec.id || `header-${idx}`}
-                        style={[styles.sectionRow, isLast ? styles.sectionRowLast : null]}
-                      >
-                        <View style={styles.sectionRowLeft}>
-                          <Ionicons name="menu-outline" size={18} color="#0f172a" />
-                          <View>
-                            <Text style={styles.sectionRowTitle}>Menu bar</Text>
-                            <Text style={styles.sectionRowOption}>{activeHeaderOption.name}</Text>
-                          </View>
-                        </View>
-                      </View>
-                    );
-                  }
-
-                  const isHero = sec.purpose === 'hero' || sec.id === 'hero' || (sec.purpose === 'header' && sec.id !== 'nav');
-                  if (isHero) {
-                    return (
-                      <View
-                        key={sec.id || `hero-${idx}`}
-                        style={[styles.sectionRow, isLast ? styles.sectionRowLast : null]}
-                      >
-                        <View style={styles.sectionRowLeft}>
-                          <Ionicons name="image-outline" size={18} color="#0f172a" />
-                          <View>
-                            <Text style={styles.sectionRowTitle}>Top of the page</Text>
-                            <Text style={styles.sectionRowOption}>{activeHeroOption.name}</Text>
-                          </View>
-                        </View>
-                      </View>
-                    );
-                  }
-
-                  const isFooter = sec.purpose === 'footer' || sec.id === 'site-footer' || sec.id === 'footer';
-                  if (isFooter) {
-                    return (
-                      <View
-                        key={sec.id || `footer-${idx}`}
-                        style={[styles.sectionRow, isLast ? styles.sectionRowLast : null]}
-                      >
-                        <View style={styles.sectionRowLeft}>
-                          <Ionicons name="browsers-outline" size={18} color="#0f172a" />
-                          <View>
-                            <Text style={styles.sectionRowTitle}>Bottom of the page</Text>
-                            <Text style={styles.sectionRowOption}>
-                              'Storefront Footer'
-                            </Text>
-                          </View>
-                        </View>
-                      </View>
-                    );
-                  }
-
-                  const meta = sectionMeta(sec.purpose);
-                  const isContact = sec.purpose === 'contact';
-                  return (
-                    <View
-                      key={sec.id || `${sec.purpose}-${idx}`}
-                      style={[styles.sectionRow, isLast ? styles.sectionRowLast : null]}
+                          return;
+                        }
+                        setOpenKind(entry.kind);
+                      }}
                     >
                       <View style={styles.sectionRowLeft}>
                         <Ionicons
-                          name={meta.icon}
+                          name={label.icon}
                           size={18}
-                          color={isContact ? '#16a34a' : '#0f172a'}
+                          color={entry.kind === 'contact' ? '#16a34a' : '#0f172a'}
                         />
-                        <Text style={styles.sectionRowTitle}>{meta.title}</Text>
+                        <View style={styles.sectionRowText}>
+                          <Text
+                            style={[styles.sectionRowTitle, notice && activeNotice ? styles.sectionRowActiveNoticeText : null]}
+                            numberOfLines={1}
+                          >
+                            {notice && activeNotice ? `"${activeNotice}"` : label.title}
+                          </Text>
+                          <Text style={styles.sectionRowOption} numberOfLines={2}>
+                            {!entry.section ? 'Not on your store yet' : layout ? layout.pattern : 'Your customers see this'}
+                          </Text>
+                        </View>
                       </View>
-                    </View>
+                      {needed ? (
+                        <View style={styles.sectionRowRightPill}>
+                          <Ionicons name="lock-closed-outline" size={12} color="#475569" />
+                          <Text style={styles.sectionRowRightText}>Needed</Text>
+                        </View>
+                      ) : (
+                        <Ionicons
+                          name={entry.section ? 'chevron-forward' : 'add-circle-outline'}
+                          size={18}
+                          color="#94a3b8"
+                        />
+                      )}
+                    </TouchableOpacity>
                   );
                 })}
               </View>
@@ -840,18 +767,21 @@ export default function SiteScreen({
               showsVerticalScrollIndicator={false}
             >
               <View style={styles.designFlatList}>
-                {REFERO_SYSTEMS.map((sys) => {
-                  const isSelected = sys.key === currentStyleKey;
+                {designs.length === 0 ? (
+                  <Text style={styles.systemDesc}>Loading looks...</Text>
+                ) : null}
+                {designs.map((design) => {
+                  const isSelected = design.id === currentStyleKey;
                   return (
                     <TouchableOpacity
-                      key={sys.key}
+                      key={design.id}
                       style={[styles.systemCard, isSelected && styles.systemCardActive]}
-                      onPress={() => handleSelectDesign(sys.key)}
+                      onPress={() => handleSelectDesign(design.id)}
                       activeOpacity={0.7}
                     >
                       <View style={styles.systemCardTop}>
                         <Text style={[styles.systemTitle, isSelected && styles.systemTitleActive]}>
-                          {sys.name}
+                          {design.name}
                         </Text>
                         <Ionicons
                           name={isSelected ? 'checkmark-circle' : 'ellipse-outline'}
@@ -862,12 +792,12 @@ export default function SiteScreen({
 
                       {/* Swatches Bar */}
                       <View style={styles.swatchesRow}>
-                        {sys.swatches.map((swatch, idx) => (
+                        {design.swatches.map((swatch, idx) => (
                           <View key={swatch + idx} style={[styles.swatchCircle, { backgroundColor: swatch }]} />
                         ))}
                       </View>
 
-                      <Text style={styles.systemDesc}>{sys.desc}</Text>
+                      <Text style={styles.systemDesc}>{design.desc}</Text>
                     </TouchableOpacity>
                   );
                 })}
@@ -877,6 +807,153 @@ export default function SiteScreen({
         </Modal>
 
 
+
+        {/* SECTION SHEET: the shapes this part of the store can take, and the few choices they offer */}
+        <Modal
+          visible={openKind !== null}
+          animationType="slide"
+          presentationStyle="fullScreen"
+          onRequestClose={closeSheet}
+        >
+          <View style={[styles.root, { paddingTop: Math.max(insets.top, 12) }]}>
+            <View style={styles.topNavBar}>
+              <View style={styles.navLeft}>
+                <TouchableOpacity
+                  style={styles.navBackBtn}
+                  onPress={closeSheet}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Ionicons name="chevron-back" size={24} color="#0f172a" />
+                </TouchableOpacity>
+                <View style={styles.navTitleWrap}>
+                  <Text style={styles.navTitle}>{openKind ? SECTION_LABELS[openKind].title : ''}</Text>
+                </View>
+              </View>
+              <TouchableOpacity onPress={closeSheet} style={styles.navTextBtn}>
+                <Text style={styles.navTextBtnLabel}>Done</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView
+              style={styles.scrollArea}
+              contentContainerStyle={[styles.scrollContent, { paddingBottom: Math.max(insets.bottom + 24, 40) }]}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
+              {openKind ? (
+                <>
+                  {openNeeded ? (
+                    <Text style={styles.sheetHint}>Your store needs this part, so it stays on your page.</Text>
+                  ) : (
+                    <View style={styles.settingRow}>
+                      <View style={styles.settingText}>
+                        <Text style={styles.settingLabel}>Show this on your store</Text>
+                        <Text style={styles.settingHint}>Your choice is remembered, even when we rebuild the store.</Text>
+                      </View>
+                      <Switch
+                        value={openShown}
+                        disabled={busy}
+                        onValueChange={(next) => handleToggleSection(openKind, next)}
+                      />
+                    </View>
+                  )}
+
+                  {openShown && openChoices.length > 1 ? (
+                    <>
+                      <Text style={[styles.sectionLabel, styles.sheetGap]}>HOW IT IS ARRANGED</Text>
+                      {openChoices.map((choice) => {
+                        const selected = choice.id === openLayout?.id;
+                        return (
+                          <TouchableOpacity
+                            key={choice.id}
+                            style={[styles.systemCard, selected ? styles.systemCardActive : null]}
+                            activeOpacity={0.7}
+                            disabled={busy}
+                            onPress={() => handleSelectLayout(openKind, choice.id)}
+                          >
+                            <View style={styles.systemCardTop}>
+                              <Text style={[styles.systemTitle, selected ? styles.systemTitleActive : null]} numberOfLines={2}>
+                                {choice.pattern}
+                              </Text>
+                              <Ionicons
+                                name={selected ? 'checkmark-circle' : 'ellipse-outline'}
+                                size={22}
+                                color={selected ? '#0284c7' : '#cbd5e1'}
+                              />
+                            </View>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </>
+                  ) : null}
+
+                  {openShown && Object.keys(openSettings).length ? (
+                    <>
+                      <Text style={[styles.sectionLabel, styles.sheetGap]}>SMALL CHOICES</Text>
+                      {Object.entries(openSettings).map(([key, setting]) => {
+                        const slot = `${openKind}:${key}`;
+                        const value = draft[slot] !== undefined ? draft[slot] : String(openValues[key] ?? setting.default ?? '');
+                        if (setting.type === 'boolean') {
+                          const on = Boolean(openValues[key] ?? setting.default);
+                          return (
+                            <View key={key} style={styles.settingRow}>
+                              <View style={styles.settingText}>
+                                <Text style={styles.settingLabel}>{settingLabel(key)}</Text>
+                              </View>
+                              <Switch
+                                value={on}
+                                disabled={busy}
+                                onValueChange={(next) => handleChangeSetting(openKind, key, next)}
+                              />
+                            </View>
+                          );
+                        }
+                        if (setting.type === 'choice') {
+                          return (
+                            <View key={key} style={styles.settingBlock}>
+                              <Text style={styles.settingLabel}>{settingLabel(key)}</Text>
+                              <View style={styles.chipRow}>
+                                {(setting.options || []).map((option) => {
+                                  const selected = option === value;
+                                  return (
+                                    <TouchableOpacity
+                                      key={option}
+                                      style={[styles.chip, selected ? styles.chipActive : null]}
+                                      activeOpacity={0.7}
+                                      disabled={busy}
+                                      onPress={() => handleChangeSetting(openKind, key, option)}
+                                    >
+                                      <Text style={[styles.chipText, selected ? styles.chipTextActive : null]}>{option}</Text>
+                                    </TouchableOpacity>
+                                  );
+                                })}
+                              </View>
+                            </View>
+                          );
+                        }
+                        return (
+                          <View key={key} style={styles.settingBlock}>
+                            <Text style={styles.settingLabel}>{settingLabel(key)}</Text>
+                            <TextInput
+                              style={styles.noticeTextInput}
+                              value={value}
+                              maxLength={setting.max || 60}
+                              placeholder={String(setting.default ?? '')}
+                              placeholderTextColor="#94a3b8"
+                              editable={!busy}
+                              onChangeText={(next) => setDraft((prev) => ({ ...prev, [slot]: next }))}
+                              onBlur={() => commitText(key)}
+                            />
+                          </View>
+                        );
+                      })}
+                    </>
+                  ) : null}
+                </>
+              ) : null}
+            </ScrollView>
+          </View>
+        </Modal>
 
         {/* NOTICE MODAL */}
         <Modal
@@ -933,6 +1010,14 @@ export default function SiteScreen({
             </View>
           </KeyboardAvoidingView>
         </Modal>
+
+        {toast ? (
+          <View style={styles.toast} pointerEvents="none">
+            <Text style={styles.toastText} numberOfLines={2}>
+              {toast.text}
+            </Text>
+          </View>
+        ) : null}
       </View>
     </Modal>
   );
@@ -1003,6 +1088,38 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#007aff',
+  },
+  statusBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: '#f0f9ff',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#e0f2fe',
+  },
+  statusText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#0369a1',
+    fontWeight: '500',
+  },
+  toast: {
+    position: 'absolute',
+    left: 24,
+    right: 24,
+    bottom: 32,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    backgroundColor: 'rgba(15, 23, 42, 0.92)',
+  },
+  toastText: {
+    fontSize: 14,
+    color: '#ffffff',
+    fontWeight: '500',
+    textAlign: 'center',
   },
   loadingContainer: {
     flex: 1,
@@ -1347,5 +1464,74 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#ffffff',
     fontWeight: '600',
+  },
+
+  // Section sheet
+  sectionRowText: {
+    flex: 1,
+  },
+  sheetGap: {
+    marginTop: 20,
+    marginBottom: 8,
+  },
+  sheetHint: {
+    fontSize: 13,
+    color: '#64748b',
+    lineHeight: 18,
+    marginTop: 4,
+  },
+  settingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#e2e8f0',
+  },
+  settingBlock: {
+    paddingVertical: 10,
+    gap: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#e2e8f0',
+  },
+  settingText: {
+    flex: 1,
+    gap: 2,
+  },
+  settingLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#0f172a',
+  },
+  settingHint: {
+    fontSize: 12,
+    color: '#64748b',
+    lineHeight: 16,
+  },
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  chip: {
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  chipActive: {
+    borderColor: '#0284c7',
+    backgroundColor: '#f0f9ff',
+  },
+  chipText: {
+    fontSize: 13,
+    color: '#475569',
+    fontWeight: '500',
+  },
+  chipTextActive: {
+    color: '#0369a1',
+    fontWeight: '700',
   },
 });

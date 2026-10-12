@@ -1,0 +1,35 @@
+{
+  "id": "bar",
+  "type": "announcement",
+  "models": [
+    "products",
+    "food",
+    "booking",
+    "quote",
+    "digital",
+    "bulk"
+  ],
+  "needs": {
+    "body": "required"
+  },
+  "layout": {
+    "kind": "row"
+  },
+  "slots": {
+    "body": {
+      "source": "facts.notice",
+      "max": 120
+    }
+  },
+  "tokens": {
+    "text": "color.ink",
+    "background": "color.surface",
+    "border": "color.border"
+  },
+  "settings": {},
+  "fallback": {},
+  "source": {
+    "pattern": "one line of news in a thin band above the header",
+    "reference": "structural pattern only; no copy, colour or asset came from anywhere"
+  }
+}

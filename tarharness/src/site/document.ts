@@ -21,8 +21,23 @@ export const CONTAINER_KINDS = ['flex', 'grid', 'stack', 'card', 'navigation', '
 /** Interaction components backed by the tiny progressive runtime. */
 export const INTERACTION_KINDS = ['menu', 'tabs', 'accordion', 'gallery', 'search', 'form'] as const;
 
-export const SECTION_LAYOUTS = ['flow', 'flex', 'grid', 'stack'] as const;
+/**
+ * The layout grammar the engine implements once (parai §5.1). `flow` and `flex` are the
+ * names documents stored before it; a recipe always names a grammar primitive.
+ */
+export const SECTION_LAYOUTS = ['flow', 'flex', 'stack', 'row', 'grid', 'split', 'overlay', 'rail', 'disclosure'] as const;
 export type SectionLayout = typeof SECTION_LAYOUTS[number];
+
+/** The two regions of a split, as fractions code owns. A recipe picks one; it never writes a width. */
+export const LAYOUT_RATIOS = ['50/50', '60/40', '40/60', '2/1', '1/2'] as const;
+/** How a wide layout behaves on a narrow screen: fall into a column, or keep the regions side by side. */
+export const LAYOUT_COLLAPSES = ['stack', 'keep'] as const;
+/** How tall an overlay's media region is, in viewport terms rather than pixels. */
+export const LAYOUT_HEIGHTS = ['short', 'tall', 'full'] as const;
+export const RATIO_CSS: Record<string, string> = {
+  '50/50': '1fr 1fr', '60/40': '3fr 2fr', '40/60': '2fr 3fr', '2/1': '2fr 1fr', '1/2': '1fr 2fr',
+};
+export const HEIGHT_CSS: Record<string, string> = { short: '40vh', tall: '65vh', full: '100svh' };
 
 export const STYLE_KEYS = [
   'background', 'color', 'pad', 'gap', 'radius', 'border', 'shadow', 'align', 'width',
@@ -93,6 +108,39 @@ export interface SectionLayoutSpec {
   readonly gap?: string;
   readonly align?: string;
   readonly width?: string;
+  /** A split's regions, from LAYOUT_RATIOS. */
+  readonly ratio?: string;
+  /** Narrow-screen behaviour, from LAYOUT_COLLAPSES. */
+  readonly collapse?: string;
+  /** An overlay's media height, from LAYOUT_HEIGHTS. */
+  readonly height?: string;
+  /** An overlay's content layer: a `token:` colour reference, never a literal. */
+  readonly scrim?: string;
+}
+
+/**
+ * Layout knobs each grammar primitive owns. Anything else a section carries belongs to a
+ * different kind, so an edit that changes the kind drops the knobs it no longer has.
+ */
+export const LAYOUT_KNOBS: Record<SectionLayout, readonly string[]> = {
+  flow: [],
+  flex: ['columns', 'gap', 'align', 'width'],
+  stack: ['columns', 'gap', 'align', 'width'],
+  row: ['columns', 'gap', 'align', 'width', 'collapse'],
+  grid: ['columns', 'gap', 'align', 'width'],
+  split: ['ratio', 'collapse', 'gap', 'align', 'width'],
+  overlay: ['height', 'scrim', 'gap', 'align', 'width'],
+  rail: ['columns', 'gap', 'align', 'width'],
+  disclosure: ['gap', 'align', 'width'],
+} as const;
+
+export function pruneLayout(layout: SectionLayoutSpec): SectionLayoutSpec {
+  const allowed = LAYOUT_KNOBS[layout.kind] || [];
+  const next: Record<string, unknown> = { kind: layout.kind };
+  for (const [key, value] of Object.entries(layout)) {
+    if (key !== 'kind' && allowed.includes(key) && value !== undefined) next[key] = value;
+  }
+  return next as unknown as SectionLayoutSpec;
 }
 
 export interface NodeAction {
@@ -126,6 +174,11 @@ export interface Section {
   nodes: Node[];
   bindings?: Binding[];
   actions?: NodeAction[];
+  /**
+   * Which recipe this section renders with, and the merchant's turn of its settings.
+   * Absent means the renderer chooses from the blueprint, as documents stored before it do.
+   */
+  recipe?: { id: string; settings?: Record<string, boolean | string> };
 }
 
 export interface PageMeta {
@@ -259,6 +312,18 @@ export interface ReleaseFile {
   readonly key: string;
 }
 
+/**
+ * The last write to this document and the merchant state it read (parai §7). A build writes
+ * `agent`, so the scheduled sweep knows a fresh draft is its own to rewrite; a hand edit
+ * writes `merchant`, and the sweep leaves that store alone until the owner publishes.
+ */
+export interface Provenance {
+  readonly state: string;
+  readonly revision: number;
+  readonly at: number;
+  readonly generator: 'agent' | 'merchant';
+}
+
 export interface ReleaseManifest {
   readonly id: string;
   readonly siteId: string;
@@ -294,13 +359,16 @@ export interface SiteDocument {
   redirects: Redirect[];
   locks: Lock[];
   policy: SitePolicy;
-  blueprint?: import('./blueprint.ts').Blueprint;
+  /** Every document carries one: `readDocument` materializes a default for stored sites that predate it. */
+  blueprint: import('./blueprint.ts').Blueprint;
   personas?: Persona[];
   /** Prose claims checked against supplied evidence; unresolved claims block publish. */
   claims?: { text: string; verdict: 'supported' | 'contradicted' | 'unsupported'; evidence?: string[] }[];
   /** Compatibility projection of the live release. CONTROL D1 remains the authority. */
   currentRelease?: string | null;
   releases?: ReleaseManifest[];
+  /** Which merchant state the build read, and whose hand wrote the document last. */
+  provenance?: Provenance;
 }
 
 export const LIMITS = {
