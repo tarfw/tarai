@@ -84,10 +84,6 @@ export function inspectDocument(doc: SiteDocument, options: InspectOptions = {})
       if (href.startsWith('/') && !paths.has(href) && !redirects.has(href) && !href.startsWith('/#')) {
         add('blocking', 'link', node.id, `Link target ${href} is not a page or redirect.`);
       }
-      if (node.kind === 'button' && node.props.journey !== undefined) {
-        const journey = doc.journeys.find((entry) => entry.id === node.props.journey);
-        if (journey && !journey.enabled) add('advisory', 'journey', node.id, `Journey ${journey.id} is disabled, so this call to action does nothing.`);
-      }
     }
     const links = node.kind === 'navigation' || node.kind === 'footer' || node.kind === 'menu' ? node.props.links : undefined;
     if (Array.isArray(links)) {

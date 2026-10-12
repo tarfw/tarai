@@ -167,8 +167,6 @@ describe('hero copy provenance', () => {
       schema: '2.0.0',
       design: {},
       assets,
-      components: [],
-      journeys: [],
       redirects: [],
       pages: [{ id: 'home', path: '/', title: 'Loom Studio', sections: [] }],
     } as unknown as SiteDocument;

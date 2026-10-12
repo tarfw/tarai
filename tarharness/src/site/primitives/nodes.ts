@@ -201,18 +201,13 @@ export function renderNodes(nodes: Node[] | undefined, context: RenderContext): 
 }
 
 export function renderChildren(node: Node, context: RenderContext): string {
-  const component = node.component ? context.doc.components.find((entry) => entry.id === node.component) : undefined;
-  if (component && (!node.children || !node.children.length)) return renderNodes(component.nodes, context);
   return renderNodes(node.children, context);
 }
 
 export function renderNode(node: Node, context: RenderContext): string {
   const style = styleClass(context.collector, node.style);
   const id = escapeAttribute(node.id);
-  const props = node.props || {};
-  const component = node.component ? context.doc.components.find((entry) => entry.id === node.component) : undefined;
-  const variant = component?.variants?.[node.variant || ''];
-  const merged = variant?.props ? { ...variant.props, ...props } : props;
+  const merged = node.props || {};
   const item = context.item;
 
   switch (node.kind) {
@@ -256,8 +251,7 @@ export function renderNode(node: Node, context: RenderContext): string {
     }
     case 'button': {
       const label = escapeHtml(merged.label);
-      const journey = String(merged.journey || '');
-      const href = journey ? `#journey-${escapeAttribute(journey)}` : safeHref(merged.href) || '#';
+      const href = safeHref(merged.href) || '#';
       const variantClass = merged.variant === 'secondary' ? ' tar-btn-secondary' : merged.variant === 'outline' ? ' tar-btn-outline' : ' tar-btn-primary';
       return `<a id="${id}" class="tar-btn${variantClass}${style}" href="${href}">${label}</a>`;
     }
@@ -379,23 +373,6 @@ export function renderNode(node: Node, context: RenderContext): string {
       context.collector.runtime.add('search');
       const target = escapeAttribute(merged.target);
       return `<form id="${id}" class="tar-search${style}" role="search"><label class="tar-visually-hidden" for="${id}-input">Search</label><input id="${id}-input" type="search" data-search="${target}" placeholder="${escapeAttribute(merged.placeholder || 'Search')}"><button class="tar-btn tar-btn-secondary" type="submit">Search</button></form>`;
-    }
-    case 'form': {
-      const journey = context.doc.journeys.find((entry) => entry.id === String(merged.journey || ''));
-      if (!journey || !journey.enabled) return '';
-      const fields = journey.fields.map((field) => {
-        const fieldId = `${escapeAttribute(node.id)}-${escapeAttribute(field.key)}`;
-        const required = field.required ? ' required' : '';
-        const max = field.max ? ` maxlength="${field.max}"` : '';
-        const control = field.kind === 'textarea'
-          ? `<textarea id="${fieldId}" name="${escapeAttribute(field.key)}"${required}${max}></textarea>`
-          : field.kind === 'select'
-            ? `<select id="${fieldId}" name="${escapeAttribute(field.key)}"${required}>${(field.options || []).map((option) => `<option>${escapeHtml(option)}</option>`).join('')}</select>`
-            : `<input id="${fieldId}" name="${escapeAttribute(field.key)}" type="${field.kind}"${required}${max}>`;
-        return `<div class="tar-field"><label for="${fieldId}">${escapeHtml(field.label)}${field.required ? ' *' : ''}</label>${control}</div>`;
-      }).join('');
-      const honeypot = `<div class="tar-honeypot" aria-hidden="true"><label for="${escapeAttribute(node.id)}-extra">Leave empty</label><input id="${escapeAttribute(node.id)}-extra" name="extra" tabindex="-1" autocomplete="off"></div>`;
-      return `<form id="journey-${escapeAttribute(journey.id)}" class="tar-form${style}" method="post" action="${escapeAttribute(`${context.base}/_tar/${journey.id}`)}">${fields}${honeypot}<button class="tar-btn tar-btn-primary" type="submit">${escapeHtml(merged.submitLabel || 'Send')}</button></form>`;
     }
     default:
       return '';

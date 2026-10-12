@@ -43,10 +43,9 @@ export interface Style {
   columns?: number;
 }
 export interface StyleSet { base?: Style; small?: Style; medium?: Style; large?: Style; [key: string]: Style | undefined; }
-export interface Node { id: string; kind: string; props: Record<string, unknown>; style?: StyleSet; children?: Node[]; component?: string; variant?: string }
+export interface Node { id: string; kind: string; props: Record<string, unknown>; style?: StyleSet; children?: Node[] }
 export interface Section { id: string; purpose: string; layout: { kind: string; columns?: number; gap?: string; align?: string; width?: string }; style?: StyleSet; nodes: Node[]; bindings?: Record<string, unknown>[]; recipe?: { id: string; settings?: Record<string, boolean | string> } }
 export interface Page { id: string; path: string; title: string; meta?: { description?: string }; sections: Section[] }
-export interface Journey { id: string; title: string; kind: string; target: string; enabled: boolean; fields: { key: string; label: string; kind: string; required?: boolean }[] }
 export type BusinessKind = 'goods' | 'food' | 'services' | 'wholesale';
 export type SectionKind =
   | 'header' | 'announcement' | 'hero' | 'spotlight' | 'catalog' | 'menu' | 'booking'
@@ -188,7 +187,7 @@ export interface ReleaseManifest {
   files: ReleaseFile[]; host?: string; epoch?: number; compiler?: string; checks?: { blocking: number; advisory: number };
   personas?: Pick<Persona, 'id' | 'when' | 'priority'>[];
 }
-export interface Lock { target: string; kind: 'section' | 'node' | 'token' | 'component' | 'brand'; at: number }
+export interface Lock { target: string; kind: 'section' | 'node' | 'token' | 'brand'; at: number }
 export interface Claim { text: string; verdict: 'supported' | 'contradicted' | 'unsupported'; evidence?: string[] }
 
 export interface SiteDocument {
@@ -198,9 +197,7 @@ export interface SiteDocument {
   locale: string; timezone: string; currency: string;
   design: Design;
   assets: Asset[];
-  components: { id: string; name: string; slots: string[]; variants: Record<string, unknown>; nodes: Node[] }[];
   pages: Page[];
-  journeys: Journey[];
   redirects: { from: string; to: string; status: number }[];
   locks: Lock[];
   policy: { publicEnquiry?: boolean; publicOrdering?: boolean; allowedCurrencies?: string[]; turnstile?: string };
@@ -223,10 +220,7 @@ export type PatchOperation =
   | { op: 'remove_section'; target: string }
   | { op: 'add_node'; parent: string; node: Node; index?: number }
   | { op: 'remove_node'; target: string }
-  | { op: 'swap_component'; target: string; component: string; variant?: string }
   | { op: 'set_token'; token: string; value: string | number }
-  | { op: 'set_journey'; journey: Journey }
-  | { op: 'remove_journey'; target: string }
   | { op: 'set_redirect'; from: string; to: string | null }
   | { op: 'set_page'; page: string; value: { title?: string; description?: string; path?: string } }
   | { op: 'set_brief'; value: Partial<SiteDocument['brief']> }

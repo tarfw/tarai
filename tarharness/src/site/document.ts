@@ -10,16 +10,16 @@ export const DOCUMENT_VERSION = '2.0.0';
 export const NODE_KINDS = [
   'heading', 'text', 'image', 'video', 'icon', 'list', 'link', 'button', 'divider', 'spacer',
   'flex', 'grid', 'stack', 'card', 'collection', 'navigation', 'footer',
-  'menu', 'tabs', 'accordion', 'gallery', 'search', 'form',
+  'menu', 'tabs', 'accordion', 'gallery', 'search',
 ] as const;
 
 export type NodeKind = typeof NODE_KINDS[number];
 
 /** Nodes that render one or more child nodes. */
-export const CONTAINER_KINDS = ['flex', 'grid', 'stack', 'card', 'navigation', 'footer', 'tabs', 'accordion', 'gallery', 'form'] as const;
+export const CONTAINER_KINDS = ['flex', 'grid', 'stack', 'card', 'navigation', 'footer', 'tabs', 'accordion', 'gallery'] as const;
 
-/** Interaction components backed by the tiny progressive runtime. */
-export const INTERACTION_KINDS = ['menu', 'tabs', 'accordion', 'gallery', 'search', 'form'] as const;
+/** Interaction nodes backed by the tiny progressive runtime. */
+export const INTERACTION_KINDS = ['menu', 'tabs', 'accordion', 'gallery', 'search'] as const;
 
 /**
  * The layout grammar the engine implements once (parai §5.1). `flow` and `flex` are the
@@ -98,8 +98,6 @@ export interface Node {
   props: Record<string, unknown>;
   style?: StyleSet;
   children?: Node[];
-  component?: string;
-  variant?: string;
 }
 
 export interface SectionLayoutSpec {
@@ -143,15 +141,6 @@ export function pruneLayout(layout: SectionLayoutSpec): SectionLayoutSpec {
   return next as unknown as SectionLayoutSpec;
 }
 
-export interface NodeAction {
-  readonly id: string;
-  readonly label: string;
-  readonly target: string;
-  readonly journey?: string;
-  readonly variant?: string;
-  readonly payload?: Record<string, unknown>;
-}
-
 export interface Binding {
   readonly id: string;
   readonly slot: string;
@@ -173,7 +162,6 @@ export interface Section {
   style?: StyleSet;
   nodes: Node[];
   bindings?: Binding[];
-  actions?: NodeAction[];
   /**
    * Which recipe this section renders with, and the merchant's turn of its settings.
    * Absent means the renderer chooses from the blueprint, as documents stored before it do.
@@ -195,29 +183,6 @@ export interface Page {
   sections: Section[];
 }
 
-export interface JourneyField {
-  readonly key: string;
-  readonly label: string;
-  readonly kind: 'text' | 'email' | 'tel' | 'textarea' | 'number' | 'date' | 'select';
-  readonly required?: boolean;
-  readonly options?: readonly string[];
-  readonly max?: number;
-}
-
-export interface Journey {
-  id: string;
-  title: string;
-  target: string;
-  version: number;
-  input: Record<string, unknown>;
-  outcome: string;
-  enabled: boolean;
-  kind: 'enquiry' | 'order' | 'booking' | 'payment';
-  fields: JourneyField[];
-  message?: string;
-  limit?: number;
-}
-
 export interface Redirect {
   readonly from: string;
   readonly to: string;
@@ -226,7 +191,7 @@ export interface Redirect {
 
 export interface Lock {
   readonly target: string;
-  readonly kind: 'section' | 'node' | 'token' | 'component' | 'brand';
+  readonly kind: 'section' | 'node' | 'token' | 'brand';
   readonly at: number;
 }
 
@@ -252,19 +217,6 @@ export interface Asset {
   prompt?: string;
   /** Stand-in media (for example Pexels) the owner should replace with real photography. */
   placeholder?: boolean;
-}
-
-export interface ComponentVariant {
-  readonly style?: StyleSet;
-  readonly props?: Record<string, unknown>;
-}
-
-export interface Component {
-  id: string;
-  name: string;
-  slots: string[];
-  variants: Record<string, ComponentVariant>;
-  nodes: Node[];
 }
 
 export interface Brief {
@@ -353,9 +305,7 @@ export interface SiteDocument {
   currency: string;
   design: import('./design.ts').Design;
   assets: Asset[];
-  components: Component[];
   pages: Page[];
-  journeys: Journey[];
   redirects: Redirect[];
   locks: Lock[];
   policy: SitePolicy;
@@ -377,7 +327,6 @@ export const LIMITS = {
   nodes: 200,
   depth: 5,
   document: 1_000_000,
-  components: 40,
   assets: 200,
   typography: 16,
 } as const;
@@ -386,13 +335,6 @@ export const LIMITS = {
 export const RESERVED_PATHS = ['/_tar', '/v1'] as const;
 
 export const PUBLIC_TYPES = ['pos.product', 'item', 'service', 'article', 'project'] as const;
-
-export const JOURNEY_TARGETS: Record<string, readonly string[]> = {
-  enquiry: ['record.create'],
-  booking: ['record.create'],
-  order: ['order.create'],
-  payment: [],
-};
 
 export function isNodeKind(value: unknown): value is NodeKind {
   return typeof value === 'string' && (NODE_KINDS as readonly string[]).includes(value);

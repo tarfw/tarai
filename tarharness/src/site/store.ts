@@ -639,9 +639,23 @@ export async function executeSiteSectionsSet(
   if (input.order !== undefined) posted.order = strings(input.order, SECTION_KINDS.length);
   if (input.hidden !== undefined) posted.hidden = strings(input.hidden, SECTION_KINDS.length);
   if (input.shown !== undefined) posted.shown = strings(input.shown, SECTION_KINDS.length);
+  // Taking orders online is a money decision, so it is stored on the policy (D11) where the
+  // public checkout reads it. It is written before the rebuild, and the rebuild carries the
+  // policy forward, so the switch survives every later regeneration.
+  if (typeof input.ordering === 'boolean' || input.ordering === 'on' || input.ordering === 'off') {
+    const ordering = input.ordering === true || input.ordering === 'on';
+    doc.policy = { ...doc.policy, publicOrdering: ordering };
+    const at = now();
+    const saved = await client.execute({
+      sql: 'UPDATE records SET data=?,updated=? WHERE id=? AND version=?',
+      args: [JSON.stringify(doc), at, current.id, current.version],
+    });
+    if (saved.rowsAffected !== 1) throw conflict('Site was modified concurrently. Refresh and try again.');
+  }
+  const latest = input.ordering === undefined ? current : (await getSiteRecord(client, current.id));  if (!latest) throw notFound('Site was not found.');
   return runGenerate(client, context, {
     ...input,
-    siteId: current.id,
+    siteId: latest.id,
     title: text(input.title) || doc.pages[0]?.title,
     overrides: posted,
   }, { action: 'site.sections.set', key, hash: inputHash }, { typesafe, ai, control, model, groqApiKey, content, pexelsApiKey });
@@ -1109,7 +1123,7 @@ export async function executeSiteScout(client: Client, context: AccessContext, i
 
   // Declared check: publication blockers the site already carries.
   const inspection = inspectDocument(next);
-  for (const issue of inspection.blocking.filter((entry) => entry.area === 'link' || entry.area === 'asset' || entry.area === 'journey').slice(0, 6)) {
+  for (const issue of inspection.blocking.filter((entry) => entry.area === 'link' || entry.area === 'asset').slice(0, 6)) {
     findings.push({ check: 'links', target: issue.path, detail: issue.message, fixed: false });
   }
 

@@ -7,7 +7,7 @@
  */
 
 import type { Asset, Node, Page, Persona, Section, SiteDocument } from './document.ts';
-import { escapeAttribute, escapeHtml, slugify } from './html.ts';
+import { escapeAttribute, escapeHtml, formatMoney, slugify } from './html.ts';
 import { TONE_STYLE } from './design.ts';
 import { compileCss, type CssCollector } from './styles.ts';
 import { getPrimitive } from './registry.ts';
@@ -41,6 +41,54 @@ const sha = async (value: string): Promise<string> => {
   const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value)));
   return [...digest].map((byte) => byte.toString(16).padStart(2, '0')).join('');
 };
+
+/**
+ * Public cart page (parai §10, gap 1). Server-rendered from variants the owner has priced
+ * for the public channel, so the price shown is the price the order is priced at. The cart
+ * itself is a `cart` order with `action="/order"`, so it works before any script runs;
+ * quantities submit as repeated `item`/`quantity` pairs and the worker posts them on.
+ */
+async function cartPage(doc: SiteDocument, items: ResolvedItem[], origin: string | undefined): Promise<CompiledFile> {
+  const rows = items.map((item) => {
+    const price = item.price !== undefined ? formatMoney(item.price, item.currency || doc.currency, doc.locale) : '';
+    const image = item.image && /^https?:\/\//.test(item.image) ? item.image : '';
+    const media = image
+      ? `<img class="tar-cart-img" src="${escapeAttribute(image)}" alt="${escapeAttribute(item.title)}" loading="lazy" decoding="async">`
+      : `<span class="tar-cart-img tar-cart-img-empty" aria-hidden="true">${escapeHtml(item.title.slice(0, 1).toUpperCase())}</span>`;
+    return `<li class="tar-cart-row">
+      ${media}
+      <div class="tar-cart-info">
+        <strong>${escapeHtml(item.title)}</strong>
+        ${price ? `<span class="tar-price">${escapeHtml(price)}</span>` : ''}
+      </div>
+      <label class="tar-cart-qty"><span class="tar-visually-hidden">Quantity of ${escapeHtml(item.title)}</span>
+        <input type="hidden" name="item" value="${escapeAttribute(String(item.id || ''))}">
+        <input type="number" name="quantity" min="0" max="999" value="1" inputmode="numeric">
+      </label>
+    </li>`;
+  }).join('\n');
+
+  const empty = `<p class="tar-prose">Nothing is available to order right now. ${doc.brief.goal ? escapeHtml(doc.brief.goal) : ''}</p>`;
+  const form = items.length ? `<form class="tar-cart" method="post" action="./">
+    <ul class="tar-cart-list">
+${rows}
+    </ul>
+    <div class="tar-cart-buyer">
+      <div class="tar-field"><label for="cart-name">Your name</label><input id="cart-name" name="name" required maxlength="120" autocomplete="name"></div>
+      <div class="tar-field"><label for="cart-phone">Phone</label><input id="cart-phone" name="phone" type="tel" required maxlength="40" autocomplete="tel"></div>
+      <div class="tar-field"><label for="cart-note">Anything else? (optional)</label><textarea id="cart-note" name="note" maxlength="300"></textarea></div>
+    </div>
+    <div class="tar-honeypot" aria-hidden="true"><label for="cart-extra">Leave empty</label><input id="cart-extra" name="extra" tabindex="-1" autocomplete="off"></div>
+    <button class="tar-btn tar-btn-primary" type="submit">Place order</button>
+  </form>` : empty;
+
+  const body = `<section class="tar-section" data-purpose="cart"><div class="tar-wrap tar-stack">
+    <h1 class="tar-title">Order</h1>
+    ${form}
+  </div></section>`;
+  const html = pageHtml(doc, { id: 'order', path: '/order', title: 'Order', sections: [] }, body, origin, '/order', '/style.css', false);
+  return { path: '/order/index.html', mime: 'text/html; charset=utf-8', body: html, hash: await sha(html) };
+}
 
 const RUNTIME = `
 (function () {
@@ -314,6 +362,17 @@ export async function compileDocument(doc: SiteDocument, options: CompileOptions
     const html = pageHtml(doc, entry.page, body, options.origin, entry.path, '/style.css', false, entry.item.title);
     files.push({ path: `${entry.path}/index.html`, mime: 'text/html; charset=utf-8', body: html, hash: await sha(html) });
     routes.push(entry.path);
+  }
+
+  // A store that lists anything orderable gets a real cart page (parai §10).
+  const orderable = doc.pages.flatMap((page) => page.sections)
+    .flatMap((section) => section.nodes)
+    .filter((node) => node.kind === 'collection' && Array.isArray(node.props.items))
+    .flatMap((node) => (node.props.items as ResolvedItem[]).filter((item) => item.id && item.price !== undefined));
+  if (orderable.length) {
+    const cart = await cartPage(doc, orderable.slice(0, 100), options.origin);
+    files.push(cart);
+    routes.push('/order');
   }
 
   const usedAssets = new Set<string>();

@@ -360,11 +360,18 @@ h3.tar-title { font-size: var(--type-body); font-weight: ${Math.min(900, design.
 .tar-search { display: flex; gap: ${space(2)}; margin-bottom: ${space(4)}; }
 .tar-search input { flex: 1; padding: ${space(2)} ${space(3)}; border: 1px solid var(--color-border); border-radius: var(--radius-md); font: inherit; background: var(--color-canvas); color: inherit; }
 .tar-visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-.tar-form { display: flex; flex-direction: column; gap: ${space(3)}; max-width: 560px; }
+.tar-cart { display: flex; flex-direction: column; gap: ${space(5)}; max-width: 720px; }
+.tar-cart-list { list-style: none; display: flex; flex-direction: column; gap: ${space(3)}; }
+.tar-cart-row { display: flex; align-items: center; gap: ${space(4)}; padding: ${space(3)}; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); }
+.tar-cart-img { width: 56px; height: 56px; flex: none; border-radius: var(--radius-sm); object-fit: cover; }
+.tar-cart-img-empty { display: inline-flex; align-items: center; justify-content: center; background: var(--color-canvas); color: var(--color-muted); font-weight: 700; }
+.tar-cart-info { display: flex; flex-direction: column; gap: ${space(1)}; flex: 1; min-width: 0; }
+.tar-cart-qty input { width: 80px; padding: ${space(2)}; border: 1px solid var(--color-border); border-radius: var(--radius-md); font: inherit; background: var(--color-canvas); color: inherit; text-align: center; }
+.tar-cart-buyer { display: flex; flex-direction: column; gap: ${space(3)}; }
 .tar-field { display: flex; flex-direction: column; gap: ${space(1)}; }
 .tar-field label { font-size: var(--type-label); font-weight: 600; }
-.tar-field input, .tar-field textarea, .tar-field select { padding: ${space(2)} ${space(3)}; border: 1px solid var(--color-border); border-radius: var(--radius-md); font: inherit; background: var(--color-canvas); color: inherit; }
-.tar-field textarea { min-height: 130px; resize: vertical; }
+.tar-field input, .tar-field textarea { padding: ${space(2)} ${space(3)}; border: 1px solid var(--color-border); border-radius: var(--radius-md); font: inherit; background: var(--color-canvas); color: inherit; }
+.tar-field textarea { min-height: 96px; resize: vertical; }
 .tar-honeypot { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
 .tar-cta { background: var(--color-surface); border-radius: var(--radius-lg); padding: ${space(10)}; text-align: center; }
 ${blocks.join('\n')}

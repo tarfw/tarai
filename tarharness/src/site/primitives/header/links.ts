@@ -24,5 +24,9 @@ export function headerLinks(page: Page | undefined): { label: string; href: stri
     }
   }
   if (!links.some((entry) => entry.href.includes('contact'))) links.push({ label: 'Contact', href: '#contact' });
+  // The public cart is a real page when the store lists anything orderable (parai §10).
+  if (page?.sections.some((section) => ['catalog', 'menu', 'booking', 'collection'].includes(section.purpose)) && !links.some((entry) => entry.href === '/order/')) {
+    links.push({ label: 'Order', href: '/order/' });
+  }
   return links;
 }

@@ -330,6 +330,7 @@ export const actionCatalog = [
       { key: 'order', label: 'Section order', kind: 'text', required: false },
       { key: 'hidden', label: 'Hidden sections', kind: 'text', required: false },
       { key: 'shown', label: 'Sections turned on', kind: 'text', required: false },
+      { key: 'ordering', label: 'Take orders online (on or off)', kind: 'text', required: false },
     ],
     output: ['siteId', 'version', 'state', 'site', 'preview', 'blueprint', 'gate', 'missing'], roles: ['owner', 'admin'], effects: ['record_update', 'model_inference'],
   },

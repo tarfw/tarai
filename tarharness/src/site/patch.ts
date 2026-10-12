@@ -2,15 +2,15 @@
  * Typed, reviewable patches over a v2 site document.
  *
  * Every patch carries the base revision it was built against; stale patches
- * conflict instead of overwriting newer work. Locked sections, nodes, tokens and
- * components are excluded before any generator or judgment runs, and rejected
- * here if a patch tries to change them.
+ * conflict instead of overwriting newer work. Locked sections, nodes and tokens
+ * are excluded before any generator or judgment runs, and rejected here if a
+ * patch tries to change them.
  */
 
 import { badRequest, conflict, notFound } from '../errors.ts';
 import { pruneLayout } from './document.ts';
 import { resolveDesign, resolveToken, TOKENS } from './design.ts';
-import type { Journey, Lock, Node, Persona, Section, SiteDocument, StyleSet } from './document.ts';
+import type { Lock, Node, Persona, Section, SiteDocument, StyleSet } from './document.ts';
 import {
   applySectionOverrides,
   defaultBlueprint,
@@ -44,10 +44,7 @@ export type PatchOperation =
   | { op: 'remove_section'; target: string }
   | { op: 'add_node'; parent: string; node: Node; index?: number }
   | { op: 'remove_node'; target: string }
-  | { op: 'swap_component'; target: string; component: string; variant?: string }
   | { op: 'set_token'; token: string; value: string | number }
-  | { op: 'set_journey'; journey: Journey }
-  | { op: 'remove_journey'; target: string }
   | { op: 'set_redirect'; from: string; to: string | null }
   | { op: 'set_page'; page: string; value: { title?: string; description?: string; path?: string } }
   | { op: 'set_brief'; value: Partial<SiteDocument['brief']> }
@@ -71,7 +68,7 @@ export interface PatchInput {
 
 export interface DiffEntry {
   target: string;
-  kind: 'text' | 'prop' | 'style' | 'structure' | 'token' | 'journey' | 'persona' | 'policy' | 'lock' | 'brief' | 'asset' | 'override';
+  kind: 'text' | 'prop' | 'style' | 'structure' | 'token' | 'persona' | 'policy' | 'lock' | 'brief' | 'asset' | 'override';
   from: string;
   to: string;
 }
@@ -250,21 +247,6 @@ export function applyPatch(doc: SiteDocument, input: PatchInput): SiteDocument {
         found.parent.splice(found.index, 1);
         break;
       }
-      case 'swap_component': {
-        guard(locked, operation.target, respect);
-        const found = findNode(next, operation.target);
-        if (!found) throw notFound('Site node was not found.');
-        const component = next.components.find((entry) => entry.id === operation.component);
-        if (!component) throw badRequest('Choose a registered component.');
-        found.node.component = component.id;
-        if (operation.variant !== undefined) {
-          if (!Object.hasOwn(component.variants, operation.variant)) throw badRequest('Choose a registered component variant.');
-          found.node.variant = operation.variant;
-        } else {
-          delete found.node.variant;
-        }
-        break;
-      }
       case 'set_token': {
         guard(locked, operation.token, respect);
         const [group, key] = operation.token.replace(/^token:/, '').split('.');
@@ -278,18 +260,6 @@ export function applyPatch(doc: SiteDocument, input: PatchInput): SiteDocument {
         if (entry.kind === 'font' && typeof operation.value !== 'string') throw badRequest('Font tokens use a font stack.');
         if (entry.kind === 'enum' && (typeof operation.value !== 'string' || !['linear', 'ease', 'easeout', 'easeinout'].includes(operation.value))) throw badRequest('Choose a registered easing value.');
         groupValue[key] = current === undefined ? operation.value : operation.value;
-        break;
-      }
-      case 'set_journey': {
-        const index = next.journeys.findIndex((entry) => entry.id === operation.journey.id);
-        if (index >= 0) next.journeys[index] = structuredClone(operation.journey);
-        else next.journeys.push(structuredClone(operation.journey));
-        break;
-      }
-      case 'remove_journey': {
-        const index = next.journeys.findIndex((entry) => entry.id === operation.target);
-        if (index < 0) throw notFound('Site journey was not found.');
-        next.journeys.splice(index, 1);
         break;
       }
       case 'set_redirect': {
@@ -368,14 +338,12 @@ export function applyPatch(doc: SiteDocument, input: PatchInput): SiteDocument {
         break;
       }
       case 'lock': {
-        if (!['section', 'node', 'token', 'component', 'brand'].includes(operation.kind)) throw badRequest('Choose a registered lock kind.');
+        if (!['section', 'node', 'token', 'brand'].includes(operation.kind)) throw badRequest('Choose a registered lock kind.');
         const exists = operation.kind === 'token'
           ? typeof resolveToken(next.design, operation.target) !== 'undefined'
-          : operation.kind === 'component'
-            ? next.components.some((entry) => entry.id === operation.target)
-            : operation.kind === 'brand'
-              ? true
-              : Boolean(findSection(next, operation.target) || findNode(next, operation.target));
+          : operation.kind === 'brand'
+            ? true
+            : Boolean(findSection(next, operation.target) || findNode(next, operation.target));
         if (!exists) throw notFound('Locked target was not found.');
         if (!next.locks.some((entry) => entry.target === operation.target)) next.locks.push({ target: operation.target, kind: operation.kind, at: Date.now() });
         break;
@@ -736,7 +704,6 @@ export function diffSummary(before: SiteDocument, after: SiteDocument): DiffEntr
     push(section.id, 'prop', previous.layout, section.layout);
   }
   for (const [key, section] of beforeSections) if (!afterSections.has(key)) entries.push({ target: section.id, kind: 'structure', from: 'removed section', to: '' });
-  if (JSON.stringify(before.journeys) !== JSON.stringify(after.journeys)) entries.push({ target: 'journeys', kind: 'journey', from: `${before.journeys.length}`, to: `${after.journeys.length}` });
   if (JSON.stringify(before.personas || []) !== JSON.stringify(after.personas || [])) entries.push({ target: 'personas', kind: 'persona', from: `${(before.personas || []).length}`, to: `${(after.personas || []).length}` });
   if (JSON.stringify(before.redirects) !== JSON.stringify(after.redirects)) entries.push({ target: 'redirects', kind: 'structure', from: `${before.redirects.length}`, to: `${after.redirects.length}` });
   if (JSON.stringify(before.locks) !== JSON.stringify(after.locks)) entries.push({ target: 'locks', kind: 'lock', from: `${before.locks.length}`, to: `${after.locks.length}` });

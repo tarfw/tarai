@@ -142,3 +142,48 @@ test('keeps two workspace releases isolated on the same Worker host', async () =
   assert.equal((await worker.fetch(new Request(`https://${host}/alpha/`), env)).status, 404);
   assert.equal(await (await worker.fetch(new Request(`https://${host}/beta/`), env)).text(), 'beta');
 });
+
+test('forwards a public cart to the harness and never prices it itself', async () => {
+  const host = 'tar-sites.tar-54d.workers.dev';
+  let sent = null;
+  const env = {
+    HARNESS_ORIGIN: 'https://harness.test',
+    CONTROL: { withSession: () => ({ prepare: (sql) => ({ bind: () => ({ first: async () => {
+      assert.match(sql, /w.slug=\? AND w.state='active' AND s.release<>''/);
+      return { owner_id: 'owner_1', name: 'Slice House', slug: 'slice-house', database_name: 'slice', database_host: 'slice' };
+    } }) }) }) },
+    SITE_RELEASES: { get: async () => null },
+  };
+  globalThis.fetch = async (url, init) => {
+    sent = { url: String(url), body: JSON.parse(init.body), key: init.headers['idempotency-key'] };
+    return new Response(JSON.stringify({ order: { id: 'order_1', state: 'open', total: 31500, currency: 'INR' } }), { status: 201 });
+  };
+  const form = new FormData();
+  form.append('item', 'v_garlic');
+  form.append('quantity', '2');
+  form.append('name', 'Divya');
+  form.append('phone', '9876543210');
+  const result = await worker.fetch(new Request(`https://${host}/slice-house/order`, { method: 'POST', body: form }), env);
+  assert.equal(result.status, 200);
+  assert.equal(sent.url, 'https://harness.test/v1/sites/slice-house/order');
+  // The worker sends ids and counts; the harness owns the price.
+  assert.deepEqual(sent.body.lines, [{ variant: 'v_garlic', quantity: 2 }]);
+  assert.equal('price' in sent.body.lines[0], false);
+});
+
+test('a cart with no orderable lines is refused before any upstream call', async () => {
+  const host = 'tar-sites.tar-54d.workers.dev';
+  let called = false;
+  const env = {
+    HARNESS_ORIGIN: 'https://harness.test',
+    CONTROL: { withSession: () => ({ prepare: () => ({ bind: () => ({ first: async () => ({ slug: 'slice-house' }) }) }) }) },
+    SITE_RELEASES: { get: async () => null },
+  };
+  globalThis.fetch = async () => { called = true; return new Response('{}'); };
+  const form = new FormData();
+  form.append('item', 'v_garlic');
+  form.append('quantity', '0');
+  const result = await worker.fetch(new Request(`https://${host}/slice-house/order`, { method: 'POST', body: form }), env);
+  assert.equal(result.status, 400);
+  assert.equal(called, false);
+});

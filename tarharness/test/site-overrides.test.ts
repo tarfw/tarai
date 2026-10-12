@@ -190,4 +190,26 @@ describe('merchant overrides', () => {
     expect(doc.blueprint.overrides?.recipes?.catalog).toBeUndefined();
     expect(recipeIdOf(doc, 'catalog')).not.toBe('rail');
   });
+
+  it('turns public ordering on and off, and the switch survives a regeneration', async () => {
+    const client = await createTestWorkspace();
+    const generated = await generate(client);
+    const siteId = String(generated.siteId);
+    const sections = (ordering: string) => Effect.runPromise(executeGateway(client, ownerAccess, {
+      actionId: 'site.sections.set', idempotencyKey: `ordering-${ordering}-${Math.random()}`,
+      input: { siteId, ordering },
+    }, { siteReleases: releaseBucket() }));
+
+    // The storefront does not take money until the owner says so (D11).
+    expect((generated.site as SiteDocument).policy?.publicOrdering).not.toBe(true);
+    const on = await sections('on');
+    expect((on.site as SiteDocument).policy?.publicOrdering).toBe(true);
+
+    // A later regeneration carries the policy forward instead of resetting it.
+    const rebuilt = await generate(client, siteId);
+    expect((rebuilt.site as SiteDocument).policy?.publicOrdering).toBe(true);
+
+    const off = await sections('off');
+    expect((off.site as SiteDocument).policy?.publicOrdering).toBe(false);
+  });
 });

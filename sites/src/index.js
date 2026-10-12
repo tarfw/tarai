@@ -77,12 +77,55 @@ async function securityHeaders(contentType, html) {
   };
 }
 
+async function placeOrder(env, harness, slug, body) {
+  const lines = [];
+  const ids = body.getAll('item');
+  const quantities = body.getAll('quantity');
+  for (let index = 0; index < ids.length; index += 1) {
+    const quantity = Number(quantities[index] || 0);
+    if (ids[index] && Number.isInteger(quantity) && quantity > 0) lines.push({ variant: ids[index], quantity });
+  }
+  if (!lines.length) return orderPage('Add at least one item to order.', 400);
+  const upstream = await fetch(`${harness}/v1/sites/${encodeURIComponent(slug)}/order`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'idempotency-key': crypto.randomUUID() },
+    body: JSON.stringify({ lines, name: body.get('name') || '', phone: body.get('phone') || '', note: body.get('note') || '', extra: body.get('extra') || '' }),
+  });
+  const result = await upstream.json().catch(() => ({}));
+  if (!upstream.ok) return orderPage(result.error || 'The order could not be placed.', upstream.status);
+  const total = Number(result.order?.total || 0) / 100;
+  return orderPage(`Thank you. Your order is placed${result.order?.id ? ` (${result.order.id})` : ''}. The shop will confirm on WhatsApp.`, 200, total, result.order?.currency);
+}
+
+function orderPage(message, status, total, currency) {
+  const money = typeof total === 'number' && total > 0 ? `<p class="tar-price">${currency || 'INR'} ${total.toFixed(2)}</p>` : '';
+  return new Response(`<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="robots" content="noindex"><title>Order</title></head><body style="font-family:system-ui;padding:2rem;max-width:560px;margin:0 auto"><h1>${status === 200 ? 'Order placed' : 'Order'}</h1>${money}<p>${message}</p><p><a href="./">Back to the store</a></p></body></html>`, {
+    status, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' },
+  });
+}
+
 export default {
   async fetch(request, env) {
-    if (request.method !== 'GET' && request.method !== 'HEAD') return response(405, 'Method not allowed');
     const url = new URL(request.url);
     const host = url.hostname.toLowerCase();
     const shared = /^tar-sites\.[a-z0-9-]+\.workers\.dev$/.test(host);
+    const orderMatch = /^\/([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)\/order\/?$/.exec(url.pathname);
+    const hostOrder = !shared && /^\/order\/?$/.test(url.pathname);
+    if (request.method === 'POST' && (orderMatch || hostOrder)) {
+      // The public cart posts here; the worker forwards ids and counts to the harness, which
+      // prices from catalog truth. The harness URL is a var, never a client-supplied value.
+      if (!env.HARNESS_ORIGIN) return response(404, 'Not found');
+      try {
+        // Path mode carries the slug; a custom host resolves its workspace from D1.
+        const slug = orderMatch ? orderMatch[1] : (await env.CONTROL.withSession('first-primary').prepare("SELECT w.slug FROM hosts h JOIN workspaces w ON w.id=h.workspace WHERE h.name=? AND h.status='active' AND w.state='active' LIMIT 1").bind(host).first())?.slug;
+        if (!slug) return response(404, 'Site not found');
+        return await placeOrder(env, env.HARNESS_ORIGIN, slug, await request.formData());
+      } catch (error) {
+        console.error(JSON.stringify({ event: 'sites.order.error', message: String(error) }));
+        return orderPage('The order could not be placed. Please try again.', 503);
+      }
+    }
+    if (request.method !== 'GET' && request.method !== 'HEAD') return response(405, 'Method not allowed');
     if (shared && url.pathname === '/robots.txt') return new Response(request.method === 'HEAD' ? null : 'User-agent: *\nAllow: /\n', {
       headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' },
     });

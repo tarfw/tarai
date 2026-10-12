@@ -12,6 +12,7 @@ import { buildWorkspaceCanvas } from './registry/canvas.ts';
 import { posSummary, readPos } from './pos/store.ts';
 import { readProductContent } from './pos/content.ts';
 import { serveSitePreview } from './site/preview.ts';
+import { placeOrder, resolvePublicSite } from './site/checkout.ts';
 import { readDocument } from './site/adapt.ts';
 import { buildSite, defaultSite } from './site/build.ts';
 import { defaultBlueprint } from './site/blueprint.ts';
@@ -459,6 +460,23 @@ async function handle(request: Request, env: RuntimeEnv, ctx: ExecutionContext):
     return response(await suggestCapabilities(env.TYPESAFE_API_KEY, brief));
   }
   const publicSiteMatch = /^\/v1\/sites\/([a-z0-9-]+)(\/.*)?$/.exec(path);
+  const publicOrderMatch = /^\/v1\/sites\/([a-z0-9-]+)\/order$/.exec(path);
+  if (request.method === 'POST' && publicOrderMatch) {
+    // The published storefront posts the buyer's cart here through its own worker, which
+    // already resolved the slug; the harness re-resolves it so the endpoint is safe alone.
+    const body = await Effect.runPromise(parseJson(request));
+    const site = await resolvePublicSite(env.CONTROL, publicOrderMatch[1]);
+    const client = await Effect.runPromise(openWorkspaceDatabase(tursoEnv(env), site.databaseName, site.databaseHost));
+    try {
+      const idempotencyKey = request.headers.get('Idempotency-Key') || `web-${crypto.randomUUID()}`;
+      const placed = await placeOrder(client, site, {
+        slug: site.slug, lines: body.lines, name: body.name, phone: body.phone, note: body.note, extra: body.extra, key: idempotencyKey,
+      });
+      // The published storefront proxies this from its own worker, so no browser needs
+      // CORS here; a money endpoint stays same-origin only.
+      return new Response(JSON.stringify(placed), { status: 201, headers: jsonHeaders });
+    } finally { client.close(); }
+  }
   if (request.method === 'GET' && publicSiteMatch) {
     const siteSlug = publicSiteMatch[1];
     const wsRow = await env.CONTROL.prepare("SELECT * FROM workspaces WHERE slug=? AND state='active' LIMIT 1").bind(siteSlug).first<Record<string, unknown>>();

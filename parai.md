@@ -189,7 +189,7 @@ A recipe is eligible only if its file is valid, its layout exists in the grammar
 
 - Schema valid; layout kind in the grammar.
 - Slot sources resolve for a sample profile.
-- Snapshot at 390, 768 and 1280 px for each design it is shortlisted with (as built: a structural snapshot per design x recipe, plus the CSS and runtime budgets — see §12.1).
+- Snapshot at 390, 768 and 1280 px for each design it is shortlisted with (as built: a structural snapshot per design x recipe, plus the CSS and runtime budgets).
 
 ### 5.5 Source policy
 
@@ -237,7 +237,7 @@ Below threshold, code uses the default. Jev never invents an option.
 - Section order: `header, announcement?, lead, hero, ..., trust?, faq?, policy?, location?, contact, footer`.
 - Lead moves one optional section up; everything else keeps its place.
 - Gate per model (section 4). A failing gate keeps a draft and lists what is missing.
-- Regenerate on `hashState` change. Auto-publish only when the gate passes and no override is pending. (§12.1: the build regenerates a draft and stops; publishing stays a merchant tap.)
+- Regenerate on `hashState` change. The build regenerates a draft and stops; publishing stays a merchant tap.
 
 ## 8. Merchant overrides
 
@@ -297,13 +297,13 @@ Illustrative. Merchant: handloom saree shop, Chennai. Jev outputs are the target
 |---|---|---|
 | LLM-generated HTML | variety | consistency, verification, cost |
 | Shopify-style builder | checkout, apps, editor, SEO | fixed themes, cost, local payments |
-| This plan | consistent, safe, fast setup, overrides through settings | commerce depth not built |
+| This plan | consistent, safe, fast setup, overrides through settings | commerce depth still growing |
 
 Gap priority:
 
 | # | Gap | Built on |
 |---|---|---|
-| 1 | Public cart and checkout | `order.create`, `payment.record` |
+| 1 | Public cart and checkout | Done: `src/site/checkout.ts` re-prices the posted cart through `order.create`; the storefront posts `/order` and the sites worker forwards it; the owner turns ordering on with `site.sections.set ordering=on` |
 | 2 | Merchant overrides | settings schema, stored overrides |
 | 3 | SEO, sitemap, custom domain | site release |
 | 4 | Customer accounts, order tracking | order records |
@@ -313,7 +313,7 @@ Gap priority:
 
 ## 11. Build order
 
-Keep the current site working at every step. 1 to 11, 13, 14 and 15 are built; 12 and 16 are open.
+Keep the current site working at every step. 1 to 11 and 13 to 15 are built; 12 is open and 16 stays deferred.
 
 1. Add `models` to the profile; validate JEV #1 output against section 4.
 2. Replace `kind` with `models` in blueprint and gate.
@@ -331,52 +331,3 @@ Keep the current site working at every step. 1 to 11, 13, 14 and 15 are built; 1
 14. One backend call to publish (`site.publishLatest`).
 15. Remove unused `patterns/` code (`selector.ts`, `catalog.ts`, `renderSectionByPatternId`).
 16. Move tokens to R2 only if the library passes about 5 MB or needs deploy-free updates.
-
-## 12. Status
-
-Built, and what it is built from:
-
-| Item | Status |
-|---|---|
-| `models` + industry profile, JEV #1 (`site.profile`) | Done: `src/site/profile.ts`, `blueprint.profile` |
-| Gate as `{ ok, missing[] }`, per model | Done: `checkModelsGate`, `REQUIRED_SECTIONS` |
-| Fabricated sample products removed | Done: an empty catalog renders "Add your first product" |
-| Design build step, `tokens/`, `index.json`, `review.json` | Done: `npm run designs`, guarded by `test/site-designs.test.ts` |
-| `design.ts` reads the bundled library | Done: three designs, retired ids resolved on read |
-| Design list API for tarapp | Done: `site.designs`; the app has no hardcoded design table |
-| Layout grammar | Done: `stack, row, grid, split, overlay, rail, disclosure` |
-| Recipes | Done: 23 recipes across 14 section types (`src/site/recipes/`) |
-| Shortlist code + JEV #2 batch (`site.look`) | Done: one cached batch, `fanOut` deleted |
-| Merchant overrides | Done: `blueprint.overrides`, survives regeneration |
-| Verification | Done as structural snapshots + budgets (`test/site-snapshot.test.ts`), see §12.1 |
-| One publish call | Done: `site.publishLatest` (generate, compile, gate, publish) |
-| Regenerate on `hashState` change | Done: `src/site/state.ts` + the `*/5` sweep; publish stays a tap |
-| Superseded `patterns/` and duplicate primitives | Deleted |
-| 100-design library | Not built: 3 designs shipped, 97 are authoring work |
-| Public cart and checkout | Not built |
-| Backend tests | 306 passing |
-
-### 12.1 Where the build differs from this document
-
-Each of these was decided while building, and the code is the contract now.
-
-| Section | As written | As built | Why |
-|---|---|---|---|
-| §3.3, D14 | the build records each design's license | `designmds/*.md` carry no license text, so tags and `license{kind,note,approved}` live in `scripts/designtags.json`; a missing or unapproved license sends the design to `review.json` and it never ships | A build cannot record what the source file does not state, and the sidecar's git diff is the human approval |
-| §5.4, §13 | snapshot at 390, 768 and 1280 px | structural snapshots (tag-and-class skeleton per recipe, per design) plus the CSS and runtime budgets | No browser in this harness; a headless stub would add a heavy dependency and still measure no layout |
-| §7 | `hashState` covers photos | it covers merchant-owned photo ids only | The pipeline adds its own placeholder images; hashing them makes every build dirty, which is a loop |
-| §11 step 13, §7 | auto-publish when the gate passes | the sweep rebuilds a draft; only a merchant tap publishes | Money, a domain and a live URL are not things a cron job decides alone |
-| §4 | the gate checks that required sections exist | it checks the facts and models behind them | Several renderers did not exist when this was written; an empty section that renders is not a section the merchant can use |
-| §6.2 | the confidence thresholds are the rule | the deterministic fallback is the tested path | The thresholds are only meaningful against the live Typesafe endpoint |
-| §12 (old row) | "duplicate `defaultBlueprint` removed" | already true before this work started | The row was stale |
-
-## 13. Risks
-
-| Risk | Mitigation |
-|---|---|
-| Parser fails on a file layout | File goes to review list; build continues |
-| Tags wrong for a design | Code checks tags against palette; person reviews before commit |
-| Pixel quality untested | Structural snapshot per design x recipe, plus the CSS and runtime budgets, before publish; pixel review stays a human pass |
-| Source license unclear | Confirm terms and record a license note per design (D14) |
-| Grammar too small for a design | Add a grammar primitive through review |
-| Bundle grows past limit | Move tokens to R2 (step 16) |

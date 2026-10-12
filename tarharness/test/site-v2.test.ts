@@ -60,7 +60,6 @@ function document(overrides: Partial<SiteDocument> = {}): SiteDocument {
     locale: 'en', timezone: 'Asia/Kolkata', currency: 'INR',
     design: structuredClone(DEFAULT_DESIGN),
     assets: [structuredClone(asset)],
-    components: [],
     pages: [{
       id: 'home', path: '/', title: 'Home', meta: { description: 'Wood fired pizza' },
       sections: [
@@ -79,7 +78,7 @@ function document(overrides: Partial<SiteDocument> = {}): SiteDocument {
         { id: 'footer', purpose: 'chrome', layout: { kind: 'flow' }, nodes: [{ id: 'foot', kind: 'footer', props: { brand: 'Slice House', links: [] } }] },
       ],
     }],
-    journeys: [], redirects: [], locks: [], policy: {},
+    redirects: [], locks: [], policy: {},
     blueprint: defaultBlueprint(['food'], 1),
     ...overrides,
   };
@@ -101,17 +100,6 @@ describe('site document v2 validation', () => {
     badToken.pages[0].sections[1].nodes[0].style = { base: { color: 'token:color.neon' } };
     expect(collectIssues(badToken).some((issue) => issue.message.includes('Unknown colour token'))).toBe(true);
 
-    const missingComponent = document();
-    missingComponent.pages[0].sections[1].nodes.push({ id: 'promo', kind: 'card', props: {}, component: 'missing', children: [{ id: 'promo-a', kind: 'text', props: { text: 'x' } }] });
-    expect(collectIssues(missingComponent).some((issue) => issue.message.includes('Unknown component'))).toBe(true);
-
-    const cycle = document();
-    cycle.components = [
-      { id: 'a', name: 'A', slots: [], variants: {}, nodes: [{ id: 'card-a', kind: 'card', props: {}, component: 'b', children: [{ id: 'a-inner', kind: 'text', props: { text: 'a' } }] }] },
-      { id: 'b', name: 'B', slots: [], variants: {}, nodes: [{ id: 'card-b', kind: 'card', props: {}, component: 'a', children: [{ id: 'b-inner', kind: 'text', props: { text: 'b' } }] }] },
-    ];
-    expect(collectIssues(cycle).some((issue) => issue.message.includes('cycle'))).toBe(true);
-
     const twoHeadings = document();
     twoHeadings.pages[0].sections[1].nodes.push({ id: 'hero-title-2', kind: 'heading', props: { text: 'Another', level: 1 } });
     expect(collectIssues(twoHeadings).some((issue) => issue.message.includes('exactly one level-one heading'))).toBe(true);
@@ -121,7 +109,7 @@ describe('site document v2 validation', () => {
     expect(collectIssues(duplicateIds).some((issue) => issue.message.includes('unique'))).toBe(true);
   });
 
-  it('validates bindings, journeys, redirects and locks', () => {
+  it('validates bindings, redirects and locks', () => {
     const bound = document();
     bound.pages[0].sections.push({
       id: 'catalog', purpose: 'collection', layout: { kind: 'grid' },
@@ -137,26 +125,6 @@ describe('site document v2 validation', () => {
     const orphanBinding = structuredClone(bound);
     orphanBinding.pages[0].sections[3].nodes = [{ id: 'text', kind: 'text', props: { text: 'no collection' } }];
     expect(collectIssues(orphanBinding).some((issue) => issue.message.includes('collection node'))).toBe(true);
-
-    const journey = document();
-    journey.pages[0].sections.push({
-      id: 'enquiry', purpose: 'enquiry', layout: { kind: 'stack' },
-      nodes: [{ id: 'form', kind: 'form', props: { journey: 'enquiry' } }],
-    });
-    journey.policy = { publicEnquiry: true };
-    journey.journeys = [{
-      id: 'enquiry', title: 'Enquiry', target: 'record.create', version: 1, input: { type: 'enquiry' }, outcome: 'Appears in Now',
-      enabled: true, kind: 'enquiry', fields: [{ key: 'name', label: 'Name', kind: 'text', required: true }],
-    }];
-    expect(() => validateDocument(journey)).not.toThrow();
-
-    const badTarget = structuredClone(journey);
-    badTarget.journeys[0].target = 'admin.delete';
-    expect(collectIssues(badTarget).some((issue) => issue.message.includes('registered target'))).toBe(true);
-
-    const disabledPolicy = structuredClone(journey);
-    disabledPolicy.policy = {};
-    expect(collectIssues(disabledPolicy).some((issue) => issue.message.includes('policy enables'))).toBe(true);
 
     const redirect = document();
     redirect.redirects = [{ from: '/old', to: '/catalog', status: 308 }];
@@ -339,6 +307,35 @@ describe('site v2 compiler', () => {
     expect(detail).toContain('Garlic Bread');
     const sitemap = String(compiled.files.find((file) => file.path === '/sitemap.xml')?.body || '');
     expect(sitemap).toContain('<loc>https://slice.example.test/catalog/garlic-bread</loc>');
+  });
+
+  it('serves a public cart page for priced items, with a progressive form and no client prices', async () => {
+    const doc = document();
+    doc.pages[0].sections.push({
+      id: 'catalog', purpose: 'catalog', layout: { kind: 'grid' },
+      nodes: [{ id: 'items', kind: 'collection', props: { title: 'Menu', slot: 'items', items: [
+        { id: 'v_garlic', slug: 'garlic-bread', title: 'Garlic Bread', price: 15000, currency: 'INR' },
+      ] } }],
+      bindings: [{ id: 'b', slot: 'items', query: 'catalog.public', version: 1, access: 'public', freshness: 300, params: { records: ['v_garlic'], channel: 'default' } }],
+    });
+    const compiled = await compileDocument(doc, { origin: 'https://slice.example.test' });
+    const cart = compiled.files.find((file) => file.path === '/order/index.html');
+    expect(cart).toBeTruthy();
+    const body = String(cart?.body || '');
+    // The buyer sends variant ids and counts; the page carries no price input to tamper with.
+    expect(body).toContain('name="item" value="v_garlic"');
+    expect(body).toContain('name="quantity"');
+    expect(body).toContain('method="post" action="./"');
+    expect(body).not.toMatch(/name="price"/);
+    // The cart is reachable from the storefront nav.
+    const home = String(compiled.files.find((file) => file.path === '/index.html')?.body || '');
+    expect(home).toContain('href="/order/"');
+    expect(String(compiled.files.find((file) => file.path === '/sitemap.xml')?.body || '')).toContain('<loc>https://slice.example.test/order</loc>');
+
+    // A store with nothing priced has no cart page at all.
+    const bare = document();
+    const none = await compileDocument(bare, { origin: 'https://slice.example.test' });
+    expect(none.files.some((file) => file.path === '/order/index.html')).toBe(false);
   });
 });
 

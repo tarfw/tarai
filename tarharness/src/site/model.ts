@@ -8,7 +8,6 @@
  */
 
 import { unavailable } from '../errors.ts';
-import type { Journey } from './document.ts';
 
 export const SITE_MODEL_FALLBACKS = [
   '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
@@ -261,17 +260,4 @@ Return JSON: { "text": string } within ${input.limit || 300} characters.`,
       return next ? next : null;
     },
   });
-}
-
-/** Journeys are declared by code, never invented by the model. */
-export function defaultJourney(kind: Journey['kind'] = 'enquiry'): Journey {
-  return {
-    id: 'enquiry', title: 'Enquiry', target: 'record.create', version: 1,
-    input: { type: 'enquiry' }, outcome: 'Appears in Now', enabled: false, kind,
-    fields: [
-      { key: 'name', label: 'Name', kind: 'text', required: true, max: 120 },
-      { key: 'email', label: 'Email', kind: 'email', required: true, max: 200 },
-      { key: 'message', label: 'Message', kind: 'textarea', required: true, max: 1000 },
-    ],
-  };
 }

@@ -1,6 +1,6 @@
 /**
  * Site v2 validation: node kinds, props, styles, references, cycles, depth,
- * URLs, bindings, journeys, locks and accessibility essentials.
+ * URLs, bindings, locks and accessibility essentials.
  *
  * `collectIssues` returns every finding; `validateDocument` throws on the first
  * blocking finding so drafts always stay structurally sound. Quality gates that
@@ -12,7 +12,7 @@ import { auditDesign, isTokenRef, resolveToken, TONE_KEYS, type Design } from '.
 import { COMMERCE_MODELS } from './blueprint.ts';
 import {
   ALIGN_VALUES, ASPECT_VALUES, BORDER_VALUES, DOCUMENT_VERSION, DENSITY_VALUES, EASING_VALUES,
-  JOURNEY_TARGETS, LAYOUT_COLLAPSES, LAYOUT_HEIGHTS, LAYOUT_RATIOS, LIMITS, MASK_VALUES, NODE_KINDS, PAD_VALUES, PUBLIC_TYPES, RESERVED_PATHS,
+  LAYOUT_COLLAPSES, LAYOUT_HEIGHTS, LAYOUT_RATIOS, LIMITS, MASK_VALUES, NODE_KINDS, PAD_VALUES, PUBLIC_TYPES, RESERVED_PATHS,
   SECTION_LAYOUTS, SHADOW_VALUES, SIZE_VALUES, STYLE_KEYS, WIDTH_VALUES,
   type Binding, type Node, type Section, type SiteDocument, type Style, type StyleSet,
 } from './document.ts';
@@ -146,13 +146,6 @@ function checkNodes(issues: Issue[], doc: SiteDocument, nodes: unknown, path: st
     if (!(NODE_KINDS as readonly string[]).includes(String(node.kind))) { issues.push({ level: 'blocking', area: 'node', path: at, message: `Unknown node kind ${String(node.kind)}.` }); return; }
     if (node.kind === 'collection') pageIds.collection.push(text(node.id));
     checkStyle(issues, doc.design, node.style, `${at}.style`);
-    if (node.component !== undefined) {
-      const component = doc.components.find((entry) => entry.id === node.component);
-      if (!component) issues.push({ level: 'blocking', area: 'component', path: at, message: `Unknown component ${String(node.component)}.` });
-      else if (node.variant !== undefined && !Object.hasOwn(component.variants, node.variant)) issues.push({ level: 'blocking', area: 'component', path: at, message: `Unknown variant ${String(node.variant)} for ${component.id}.` });
-    } else if (node.variant !== undefined) {
-      issues.push({ level: 'blocking', area: 'component', path: at, message: 'A variant needs a component reference.' });
-    }
     const props = object(node.props);
     switch (node.kind) {
       case 'heading':
@@ -190,9 +183,7 @@ function checkNodes(issues: Issue[], doc: SiteDocument, nodes: unknown, path: st
         break;
       case 'button': {
         checkText(issues, props.label, 120, 'Button label', at, true);
-        const journey = typeof props.journey === 'string' ? doc.journeys.find((entry) => entry.id === props.journey) : undefined;
-        if (props.journey !== undefined && !journey) issues.push({ level: 'blocking', area: 'journey', path: at, message: 'Buttons link to a declared journey.' });
-        if (journey === undefined && !isSafeHref(props.href)) issues.push({ level: 'blocking', area: 'node', path: at, message: 'Button nodes need a safe href or a journey.' });
+        if (!isSafeHref(props.href)) issues.push({ level: 'blocking', area: 'node', path: at, message: 'Button nodes need a safe href.' });
         break;
       }
       case 'collection': {
@@ -228,12 +219,6 @@ function checkNodes(issues: Issue[], doc: SiteDocument, nodes: unknown, path: st
       case 'search':
         if (typeof props.target !== 'string') issues.push({ level: 'blocking', area: 'node', path: at, message: 'Search needs a collection target.' });
         break;
-      case 'form': {
-        const journey = doc.journeys.find((entry) => entry.id === props.journey);
-        if (!journey) issues.push({ level: 'blocking', area: 'journey', path: at, message: 'Form nodes reference a declared journey.' });
-        else if (!journey.enabled) issues.push({ level: 'advisory', area: 'journey', path: at, message: `Journey ${journey.id} is disabled and will not render.` });
-        break;
-      }
       case 'flex':
       case 'grid':
       case 'stack':
@@ -286,40 +271,6 @@ function checkBindings(issues: Issue[], section: Section, path: string): void {
   });
 }
 
-function componentGraph(doc: SiteDocument): Map<string, string[]> {
-  const graph = new Map<string, string[]>();
-  const visit = (nodes: Node[]): string[] => nodes.flatMap((node) => [
-    ...(typeof node.component === 'string' ? [node.component] : []),
-    ...(Array.isArray(node.children) ? visit(node.children) : []),
-  ]);
-  for (const component of doc.components) graph.set(component.id, visit(component.nodes));
-  return graph;
-}
-
-function checkComponents(issues: Issue[], doc: SiteDocument): void {
-  if (doc.components.length > LIMITS.components) issues.push({ level: 'blocking', area: 'component', path: 'components', message: `A site holds at most ${LIMITS.components} components.` });
-  const ids = new Set<string>();
-  for (const component of doc.components) {
-    if (!ID.test(text(component.id)) || ids.has(component.id)) issues.push({ level: 'blocking', area: 'component', path: `component.${component.id}`, message: 'Component id must be unique and lowercase.' });
-    ids.add(component.id);
-    checkText(issues, component.name, 80, 'Component name', `component.${component.id}`, true);
-    if (!Array.isArray(component.slots) || component.slots.some((slot) => !ID.test(String(slot)))) issues.push({ level: 'blocking', area: 'component', path: `component.${component.id}`, message: 'Component slots must be lowercase names.' });
-    const nodeIds = new Set<string>();
-    checkNodes(issues, doc, component.nodes, `component.${component.id}.nodes`, nodeIds, 1, { node: new Set(), collection: [] });
-  }
-  const graph = componentGraph(doc);
-  const state = new Map<string, 'visiting' | 'done'>();
-  const walk = (id: string, depth: number): void => {
-    if (depth > LIMITS.depth) { issues.push({ level: 'blocking', area: 'component', path: `component.${id}`, message: 'Component nesting is too deep.' }); return; }
-    if (state.get(id) === 'visiting') { issues.push({ level: 'blocking', area: 'component', path: `component.${id}`, message: 'Component references form a cycle.' }); return; }
-    if (state.get(id) === 'done') return;
-    state.set(id, 'visiting');
-    for (const next of graph.get(id) || []) if (graph.has(next)) walk(next, depth + 1);
-    state.set(id, 'done');
-  };
-  for (const id of graph.keys()) walk(id, 1);
-}
-
 export function collectIssues(doc: SiteDocument): Issue[] {
   const issues: Issue[] = [];
   if (!doc || doc.schema !== DOCUMENT_VERSION) { issues.push({ level: 'blocking', area: 'document', path: 'schema', message: `Site document must use schema ${DOCUMENT_VERSION}.` }); return issues; }
@@ -362,8 +313,6 @@ export function collectIssues(doc: SiteDocument): Issue[] {
     if (asset.alt !== undefined) checkText(issues, asset.alt, 300, 'Alt text', at, false);
   });
 
-  checkComponents(issues, doc);
-
   if (!Array.isArray(doc.pages) || !doc.pages.length || doc.pages.length > LIMITS.pages) { issues.push({ level: 'blocking', area: 'page', path: 'pages', message: `A site holds 1 to ${LIMITS.pages} pages.` }); return issues; }
   const pageIds = new Set<string>();
   const paths = new Set<string>();
@@ -402,11 +351,6 @@ export function collectIssues(doc: SiteDocument): Issue[] {
         checkNodes(issues, doc, section.nodes, `${sat}.nodes`, nodeIds.node, 1, nodeIds);
       }
       checkBindings(issues, section, sat);
-      for (const action of section.actions || []) {
-        checkText(issues, action.label, 120, 'Action label', sat, true);
-        const journey = doc.journeys.find((entry) => entry.id === action.journey || entry.id === action.target);
-        if (!journey && !doc.journeys.some((entry) => entry.target === action.target)) issues.push({ level: 'blocking', area: 'journey', path: sat, message: `Action target ${text(action.target)} is not a declared journey.` });
-      }
     });
     const headings = page.sections.flatMap((section) => section.nodes.filter((node) => node.kind === 'heading'));
     const levelOne = headings.filter((node) => Number(object(node.props).level) === 1);
@@ -466,42 +410,14 @@ export function collectIssues(doc: SiteDocument): Issue[] {
     if (paths.has(redirect.from)) issues.push({ level: 'blocking', area: 'redirect', path: at, message: 'A redirect source cannot also be a page.' });
   });
 
-  const journeyIds = new Set<string>();
-  doc.journeys.forEach((journey, index) => {
-    const at = `journeys[${index}]`;
-    if (!ID.test(text(journey.id)) || journeyIds.has(journey.id)) issues.push({ level: 'blocking', area: 'journey', path: at, message: 'Journey id must be unique and lowercase.' });
-    journeyIds.add(text(journey.id));
-    checkText(issues, journey.title, 120, 'Journey title', at, true);
-    const targets = JOURNEY_TARGETS[journey.kind];
-    if (!targets || !targets.includes(text(journey.target))) issues.push({ level: 'blocking', area: 'journey', path: at, message: `${journey.kind} journeys use a registered target.` });
-    if (!Array.isArray(journey.fields) || !journey.fields.length || journey.fields.length > 12) issues.push({ level: 'blocking', area: 'journey', path: at, message: 'Journeys hold 1 to 12 fields.' });
-    else {
-      const keys = new Set<string>();
-      journey.fields.forEach((field, fieldIndex) => {
-        const fat = `${at}.fields[${fieldIndex}]`;
-        if (!/^[a-z][a-z0-9]{0,39}$/.test(text(field.key)) || keys.has(field.key)) issues.push({ level: 'blocking', area: 'journey', path: fat, message: 'Field key must be a unique lowercase word.' });
-        keys.add(text(field.key));
-        checkText(issues, field.label, 80, 'Field label', fat, true);
-        if (!['text', 'email', 'tel', 'textarea', 'number', 'date', 'select'].includes(field.kind)) issues.push({ level: 'blocking', area: 'journey', path: fat, message: 'Field kind is invalid.' });
-        if (field.kind === 'select' && (!Array.isArray(field.options) || !field.options.length || field.options.length > 20)) issues.push({ level: 'blocking', area: 'journey', path: fat, message: 'Select fields hold 1 to 20 options.' });
-        if (field.max !== undefined && (!Number.isSafeInteger(field.max) || field.max < 10 || field.max > 2000)) issues.push({ level: 'blocking', area: 'journey', path: fat, message: 'Field limit must be 10 to 2000 characters.' });
-      });
-    }
-    if (journey.limit !== undefined && (!Number.isSafeInteger(journey.limit) || journey.limit < 1 || journey.limit > 600)) issues.push({ level: 'blocking', area: 'journey', path: at, message: 'Journey limit must be 1 to 600 submissions an hour.' });
-    if (journey.enabled && journey.kind === 'order' && !doc.policy.publicOrdering) issues.push({ level: 'blocking', area: 'journey', path: at, message: 'Ordering stays disabled until the workspace policy enables it.' });
-    if (journey.enabled && journey.kind !== 'order' && !doc.policy.publicEnquiry) issues.push({ level: 'blocking', area: 'journey', path: at, message: 'Enquiries stay disabled until the workspace policy enables them.' });
-  });
-  if (doc.policy.publicEnquiry && !doc.journeys.some((journey) => journey.enabled && (journey.kind === 'enquiry' || journey.kind === 'booking'))) issues.push({ level: 'advisory', area: 'policy', path: 'policy', message: 'Public enquiry is enabled without an enabled enquiry journey.' });
-
   const lockIds = new Set<string>(['brand']);
   for (const page of doc.pages) for (const section of page.sections) {
     lockIds.add(section.id);
     const collect = (nodes: Node[]) => nodes.forEach((node) => { lockIds.add(node.id); if (node.children) collect(node.children); });
     collect(section.nodes);
   }
-  for (const component of doc.components) lockIds.add(component.id);
   for (const lock of doc.locks) {
-    if (!['section', 'node', 'token', 'component', 'brand'].includes(lock.kind)) issues.push({ level: 'blocking', area: 'lock', path: `lock.${lock.target}`, message: 'Lock kind is invalid.' });
+    if (!['section', 'node', 'token', 'brand'].includes(lock.kind)) issues.push({ level: 'blocking', area: 'lock', path: `lock.${lock.target}`, message: 'Lock kind is invalid.' });
     const known = lock.kind === 'token' ? isTokenRef(lock.target) && resolveToken(doc.design, lock.target) !== undefined : lockIds.has(lock.target);
     if (!known) issues.push({ level: 'blocking', area: 'lock', path: `lock.${lock.target}`, message: `Locked target ${lock.target} does not exist.` });
     if (!Number.isSafeInteger(lock.at)) issues.push({ level: 'blocking', area: 'lock', path: `lock.${lock.target}`, message: 'Lock timestamp is invalid.' });
