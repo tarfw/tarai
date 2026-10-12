@@ -325,6 +325,14 @@ export default function SiteScreen({
     );
   }, [applyChange]);
 
+  const handleToggleOrdering = useCallback((on: boolean) => {
+    void applyChange(
+      [{ op: 'set_policy', value: { publicOrdering: on } }],
+      on ? 'Turning online orders on...' : 'Turning online orders off...',
+      on ? 'Online orders turned on. Tap Publish to update your live store.' : 'Online orders turned off.',
+    );
+  }, [applyChange]);
+
   // Set or clear notice banner
   const handleSaveNotice = useCallback(async () => {
     if (!slug || !siteId || busy) return;
@@ -638,7 +646,29 @@ export default function SiteScreen({
 
             <View style={styles.divider} />
 
-            {/* 2. SECTIONS LIST: each row is a part of the store the owner may switch on */}
+            {/* 2. ONLINE ORDERS POLICY */}
+            <View style={styles.sectionBlock}>
+              <View style={styles.sectionHeaderRow}>
+                <Text style={styles.sectionLabel}>ONLINE ORDERS</Text>
+              </View>
+              <View style={[styles.settingRow, { borderBottomWidth: 0, paddingVertical: 4 }]}>
+                <View style={styles.settingText}>
+                  <Text style={styles.settingLabel}>Accept orders on storefront</Text>
+                  <Text style={styles.settingHint}>
+                    Customers can build a cart and submit orders directly to your shop.
+                  </Text>
+                </View>
+                <Switch
+                  value={Boolean(site?.policy?.publicOrdering)}
+                  disabled={busy}
+                  onValueChange={handleToggleOrdering}
+                />
+              </View>
+            </View>
+
+            <View style={styles.divider} />
+
+            {/* 3. SECTIONS LIST: each row is a part of the store the owner may switch on */}
             <View style={styles.sectionsContainer}>
               <Text style={styles.sectionLabel}>WHAT CUSTOMERS SEE</Text>
               <View style={styles.sectionsList}>
