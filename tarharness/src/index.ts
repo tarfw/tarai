@@ -6,7 +6,7 @@ import { ensureNowDatabase, mintNowSyncToken, openWorkspaceDatabase, provisionWo
 import { executeGateway, type GatewayRequest } from './gateway/actions.ts';
 import { HarnessError, badRequest, forbidden, notFound, unavailable } from './errors.ts';
 import type { AccessContext, RecordItem } from './types.ts';
-import { actionCatalog, interfaceCatalog } from './registry/catalog.ts';
+import { actionCatalog, findAction, interfaceCatalog } from './registry/catalog.ts';
 import { moduleForAction, readCapabilities, readWorkspaceTools } from './registry/tools.ts';
 import { buildWorkspaceCanvas } from './registry/canvas.ts';
 import { posSummary, readPos } from './pos/store.ts';
@@ -1009,10 +1009,11 @@ async function handle(request: Request, env: RuntimeEnv, ctx: ExecutionContext):
     }
     if (request.method === 'GET' && nested === 'canvas') return response({ cards: await workspaceCanvas(client, current.member) });
     if (request.method === 'GET' && nested === 'definitions') return response({ definitions: await listDefinitions(client) });
-    const actionMatch = /^actions\/([a-z.]+)$/.exec(nested);
+    const actionMatch = /^actions\/([A-Za-z0-9_.-]+)$/.exec(nested);
     if (request.method === 'POST' && actionMatch) {
       const key = request.headers.get('Idempotency-Key') || ''; const input = await Effect.runPromise(parseJson(request));
-      const actionId = actionMatch[1] as GatewayRequest['actionId'];
+      const registered = findAction(actionMatch[1]);
+      const actionId = (registered?.id || actionMatch[1]) as GatewayRequest['actionId'];
       if (actionId === 'routine.save') {
         const allowed = await Effect.runPromise(new ControlStore(env.CONTROL).listAccess(current.identity));
         const target = allowed.find((item) => item.workspace.id === input.workspace || item.workspace.slug === input.workspace);

@@ -157,7 +157,7 @@ export function executeGateway(client: Client, context: AccessContext, request: 
       if (request.actionId === 'site.designs') return executeSiteDesigns(client, context, request.input);
       if (request.actionId === 'site.compile') return executeSiteCompile(client, services.siteReleases, context, request.input, request.idempotencyKey, hash, services.publication, services.siteDomain, services.productContent);
       if (request.actionId === 'site.publish') return executeSitePublish(client, services.siteReleases, context, request.input, request.idempotencyKey, hash, services.publication, services.siteDomain, services.productContent);
-      if (request.actionId === 'site.publishLatest') return executeSitePublishLatest(client, context, request.input, request.idempotencyKey, hash, {
+      if (request.actionId === 'site.publishLatest' || request.actionId === 'site.publishlatest') return executeSitePublishLatest(client, context, request.input, request.idempotencyKey, hash, {
         control: services.publication, domain: services.siteDomain, releases: services.siteReleases, content: services.productContent,
         ai: services.ai, typesafe: services.typesafe, model: services.siteModel, groqApiKey: services.groqApiKey, pexelsApiKey: services.pexelsApiKey,
       });

@@ -454,5 +454,6 @@ export const actionCatalog = [
 export type ActionId = typeof actionCatalog[number]['id'];
 
 export function findAction(actionId: string): ActionDefinition | undefined {
-  return actionCatalog.find((action) => action.id === actionId);
+  const target = actionId.toLowerCase();
+  return actionCatalog.find((action) => action.id === actionId || action.id.toLowerCase() === target);
 }

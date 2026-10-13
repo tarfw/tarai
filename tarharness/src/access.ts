@@ -75,7 +75,7 @@ const toolActionMap: Record<string, readonly string[]> = {
   contact: ['contact.create'],
   human: ['task.create', 'task.complete'],
   flow: ['flow.start', 'flow.advance'],
-  site: ['site.generate', 'site.compile', 'site.publish', 'site.edit', 'site.scout', 'site.checks'],
+  site: ['site.generate', 'site.compile', 'site.publish', 'site.publishLatest', 'site.edit', 'site.scout', 'site.checks'],
   inbox: ['task.complete'],
   chat: ['contact.create'],
   whatsapp: ['invoice.issue'],
