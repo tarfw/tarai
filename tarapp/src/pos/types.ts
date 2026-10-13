@@ -17,9 +17,12 @@ export interface CartLine { product: PosRecord; quantity: number }
 export interface SaleLine { productId: string; title: string; quantity: number; price: number; discount: number; tax: number; total: number }
 export function cartTotals(cart: CartLine[], discountBps: number) {
   return cart.reduce((sum, line) => {
-    const gross = Number(line.product.data.price) * line.quantity;
-    const discount = Math.round(gross * discountBps / 10000);
-    const tax = Math.round((gross - discount) * Number(line.product.data.taxBps) / 10000);
+    const unitPrice = Number(line.product.data.price) || 0;
+    const gross = unitPrice * line.quantity;
+    const rate = Number.isFinite(discountBps) ? discountBps : 0;
+    const discount = Math.round(gross * rate / 10000);
+    const taxRate = Number(line.product.data.taxBps) || 0;
+    const tax = Math.round((gross - discount) * taxRate / 10000);
     return { subtotal: sum.subtotal + gross, discount: sum.discount + discount, tax: sum.tax + tax, total: sum.total + gross - discount + tax };
   }, { subtotal: 0, discount: 0, tax: 0, total: 0 });
 }

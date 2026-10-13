@@ -193,7 +193,7 @@ async function mutate(db: Transaction, context: AccessContext, action: string, i
       if (quantity > Number(product.data.stock)) throw conflict('Not enough stock for ' + product.title + '.');
       const gross = integer(Number(product.data.price) * quantity, 'Line total');
       const lineDiscount = Math.round(gross * discountBps / 10000);
-      const lineTax = Math.round((gross - lineDiscount) * Number(product.data.taxBps) / 10000);
+      const lineTax = Math.round((gross - lineDiscount) * (Number(product.data.taxBps) || 0) / 10000);
       subtotal += gross; discount += lineDiscount; tax += lineTax;
       const prior = Array.isArray(current?.data.lines) ? current.data.lines.map(object).find((item) => String(item.productId || item.variant) === product.id) : null;
       lines.push({ productId: product.id, title: product.title, quantity, price: product.data.price, discount: lineDiscount, tax: lineTax, total: gross - lineDiscount + lineTax, status: text(prior?.status, 40) || 'pending' });
@@ -360,7 +360,7 @@ async function mutate(db: Transaction, context: AccessContext, action: string, i
       if (quantity > Number(product.data.stock)) throw conflict('Not enough stock for ' + product.title + '.');
       const gross = integer(Number(product.data.price) * quantity, 'Line total');
       const lineDiscount = Math.round(gross * discountBps / 10000);
-      const lineTax = Math.round((gross - lineDiscount) * Number(product.data.taxBps) / 10000);
+      const lineTax = Math.round((gross - lineDiscount) * (Number(product.data.taxBps) || 0) / 10000);
       subtotal += gross; discount += lineDiscount; tax += lineTax;
       const saved = Array.isArray(draft?.data.lines) ? draft.data.lines.map(object).find((item) => item.productId === product.id) : undefined;
       lines.push({ productId: product.id, title: product.title, quantity, price: product.data.price, discount: lineDiscount, tax: lineTax, total: gross - lineDiscount + lineTax, status: text(saved?.status, 40) || 'pending' });
