@@ -254,7 +254,7 @@ Same workspace, fewer cards. Revenue totals, price editing, and site studio are 
 
 ## 4. The 18 Canonical Tools as Canvas Cards
 
-All 18 stay as individual cards (no merges). All capabilities from `business.md` map to these cards + one `records` table.
+All 18 stay as individual cards (no merges). Every business capability maps to these cards + one `records` table (see Section 5).
 
 | Tool ID | Panel Name | Kind | Reach | Glance Metrics | Primary Action (Canvas) |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -281,7 +281,154 @@ All 18 stay as individual cards (no merges). All capabilities from `business.md`
 
 ---
 
-## 5. Flows on Canvas
+## 5. The Whole Business on Cards (14 Stages, 110 Capabilities)
+
+TAR covers every ERP capability with **5 primitives** — no new tables per trade:
+
+| Primitive | Plain Meaning | Example |
+| :--- | :--- | :--- |
+| **Tool Card** | 1-tap panel with 2 numbers + 1 action | `pos`, `register`, `order` |
+| **Flow** | Ordered resumable checklist | Closing, Stocktake, Payroll Run |
+| **Record** | Row in one `records` table, typed `data` | `type='item'`, `type='stock'`, `type='recipe'` |
+| **Posting** | Auto balanced debit/credit row | Sale: Debit Cash · Credit Revenue |
+| **Projection** | Read-only report (SQL / Jev) | P&L, GST JSON, demand forecast |
+
+### All 110 Capabilities → Cards Map
+
+| Stage | Capabilities | Lives in | Key Actions |
+| :--- | :--- | :--- | :--- |
+| **Plan** (4) | Forecast, S&OP, Budgets, MRP | Projections + Flows | `forecast.generate`, `plan.mrp` |
+| **Source** (10) | Suppliers, RFQ, PO, GRN, Landed Cost, AP, Returns | `purchase`, `contact` | `purchase.create`, `.receive`, `.return` |
+| **Stock** (10) | Ledger, Locations, Counts, Transfers, Batches, Packing | `inventory` | `stock.adjust`, `stock.transfer` |
+| **Make** (7) | BOM, Work Orders, Scheduling, Scrap, QC, Costing | `recipe` record + Flow | `production.start`, `.complete` |
+| **Catalog** (4) | Items, Variants, Units, Channel Price Lists | `item` | `catalog.item.save`, `price.set` |
+| **Sell** (10) | POS, Register, Print, Offline, Web Store, Offers | `pos`, `register`, `site` | `pos.checkout`, `pos.register.close` |
+| **Order** (7) | Quotes, Orders, Reservations, GST Invoice, Khata, Returns | `order`, `invoice` | `order.create`, `.fulfill`, `invoice.issue` |
+| **Money** (16) | Ledger, AP/AR, Bank Rec, Expenses, GST, Assets, P&L | Postings (auto) | `payment.record`, `expense.record`, `period.close` |
+| **People** (7) | Staff, Roles, Shifts, Attendance, Payroll | `members` + Flow | `attendance.record`, `payroll.run` |
+| **Serve** (9) | Leads, Pipeline, Tickets, Bookings, Time Billing | `contact` | `contact.create`, `booking.create`, `task.create` |
+| **Move** (5) | Carriers, Routes, POD, Fleet, Trips | `order` | `order.fulfill`, `trip.complete` |
+| **Comply** (4) | QC, Licenses, Statutory Dates, Document Vault | Records + R2 | `task.create` + expiry alerts |
+| **Comms** (5) | Tasks, Flows, WhatsApp API, Telegram Alerts | `inbox`, `whatsapp`, `telegram` | `task.complete`, `flow.start` |
+| **Manage** (12) | Dashboards, Approvals, Branches, Backups, Settings | Business Manager screen | `buildWorkspaceCanvas` |
+
+### The 5 Laws (Every Commit Obeys)
+
+```text
+LAW 1  Balanced books      Every event writes matching debits & credits
+LAW 2  Stock never negative Available = Onhand - Reserved ≥ 0
+LAW 3  Nothing is erased   Every change appends who/when/what changed
+LAW 4  No table bloat      New trade = new record type, never a new table
+LAW 5  Owner safety floor  Money or customer messages need one confirm
+```
+
+### Business Manager Screen (Manage Stage — One Screen for All 14 Stages)
+
+Owner taps the Manage card (or `⚙` in header) to see the full business:
+which stages are live, what Jev suggests to enable, and every deep business
+action — all in one place. Zero settings hunting.
+
+```text
++-------------------------------------------------------------+
+| ‹ Back      Business Manager · Aambal Neyvagam      [Done]  |
++-------------------------------------------------------------+
+| 14 STAGES · 9 ACTIVE · Jev suggests 2 more for handloom     |
+|                                                             |
+| ✓ SELL        Counter · Register · Store          [ Open ]  |
+| ✓ STOCK       Godown stock, batches               [ Open ]  |
+| ✓ SOURCE      POs, GRN, supplier khata            [ Open ]  |
+| ✓ CATALOG     Items, prices per channel           [ Open ]  |
+| ✓ ORDER       Orders, GST invoices, dispatch      [ Open ]  |
+| ✓ MONEY       Ledger, P&L, GST return   [ View Health › ]   |
+| ✓ PEOPLE      Shifts, attendance, payroll         [ Open ]  |
+| ✓ COMMS       Inbox, WhatsApp bills, alerts       [ Open ]  |
+| ○ MAKE        BOM & weaving runs        [ Jev: Enable ]     |
+| ○ PLAN        Demand forecast & MRP     [ Jev: Enable ]     |
+| ○ SERVE       Leads & bookings          [ + Enable ]        |
+| ○ MOVE        Courier routes & POD      [ + Enable ]        |
+| ○ COMPLY      Licenses & expiry alerts  [ + Enable ]        |
+|                                                             |
+| BACKUPS: Daily 3:00 AM · Last OK today · [ Download Now ]   |
+| [ Export GST JSON (Oct) ]      [ View Full Ledger ]         |
++-------------------------------------------------------------+
+```
+
+Tapping a live stage opens its cards; tapping a Jev suggestion enables the
+stage and adds its cards to the owner Canvas in one tap. Money stage opens
+**Financial Health** (auto P&L + GST from postings):
+
+```text
++-------------------------------------------------------------+
+| Financial Health · October 2026                     [Export] |
+| Revenue ₹3,42,800 · COGS -₹1,88,400 · Gross ₹1,54,400       |
+| Expenses -₹38,200 · Net Profit ₹1,16,200                    |
+| GST: Collected ₹17,140 - Input ₹9,420 = Payable ₹7,720      |
+| [ View Ledger ]                 [ Export GST JSON ]         |
++-------------------------------------------------------------+
+```
+
+### Deep Business Screens (Open From Their Cards)
+
+Goods Receipt (`purchase` → receive): enters qty + batch → stock up, supplier
+khata updated, AP posted — one commit.
+
+```text
++-------------------------------------------------------------+
+| Goods Receipt · PO #1042 · Poonguzhali Weavers     [Confirm] |
+| Silk Yarn: Ordered 50 kg · Received [ 50 ] Batch [ OCT-26 ] |
+| Bill ₹60,000 + Freight ₹1,500 = Landed ₹61,500              |
+| Auto: Stock +50 kg · Pay Poonguzhali ₹60,000 · Cash ₹1,500  |
++-------------------------------------------------------------+
+```
+
+Weaving Run (`flow` → production): draws yarn & zari from stock, logs scrap,
+QC check, then finished sarees appear in stock with unit cost.
+
+```text
++-------------------------------------------------------------+
+| Work Order #48 · Semparuthi Pattu Selai · Loom #3  [Done]   |
+| Drawn: Silk 4.5 kg + Zari 0.5 kg · Woven [ 10 ] Scrap 80g   |
+| QC: ✓ tension ✓ color (Poonguzhali)                         |
+| Auto: Materials out → 10 sarees in stock @ ₹4,150 each      |
++-------------------------------------------------------------+
+```
+
+Shift Close (`register` → close): cash counted, variance shown, journal posted.
+
+```text
++-------------------------------------------------------------+
+| Shift Close #14 · Kanimozhi                       [Lock]    |
+| Float ₹2,000 + Sales ₹14,200 - Petty ₹850 = Expect ₹15,350 |
+| Counted [ ₹15,350 ] · Variance ₹0 ✓                         |
++-------------------------------------------------------------+
+```
+
+Dispatch (`order` → fulfil): scan to pack, print slip, tracking auto-sent to
+customer WhatsApp, stock reservation cleared.
+
+```text
++-------------------------------------------------------------+
+| Order #42 · Senthamizh · Paid (UPI)               [Status]  |
+| 1x Pattu Selai · Reserved (Shelf-B3)                        |
+| Carrier [ India Post ] · Tracking [ SP-88492019-IN ]        |
+| [ Scan to Pack ] [ Print Slip ] [ Mark Dispatched ]         |
++-------------------------------------------------------------+
+```
+
+Payroll (`members` → run flow): attendance × rate − advances → one-tap UPI
+disbursal, PDF payslip to WhatsApp, salary journal posted.
+
+```text
++-------------------------------------------------------------+
+| Payroll Run · September 2026                                 |
+| Kanimozhi: 26 days · ₹18,000 - adv ₹2,000 = ₹16,000         |
+| [ Run Payroll · Payslips to WhatsApp · Journal posted ]     |
++-------------------------------------------------------------+
+```
+
+---
+
+## 6. Flows on Canvas
 
 A Flow is tools chained in order: `Flow = Step_n ∘ … ∘ Step_1`
 
@@ -292,7 +439,7 @@ A Flow is tools chained in order: `Flow = Step_n ∘ … ∘ Step_1`
 
 ---
 
-## 6. Who Sees What — Role & Projection
+## 7. Who Sees What — Role & Projection
 
 Plain rule: `Visible Cards = Workspace enabled ∩ Jev grants for this member ∩ Now`
 
@@ -320,9 +467,9 @@ Role is **not picked from a dropdown** — owner writes plain English, Jev assig
 
 ---
 
-## 7. One Table Truth — Data Architecture
+## 8. One Table Truth — Data Architecture
 
-All 110 capabilities from `business.md` use **one table**: `workspace.records (type, data, version)` + Postings + Projections. No new tables per vertical.
+All 110 capabilities use **one table**: `workspace.records (type, data, version)` + Postings + Projections. No new tables per vertical.
 
 ```text
  MEMBER TAPS CARD ("Complete Sale")
@@ -344,7 +491,7 @@ Card metrics are simple views: `SELECT ... FROM records WHERE type='order' AND s
 
 ---
 
-## 8. Building It in `tarapp`
+## 9. Building It in `tarapp`
 
 1. **`CanvasScreen.tsx`** — replace flat tool list with Canvas stack; add `<CanvasPanel />` (title + 2 metrics + 1 primary action + tap → detail).
 2. **`useCanvasCards` hook** — query local Turso for metrics; filter cards by `access.member.role` + `access.grants`; sort by time context; always include `inbox` filtered to member.
