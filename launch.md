@@ -232,9 +232,22 @@ Funnel = 30 lakh sellers → 1.5 lakh free → half active → 20-25% paying.
 | Rivals copy AI | build agents on core from day one |
 | Renewal drop-off | yearly first; orders raise switching cost |
 
+## Merchant research (floors archived from merchants.md)
+
+Tamil Nadu SMB ground truth the product must obey:
+
+- Device: 2–4 GB Android, patchy 4G → assets < 150 KB, offline-tolerant queues.
+- Input: Tamil/Tanglish voice-first; Unicode Tamil fonts verified day 0; ≥ 44 pixel tap targets.
+- Numbers: code formats ₹ Indian notation (1,25,000) and DD/MM/YYYY — models never format numbers.
+- Money: UPI + COD > 95% of orders; COD RTO risk; 20–50% advance tokens for custom orders; evening cash/UPI tally.
+- Trust: no jargon ("Add product", never SKU/webhook); every action reversible by 1-tap Undo; margin floor on discounts.
+- Channels: WhatsApp-first; buyers call before paying; multi-angle real photos demanded.
+
+Full persona and logistics research: git history (`merchants.md`).
+
 ## Sources
 
 - msme.gov.in · statisticstimes.com · businessofapps · TechCrunch · wizmessage
 - shopify.com/in/pricing · gofrugal.com
 - [social.md](social.md) (WhatsApp, Zernio, Meta)
-- merchants.md (merchant research)
+- merchant research — constraint floors above; full text in git history (merchants.md)

@@ -1,9 +1,10 @@
 # TAR Harness
 
-Cloudflare Worker for TAR’s identity, workspace isolation, Action Gateway,
-commerce kernel, adaptive Space, per-user Inbox projection for Now, durable Flow Books, sites and
-channel ingress. The current product goal is [space.md](../space.md), with
-[commerce.md](../commerce.md) as a linked contract.
+Cloudflare Worker for TAR's identity, workspace isolation, Action Gateway,
+commerce kernel, Canvas projection and per-user sync, durable flows, sites
+and channel ingress. The current product goal is [canvas.md](../canvas.md),
+with [parai.md](../parai.md) and [commerce.md](../commerce.md) as linked
+contracts.
 
 ## Local checks
 

@@ -1,6 +1,6 @@
 # TAR App
 
-Expo/React Native client for Space, Now, Ask TAR, Flow Books, commerce
+Expo/React Native client for Canvas (cards, flows, Ask TAR), commerce
 interfaces, members and Site Studio. Business state and mutations stay in TAR
 Harness. Now keeps a local Turso database synchronized one way from a dedicated
 per-user Inbox database. It shows saved work immediately and pulls fresh
@@ -48,5 +48,5 @@ configuration must match the Android package and EAS project in `app.json`.
 npx eas build --platform android --profile production
 ```
 
-See [space.md](../space.md) for the current Space contract and its linked
-[commerce.md](../commerce.md) contract.
+See [canvas.md](../canvas.md) for the current Canvas contract, [parai.md](../parai.md)
+for stores, and [commerce.md](../commerce.md) as the linked commerce contract.

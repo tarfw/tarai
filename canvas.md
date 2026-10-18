@@ -279,6 +279,29 @@ All 18 stay as individual cards (no merges). Every business capability maps to t
 
 > **Inbox is mandatory** — every member gets an Inbox card filtered to their tasks. It's the to-act lens.
 
+### Inbox Event Engine — What Feeds the Inbox Card
+
+Every tool event surfaces as one 1-tap card to the right member:
+`event → who → 1-tap → record change`. Same projection rule as Canvas:
+only the recipient's role sees it.
+
+| Event (Tool) | Goes to | 1-Tap Action | Record Change |
+| :--- | :--- | :--- | :--- |
+| Cash variance at shift close (`register`) | Owner | `[ Audit Shift ]` | `shift.audit="flagged"` |
+| High-value refund / drawer limit (`pos`) | Owner | `[ Approve Refund ]` | `invoice.status="refunded"` |
+| Low stock ≤ threshold (`inventory`) | Owner | `[ Create PO ]` | `purchase` row |
+| Paid order placed (`order`) | Packer | `[ Mark Packed ]` | `order.state="packed"` |
+| Invoice past due (`invoice`) | Owner | `[ Send Reminder ]` | notification row |
+| Unverified UPI / bank ref (`payment`) | Cashier | `[ Verify Reference ]` | `payment.status="cleared"` |
+| Petty cash payout > limit (`expense`) | Owner | `[ Approve Payout ]` | `expense.approved` |
+| Shipment delivered (`purchase`) | Stock member | `[ Receive Stock ]` | `stock.onhand += lines` |
+| Physical task due (`human`) | Assignee | `[ Tap Done ]` | step completed |
+| Flow step ready (`flow`) | Assigned member | `[ Open Step ]` | `runs.current_step` advances |
+
+Card lifecycle: **born** on event → **shown** on open (role-filtered) →
+**solved** on tap; the card clears across all devices via the `inbox.sync`
+event (§8).
+
 ---
 
 ## 5. The Whole Business on Cards (14 Stages, 110 Capabilities)
@@ -312,7 +335,7 @@ TAR covers every ERP capability with **5 primitives** — no new tables per trad
 | **Comms** (5) | Tasks, Flows, WhatsApp API, Telegram Alerts | `inbox`, `whatsapp`, `telegram` | `task.complete`, `flow.start` |
 | **Manage** (12) | Dashboards, Approvals, Branches, Backups, Settings | Business Manager screen | `buildWorkspaceCanvas` |
 
-### The 5 Laws (Every Commit Obeys)
+### The 6 Laws (Every Commit Obeys)
 
 ```text
 LAW 1  Balanced books      Every event writes matching debits & credits
@@ -320,7 +343,35 @@ LAW 2  Stock never negative Available = Onhand - Reserved ≥ 0
 LAW 3  Nothing is erased   Every change appends who/when/what changed
 LAW 4  No table bloat      New trade = new record type, never a new table
 LAW 5  Owner safety floor  Money or customer messages need one confirm
+LAW 6  Zero fear           Every owner tap is reversible (1-tap Undo);
+                           owner's plain words, never jargon
 ```
+
+### Catalog Variants — 12 Universal Dimensions
+
+One `item` record becomes sellable variants through one Jev `choice`
+question (which dimension does the description name?); deterministic code
+computes rows, barcodes, stock and prices. Jev never produces a number.
+
+| Key | Meaning | Trades | Examples |
+| :--- | :--- | :--- | :--- |
+| `size` | Clothing / shoe size | Apparel, footwear, linens | S/M/L, 38/40, King |
+| `length` | Textile length or cable | Handlooms, hardware, cables | 4-Muzham, 8-Muzham, 6.2m |
+| `weight` | Mass | Groceries, gold, meat | 250g, 25kg bag, 1 Pavan |
+| `volume` | Liquid capacity | Oils, paints, ghee | 500ml, 1L, 5L can |
+| `color` | Shade / pattern | Textiles, decor, crafts | Sivappu, temple border |
+| `flavour` | Taste / scent | Bakery, sweets, agarbatti | Chocolate, sandal |
+| `material` | Grade | Jewellery, furniture, textiles | Pure silk, silver 92.5 |
+| `portion` | Serving | Restaurants, mess, biryani | Quarter, half, flask |
+| `prep` | Custom option | Kitchens, tailoring | Eggless, lining (+₹150) |
+| `time` | Duration | Rentals, gyms, classes | 1 hour, 1 month plan |
+| `tier` | Turnaround level | Tailors, repairs, salons | Standard 3d vs express 1d |
+| `pack` | Bundle count | FMCG, kirana, wholesale | Single, pack of 6, box of 50 |
+
+"Red & Blue, S & M" → Jev picks [`color`,`size`] → code computes 2×2 = 4
+variant rows at the base price, generates SKUs, writes `type='variant'`
+and per-variant `type='stock'` — the same rows POS scan and the web
+store catalog bind to.
 
 ### Business Manager Screen (Manage Stage — One Screen for All 14 Stages)
 
@@ -464,6 +515,12 @@ Role is **not picked from a dropdown** — owner writes plain English, Jev assig
 | Pricing & Catalog (`item`) | Full | Full | View only | Denied |
 | Storefront Studio (`site`) | Full | Full | View only | Public view |
 | Team & Grants (`members`) | Full | Full | Hidden | Denied |
+
+> **One user, many workspaces (deferred):** a person may hold membership in
+> several workspaces (chains arrive later). One canonical user id and session;
+> each workspace stays its own isolated Turso DB, so acting on another
+> workspace's task via its cards can never leak data. Cross-workspace Canvas
+> aggregation ships with chains, not before.
 
 ---
 
