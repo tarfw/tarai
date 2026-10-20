@@ -13,8 +13,8 @@ same for everyone                 your job, now, one tap
 | Section | Holds |
 | :--- | :--- |
 | 1 Vocabulary | every word, defined once |
-| 2 How Canvas Works | pipeline, access, tap to commit |
-| 3 Concept Screens | 12 phone mocks, grouped by job |
+| 2 How Canvas Works | pipeline, access, tap, decisions |
+| 3 Concept Screens | 21 phone mocks, grouped |
 | 4 The 18 Tool Cards | what each card shows and does |
 | 5 110 Capabilities | 14 stages, deep screens |
 | 6 Rules | flows, six laws, catalog variants |
@@ -137,20 +137,71 @@ READS      pending orders, cash on hand, active runs
 OFFLINE    "Saved on phone, will sync when online"
 ```
 
+### Decisions
+
+One decision per event, not one model call per card. Jev returns typed judgments,
+never prose. The LLM writes language, never decisions.
+
+```
+small state: role, time, cards, open events
+        |
+        v
+cache key = state hash + model id
+        |
+        +--> hit  -> reuse, 0 calls
+        |
+        v
+ONE JEV REQUEST   Choice + Noul + Score, all parallel
+        |
+        v
+CODE   weights + confidence thresholds + Gate
+        |
+        +--> uncertain -> confirm or ask
+        +--> clear     -> act
+        |
+        v
+log decision -> compare outcome -> recalibrate
+```
+
+| Lever | Efficient | Simple | Intelligent |
+| :--- | :--- | :--- | :--- |
+| One call per event | batch every question | one loop | sees the full state |
+| Cache by state hash + model | no recompute | no side paths | stable answers |
+| Config, not screens | one row per capability | template per kind | new capability = 0 UI |
+| Closed sets only | fewer retries | typed answers | no invented IDs or prices |
+| Confidence gate | escalate only uncertainty | one rule per Reach | auto / confirm / ask |
+| Shadow then enable | cheap rollout | no new surface | thresholds proven on data |
+
+```
+JEV   decides     Choice, Noul, Score
+LLM   writes      draft, explain, extract
+CODE  owns truth  numbers, grants, commits
+```
+
+Model picks -> code validates -> Gate commits. The intelligence is not more AI:
+deterministic first, Jev only on ambiguity, LLM only on language.
+
+| Reach | Auto if confidence | Else |
+| :--- | :---: | :--- |
+| none / data | >= 0.60 | ask |
+| customer | >= 0.80 | confirm |
+| money | >= 0.85 | confirm + owner |
+
 ============================================================
 
 ## 3. Concept Screens
 
 `+---+` = divider. `[x]` done, `[>]` current, `[ ]` pending.
 
-| Job | Screens |
+| Group | Screens |
 | :--- | :--- |
 | Set up | 3.1 Create workspace, 3.2 Review cards |
 | Add people | 3.3 Add member |
 | Daily work | 3.4 Owner Canvas, 3.5 Staff Canvas |
-| Inside a card | 3.6 Card anatomy, 3.7 Flow, 3.8 Site, 3.9 Checkout |
-| Grow the Canvas | 3.10 Add card |
-| Manage | 3.11 Business Manager, 3.12 Financial Health |
+| Inside a card | 3.6 Card anatomy, 3.7 Product, 3.8 Flow, 3.9 Site, 3.10 Channel, 3.11 Human, 3.12 Checkout |
+| Grow the Canvas | 3.13 Add card |
+| Manage | 3.14 Business Manager, 3.15 Stage detail, 3.16 Financial Health |
+| Deep commits | 3.17 Goods receipt, 3.18 Weaving run, 3.19 Shift close, 3.20 Dispatch, 3.21 Payroll |
 
 ### 3.1 Create a workspace
 
@@ -367,7 +418,46 @@ Same Workspace, fewer cards: revenue totals, price editing and store studio are 
 +--------------------------------------------+
 ```
 
-### 3.7 Flow detail
+### 3.7 Product detail
+
+Opens from Products and Prices `[ Add Product ]`; the same screen edits an existing product.
+
+```
++--------------------------------------------+
+| 2:07                               98% [=] |
++--------------------------------------------+
+| < Back                         Add Product |
++--------------------------------------------+
+| PRODUCT                                    |
+| +----------------------------------------+ |
+| | Pattu Selai                            | |
+| +----------------------------------------+ |
+|                                            |
+| DESCRIBE IT                                |
+| +----------------------------------------+ |
+| | Pure silk saree, red and blue,         | |
+| | sizes S and M.                         | |
+| +----------------------------------------+ |
+|                                            |
+| JEV FOUND 2 DIMENSIONS                     |
+| color   red, blue                          |
+| size    S, M                               |
+|                                            |
+| 2 x 2 = 4 VARIANTS                         |
+| [ ] red / S        SKU 001  Rs. 4,500      |
+| [ ] red / M        SKU 002  Rs. 4,500      |
+| [ ] blue / S       SKU 003  Rs. 4,500      |
+| [ ] blue / M       SKU 004  Rs. 4,500      |
+|                                            |
+| [ Save Product and 4 Variants ]            |
+|                                            |
++--------------------------------------------+
+```
+
+Dedicated to the `item` card: create, edit, variants and prices for every product
+type. Stock adjustments, POs and invoices stay on their own cards.
+
+### 3.8 Flow detail
 
 ```
 +--------------------------------------------+
@@ -395,7 +485,7 @@ Same Workspace, fewer cards: revenue totals, price editing and store studio are 
 +--------------------------------------------+
 ```
 
-### 3.8 Site detail
+### 3.9 Site detail
 
 ```
 +--------------------------------------------+
@@ -415,7 +505,55 @@ Same Workspace, fewer cards: revenue totals, price editing and store studio are 
 +--------------------------------------------+
 ```
 
-### 3.9 Checkout sheet
+### 3.10 Channel detail
+
+Same screen for inbox, chat, whatsapp and telegram. Inbox shows tasks; chat
+instances show conversations.
+
+```
++--------------------------------------------+
+| 2:07                               98% [=] |
++--------------------------------------------+
+| < Back                               Inbox |
++--------------------------------------------+
+| TASKS FOR YOU                              |
+| [ ] Verify UPI ref 4421          Rs. 4,350 |
+| [ ] Pack order #42                 due 15m |
+| [ ] Audit shift #14                overdue |
++--------------------------------------------+
+| TEAM FEED                                  |
+| Kanimozhi   Shift handover         4:00 PM |
+| Kayalvizhi  Stock count               done |
++--------------------------------------------+
+| [ Open Chat ]                [ Mark Done ] |
+|                                            |
++--------------------------------------------+
+```
+
+### 3.11 Human detail
+
+Photo or note proof, then mark done.
+
+```
++--------------------------------------------+
+| 2:07                               98% [=] |
++--------------------------------------------+
+| < Back                        Manual Tasks |
++--------------------------------------------+
+| TODAY                                      |
+| [ ] Photo proof - senthamizh parcel   2:00 |
+| [ ] Count shelves - godown            4:00 |
+| [x] Clean counter                     9:30 |
++--------------------------------------------+
+| ASSIGNED BY                                |
+| Kanimozhi                                  |
++--------------------------------------------+
+| [ Add Photo ]            [ Mark Complete ] |
+|                                            |
++--------------------------------------------+
+```
+
+### 3.12 Checkout sheet
 
 ```
 +--------------------------------------------+
@@ -448,7 +586,7 @@ Same Workspace, fewer cards: revenue totals, price editing and store studio are 
 +--------------------------------------------+
 ```
 
-### 3.10 Add a card
+### 3.13 Add a card
 
 ```
 +--------------------------------------------+
@@ -477,7 +615,7 @@ Same Workspace, fewer cards: revenue totals, price editing and store studio are 
 +--------------------------------------------+
 ```
 
-### 3.11 Business Manager
+### 3.14 Business Manager
 
 Live stages, Jev suggestions, and every deep action.
 
@@ -488,7 +626,7 @@ Live stages, Jev suggestions, and every deep action.
 | < Back                    Business Manager |
 +--------------------------------------------+
 | Aambal Neyvagam                            |
-| 14 stages, 9 live, Jev suggests 2          |
+| 14 stages, 9 live, Jev suggests 5          |
 +--------------------------------------------+
 | LIVE                                       |
 | [x] SELL     Counter, register, store   >  |
@@ -514,7 +652,31 @@ Live stages, Jev suggestions, and every deep action.
 +--------------------------------------------+
 ```
 
-### 3.12 Financial Health
+### 3.15 Stage detail
+
+Opens from a Business Manager row; one template, 14 instances.
+
+```
++--------------------------------------------+
+| 2:07                               98% [=] |
++--------------------------------------------+
+| < Back                                SELL |
++--------------------------------------------+
+| 10 CAPABILITIES                       live |
+|                                            |
+| Counter Sales             bills, drawer  > |
+| Cash Drawer               float, count   > |
+| Online Store              visits, orders > |
+| Offers and Discounts      active         > |
+| Offline Queue             2 sales waiting> |
+| + 5 more                                   |
++--------------------------------------------+
+| [ Add Card to Canvas ]                     |
+|                                            |
++--------------------------------------------+
+```
+
+### 3.16 Financial Health
 
 Opened from the Money stage. Built only from Postings.
 
@@ -538,6 +700,102 @@ Opened from the Money stage. Built only from Postings.
 | GST due                          Rs. 7,720 |
 +--------------------------------------------+
 | [ View Ledger ]   [ Export GST ]           |
+|                                            |
++--------------------------------------------+
+```
+
+### 3.17 Goods receipt
+
+```
++--------------------------------------------+
+| 2:07                               98% [=] |
++--------------------------------------------+
+| < Back                       Goods Receipt |
++--------------------------------------------+
+| PO #18 - Silk Yarn Traders                 |
+| Received 40 kg silk yarn                   |
+| +----------------------------------------+ |
+| | Qty 40 kg   Rate Rs. 1,200   = 48,000  | |
+| +----------------------------------------+ |
+|                                            |
+| One commit: stock up, supplier paid,       |
+| AP and landed cost posted.                 |
++--------------------------------------------+
+| [ Receive Stock and Post ]                 |
+|                                            |
++--------------------------------------------+
+```
+
+### 3.18 Weaving run
+
+```
++--------------------------------------------+
+| 2:07                               98% [=] |
++--------------------------------------------+
+| < Back                         Weaving Run |
++--------------------------------------------+
+| Run #7 - Pattu Selai                       |
+| Yarn out 12 kg    Zari out 2 kg            |
+| Scrap 0.4 kg                               |
+| Finished 6 sarees at unit cost             |
++--------------------------------------------+
+| [ Finish Run and Post ]                    |
+|                                            |
++--------------------------------------------+
+```
+
+### 3.19 Shift close
+
+```
++--------------------------------------------+
+| 2:07                               98% [=] |
++--------------------------------------------+
+| < Back                         Shift Close |
++--------------------------------------------+
+| Shift #14 - Kanimozhi                      |
+| Expected                         Rs. 4,350 |
+| Counted                          Rs. 4,000 |
+| Variance                     Rs. 350 short |
++--------------------------------------------+
+| Writes cash, variance and journal.         |
+|                                            |
+| [ Close Shift and Post ]                   |
+|                                            |
++--------------------------------------------+
+```
+
+### 3.20 Dispatch
+
+```
++--------------------------------------------+
+| 2:07                               98% [=] |
++--------------------------------------------+
+| < Back                            Dispatch |
++--------------------------------------------+
+| Order #42 - Senthamizh                     |
+| 2 items - Speed Post                       |
+| Tracking 1234 5678 90                      |
+| Reservation cleared                        |
++--------------------------------------------+
+| [ Dispatch and Send Tracking ]             |
+|                                            |
++--------------------------------------------+
+```
+
+### 3.21 Payroll
+
+```
++--------------------------------------------+
+| 2:07                               98% [=] |
++--------------------------------------------+
+| < Back                             Payroll |
++--------------------------------------------+
+| October 2026 - 3 members                   |
+| Attendance x rate - advances               |
+| Net pay                  Rs. 42,000 by UPI |
+| Payslips sent                              |
++--------------------------------------------+
+| [ Run Payroll and Post ]                   |
 |                                            |
 +--------------------------------------------+
 ```
@@ -611,7 +869,7 @@ It is born on the event, cleared on tap, across every device.
 
 ### Deep screens
 
-Each opens from its card and commits once.
+Each opens from its card and commits once; mocks in 3.17-3.21.
 
 | Screen | Opens from | One commit does |
 | :--- | :--- | :--- |
@@ -647,8 +905,7 @@ Each opens from its card and commits once.
 
 ### Catalog variants
 
-One item becomes sellable variants through one Jev choice question: which
-dimension does the description name? Code computes rows, barcodes, stock and
+One Jev choice names the dimension; code computes rows, barcodes, stock and
 prices. Jev never produces a number.
 
 | Key | Means | Examples |
@@ -666,6 +923,5 @@ prices. Jev never produces a number.
 | tier | turnaround level | standard 3d, express 1d |
 | pack | bundle count | single, pack of 6, box of 50 |
 
-"Red and blue, S and M" -> Jev picks color and size -> code computes 2 x 2 = 4
-variant rows at the base price, with SKUs, variant records and per-variant stock.
-POS scan and the web store bind to the same rows.
+The Product screen (3.7) shows the flow; POS scan and the web store bind to the
+same rows.

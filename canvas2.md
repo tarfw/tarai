@@ -554,3 +554,11 @@ Card metrics are simple views: `SELECT ... FROM records WHERE type='order' AND s
 2. **`useCanvasCards` hook** — query local Turso for metrics; filter cards by `access.member.role` + `access.grants`; sort by time context; always include `inbox` filtered to member.
 3. **Action Modal Host** — wire card primary buttons to `ActionInterfaceHost.tsx` sheets; secondary actions live inside Detail Screens.
 4. **Site Card** — read release status from `tar-sites.tar-54d.workers.dev/<workspace>/` and surface live link + Refero tokens (details inside).
+
+
+
+ok. what are things still can be made better efficient
+  using JEV deciosn models, also search and look at the
+  latest and how LLM ccan be still utilized to maximuam
+  perfect in @canvas.md . answer me all in comapct organized
+  answer
