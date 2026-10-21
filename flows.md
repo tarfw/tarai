@@ -2,8 +2,27 @@
 
 | Part | Holds |
 | :--- | :--- |
-| A | Concept: CRUD, planner, card, flow, runtime |
-| B | Use cases: daily report, handloom, other trades |
+| A | Concept: CRUD, 3 gates, 4 modifiers, Jev, planner, runtime |
+| B | Core use cases: report, handloom, refund |
+| C | Domain examples: 8 domains, 5 flows each |
+
+```
+THE IDEA
+  CRUD tools are the alphabet.
+  3 gates + 4 modifiers are the grammar.
+  LLM generates. JEV decides. CODE compiles.
+  Confirmed plans become memory.
+  Runtime is deterministic.
+```
+
+```
+1 plan grammar
+1 step schema
+3 gates
+4 modifiers
+0 hardcoded templates
+0 model calls at runtime
+```
 
 ---
 
@@ -15,13 +34,13 @@
 WORDS or TAP
      |
      v
-PLAN    LLM sketches, JEV picks existing tools, CODE wires
+PLAN    LLM sketches, JEV picks, CODE wires
      |
      v
 CARD    saved read + one tap
      |
      v
-GATE    checks grant, version, idempotency
+GATE    grant, version, idempotency
      |
      v
 RECORD  one row, then every card syncs
@@ -60,33 +79,181 @@ EVERY TRIGGER = WHEN TO RUN THE SAME STEPS
 | If the tool exists | Then |
 | :--- | :--- |
 | yes | plan composes it, no code change |
-| no | the plan cannot use it, owner sees one clear gap |
+| no | owner sees one clear gap, no fake step |
 
 ## A3. Primitives
 
 | Word | Meaning | Example |
 | :--- | :--- | :--- |
 | Card | Saved read + one tap | Daily Sales Report |
-| Flow | Saved CRUD sequence | Custom Saree Order |
+| Flow | Saved CRUD sequence | Custom Textile Order |
 | Step | One existing tool call | Issue invoice |
+| Gate | Who acts on the step | auto, ask, approve |
+| Modifier | How the step repeats or reverses | retry, repeat, undo, match |
 | Run | One execution of a flow | Run 104, step 2 of 7 |
 | Metric | A saved read | open orders, value |
 | Trigger | When a flow starts | tap, schedule, event |
 | Memory | A confirmed plan reused later | daily report pattern |
 
-## A4. Plan once, run forever
+## A4. Step grammar
+
+```
+PLAN
+  trigger  tap | schedule | event
+  steps    [ step, step, ... ]        max 12
+  card     title + 0-2 metrics + 1 tap
+
+STEP
+  crud     C | R | U | D
+  tool     one existing action
+  input    known at plan time or ask at run time
+  gate     auto | ask | approve
+  mod      none | retry | repeat | undo | match
+```
+
+| Field | Rule |
+| :--- | :--- |
+| Trigger | Jev picks from tap, schedule, event |
+| Tool | Jev picks from registered actions only |
+| Input | wired from an earlier output or asked at run |
+| Gate | Jev picks, code enforces the safety floor |
+| Modifier | Jev picks, code checks the tool supports it |
+| Card | generated from the plan, not authored twice |
+
+```
+NO HARDCODED TEMPLATES.
+THE TOOL REGISTRY IS THE ALPHABET.
+CONFIRMED PLANS BECOME THE MEMORY.
+```
+
+## A5. Three gates and four modifiers
+
+```
+GATES                         MODIFIERS
+auto     code acts            retry   once on failure
+ask      person acts          repeat  again until state, or each row
+approve  owner decides        undo    opposite posting
+                              match   read two sources, update match
+```
+
+| Gate | Who acts | When |
+| :--- | :--- | :--- |
+| auto | code | inputs known, no money or customer risk |
+| ask | the person | input missing, or a physical step |
+| approve | owner or admin | money, customer, or over limit |
+
+| Modifier | Meaning | Scope |
+| :--- | :--- | :--- |
+| retry | run once more on failure | step |
+| repeat | run again until a state changes, or once per row | flow or row |
+| undo | write the opposite posting | step |
+| match | read two sources, update the match | plan |
+
+```
+JEV PICKS TOOL, GATE, MODIFIER.
+CODE CHECKS THE TOOL SUPPORTS THEM.
+IF NOT, CODE FALLS BACK TO THE DERIVED GATE AND MODIFIER.
+```
+
+## A6. The 8 old shapes are combinations
+
+| Shape | Gate | Modifier |
+| :--- | :--- | :--- |
+| straight | auto | - |
+| human | ask | - |
+| approval | approve | - |
+| retry | auto or ask | retry |
+| loop | auto | repeat |
+| batch | auto | repeat, each row |
+| reconcile | auto | match |
+| reverse | approve | undo |
+
+```
+straight   auto
+human      ask
+approval   approve
+retry      auto/ask + retry
+loop       auto + repeat
+batch      auto + repeat each
+reconcile  auto + match
+reverse    approve + undo
+```
+
+## A7. Jev decisions
+
+```
+ONE JEV REQUEST
+  trigger choice
+  step_i tool choice
+  step_i gate choice
+  step_i modifier choice
+  step_i needed noul
+  plan complete noul
+```
+
+| Signal | Use |
+| :--- | :--- |
+| Choice argmax | pick tool, gate, modifier |
+| Top-2 fallback | top is invalid or unsafe |
+| Noul | step needed, plan complete, approval |
+| Score | best of 2 valid plans, only on a tie |
+| Plan confidence | min of step confidences, free |
+
+| Rejected | Why |
+| :--- | :--- |
+| Self-consistency, repeat N times | cost and latency |
+| Beam search over plans | complexity |
+
+```
+LLM generates candidates.
+JEV generates probabilities over closed choices.
+CODE composes the highest valid plan.
+MEMORY removes the model calls next time.
+RUNTIME is deterministic.
+```
+
+| Risk | Auto if | Else |
+| :--- | :--- | :--- |
+| none, data | >= 0.60 | ask |
+| customer | >= 0.80 | confirm |
+| money | >= 0.85 | confirm + owner |
+
+## A8. AI map
+
+| Stage | Who | Job |
+| :--- | :--- | :--- |
+| Understand | LLM | goal, trigger, step phrases |
+| Extract slots | LLM | time, target, report |
+| Decide | Jev | tool, gate, modifier, trigger |
+| Verify | Jev | step needed, plan complete, approval |
+| Rank | Jev | best of 2 valid plans |
+| Write | LLM | card name, description, report prose |
+| Explain | LLM | why this plan, in plain words |
+| Repair | LLM + Jev | one retry only |
+| Compute | Code | counts, sums, money, stock |
+| Commit | Code | gate, version, idempotency, record |
+
+| Never | Why |
+| :--- | :--- |
+| LLM picks ids | hallucination |
+| Jev writes prose | not its job |
+| model computes totals | code owns numbers |
+| model grants permission | code owns access |
+| model commits a record | code owns truth |
+
+## A9. Plan once, run forever
 
 ```
 WORDS
   |
   v
-LLM    sketch: goal, trigger, step phrases, wanted output
+LLM    sketch
   |
   v
-JEV    one request: trigger, action per step, is step needed
+JEV    pick tool, gate, modifier
   |
   v
-CODE   wire output -> input, derive auto/human, validate
+CODE   wire, validate, derive gate
   |
   v
 OWNER  confirm once
@@ -95,59 +262,43 @@ OWNER  confirm once
 MEMORY save the plan
   |
   v
-RUN    0 model calls, deterministic
+RUN    0 model calls
 ```
-
-| Layer | Owns | Never does |
-| :--- | :--- | :--- |
-| LLM | words, sketch, copy | ids, numbers, permissions |
-| JEV | choices from existing tools | prose, SQL, grants |
-| CODE | wiring, mode, numbers, commit | guessing intent |
-| OWNER | one confirm | repeated setup |
-
-```
-NO HARDCODED TEMPLATES.
-THE TOOL REGISTRY IS THE ALPHABET.
-CONFIRMED PLANS BECOME THE MEMORY.
-```
-
-## A5. Auto or human
-
-```
-AUTO   = all inputs known AND reach in {none, data}
-MANUAL = an input is missing OR reach in {customer, money}
-```
-
-| Condition | Mode |
-| :--- | :--- |
-| read-only summary | auto |
-| internal delivery | auto |
-| create record, inputs known | auto |
-| input only known at run time | manual, ask then |
-| message a customer | manual confirm |
-| move money | manual + owner |
-
-```
-JEV IS NEVER ASKED "AUTO OR HUMAN".
-CODE DERIVES IT FROM INPUTS AND RISK.
-```
-
-## A6. Learned memory
 
 | Input | LLM | JEV | CODE |
 | :--- | :---: | :---: | :--- |
 | new intent | 1 sketch | 1 batch | compile |
-| similar to a learned plan | 0 | 1 choice | fill slots |
+| similar to memory | 0 | 1 choice | fill slots |
 | exact repeat | 0 | 0 | instantiate |
 | run time | 0 | 0 | execute |
 
 ```
-"every day at 10 send sales report"   -> new plan, 2 calls
-"every day at 8 send stock report"    -> same plan, 1 call
-"run daily report now"                -> same plan, 0 calls
+"every day at 10 send sales report"  -> new plan, 2 calls
+"every day at 8 send stock report"   -> same plan, 1 call
+"run daily report now"               -> same plan, 0 calls
 ```
 
-## A7. Runtime
+## A10. Gate safety floor
+
+```
+JEV PICKS A GATE.
+CODE UPGRADES IT WHEN RISK IS HIGHER.
+```
+
+| Jev says | Risk | Code makes it |
+| :--- | :--- | :--- |
+| auto | money | approve |
+| auto | customer message | ask or approve |
+| ask | money | approve |
+| approve | any | approve |
+
+```
+AUTO    = all inputs known AND reach in {none, data}
+ASK     = an input is missing, or a physical step
+APPROVE = money, customer, or over limit
+```
+
+## A11. Runtime
 
 ```
 TAP / SCHEDULE / EVENT
@@ -171,7 +322,7 @@ EVENT   inbox and every canvas update
 | Nothing erased | delete means archive |
 | Reversible | every owner action has one-tap undo |
 
-## A8. Boundary
+## A12. Boundary
 
 | Allowed | Not allowed |
 | :--- | :--- |
@@ -183,7 +334,7 @@ EVENT   inbox and every canvas update
 
 ---
 
-# PART B - USE CASES
+# PART B - CORE USE CASES
 
 ## B1. Daily sales report
 
@@ -193,10 +344,10 @@ EVENT   inbox and every canvas update
 | Trigger | schedule, 10:00 |
 | Card | Daily Sales Report |
 
-| # | CRUD | Step | Input | Mode |
+| # | CRUD | Step | Gate | Mod |
 | :-: | :--- | :--- | :--- | :--- |
-| 1 | Read | sales summary, yesterday | date range | auto |
-| 2 | Create | deliver to owner | summary | auto |
+| 1 | Read | sales summary, yesterday | auto | - |
+| 2 | Create | deliver to owner | auto | - |
 
 ```
 +--------------------------------------+
@@ -220,7 +371,7 @@ EVENT   inbox and every canvas update
 
 | Input | Value |
 | :--- | :--- |
-| Brief | silk and cotton sarees, counter, ship across Tamil Nadu |
+| Brief | silk and cotton textiles, counter, ship across Tamil Nadu |
 | User says | "show custom orders waiting and their value; make the flow from confirmed order to delivery" |
 | Trigger | order created |
 | Card | Custom Weave Orders |
@@ -232,22 +383,22 @@ EVENT   inbox and every canvas update
 | Visibility | owner and admin |
 | Steps | advance task, weave, fulfil, invoice, payment, dispatch |
 
-| # | CRUD | Step | Mode | Reach |
+| # | CRUD | Step | Gate | Mod |
 | :-: | :--- | :--- | :--- | :--- |
-| 1 | Create | advance task | auto | none |
-| 2 | Create | start weaving run | manual | data |
-| 3 | Update | finish weaving, stock | manual | data |
-| 4 | Update | fulfil order | manual | customer |
-| 5 | Create | issue invoice | manual | money |
-| 6 | Create | record balance | manual | money |
-| 7 | Create | dispatch and track | manual | customer |
+| 1 | Create | advance task | auto | - |
+| 2 | Create | start weaving run | ask | - |
+| 3 | Update | finish weaving, stock | ask | - |
+| 4 | Update | fulfil order | ask | - |
+| 5 | Create | issue invoice | approve | - |
+| 6 | Create | record balance | approve | - |
+| 7 | Create | dispatch and track | ask | - |
 
 ```
 +--------------------------------------+
 | [icon] CUSTOM WEAVE ORDERS   [OWNER] |
 |                                      |
-| Open 6        Value Rs. 1,26,000     |
-| Confirmed saree commissions          |
+| Open 6        Value Rs. 126,000      |
+| Confirmed custom orders              |
 |                                      |
 | [ New Custom Order ]                 |
 +--------------------------------------+
@@ -261,16 +412,149 @@ create order -> start flow
         |
         +-> step 1 auto: advance task
         |
-        +-> step 2 waits: [Perform Step 2]
+        +-> step 2 asks: [Perform Step 2]
         |
         v
 done -> card turns green
 ```
 
-## B3. Other trades
+## B3. Refund approval
 
-| Trade | Card | Read | Flow |
+| Input | Value |
+| :--- | :--- |
+| User says | "refunds above Rs. 2,000 need my approval" |
+| Trigger | refund request |
+| Card | Refunds |
+
+| # | CRUD | Step | Gate | Mod |
+| :-: | :--- | :--- | :--- | :--- |
+| 1 | Read | read invoice and payment | auto | - |
+| 2 | Create | create refund | approve | - |
+| 3 | Update | reverse invoice balance | approve | undo |
+| 4 | Create | notify customer | ask | - |
+
+```
++--------------------------------------+
+| REFUNDS                              |
+| Pending 2      Refunded Rs. 8,400    |
+| [ Review Refund ]                    |
++--------------------------------------+
+```
+
+```
+request -> read -> owner approves?
+                        |
+              no -------+------> stop, card shows declined
+                        |
+                       yes
+                        |
+                        v
+                 create refund -> reverse balance -> notify
+```
+
+---
+
+# PART C - DOMAIN EXAMPLES
+
+## C1. Sales
+
+| Flow | Trigger | Steps (CRUD) | Gate | Mod | Card |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| Quote follow-up | quote saved | Read quote -> Create task | ask | - | Open Quotes |
+| Counter sale | tap | Create order -> Create payment -> Update stock | auto | - | Counter Sales |
+| Bulk order | tap | Create order -> reserve stock -> Create invoice | auto | - | Bulk Orders |
+| Unpaid quote chase | schedule | Read quotes -> message -> Create task | auto | repeat | Overdue Quotes |
+| Daily sales report | schedule | Read sales -> Create delivery | auto | - | Sales Today |
+
+## C2. Marketing
+
+| Flow | Trigger | Steps (CRUD) | Gate | Mod | Card |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| Lead follow-up | contact created | Read contact -> Create task -> message | ask | - | New Leads |
+| Review request | shipment delivered | Read order -> message -> Create task | auto | - | Reviews |
+| Festival campaign | schedule | Read contacts -> Create task -> message | auto | repeat each | Campaign |
+| Website enquiry | site enquiry | Read enquiry -> Create task -> reply | ask | - | Enquiries |
+| Repeat customer offer | schedule | Read orders -> Create task -> message | auto | repeat each | Repeat Customers |
+
+## C3. Support
+
+| Flow | Trigger | Steps (CRUD) | Gate | Mod | Card |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| Ticket intake | message received | Create task -> assign -> reply | ask | - | Open Tickets |
+| Refund request | tap | Read invoice -> Create refund -> Create task | approve | undo | Refunds |
+| Warranty claim | tap | Read order -> Create task -> Create shipment | ask | - | Claims |
+| SLA escalation | schedule | Read open tickets -> Create owner task | auto | repeat | Overdue Tickets |
+| Feedback follow-up | task completed | message -> Create task | auto | - | Feedback |
+
+## C4. Money
+
+| Flow | Trigger | Steps (CRUD) | Gate | Mod | Card |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| Cash close | schedule | Read payments -> count -> Create posting | ask | - | Cash Today |
+| Overdue reminder | schedule | Read invoices -> message -> Create task | auto | repeat | Overdue |
+| Expense capture | photo or tap | Create expense -> Create posting | auto | - | Expenses |
+| Bank reconciliation | tap | Read statement -> match -> Update reconciliation | auto | match | Unreconciled |
+| GST return | monthly | Read invoices -> Create report -> deliver | auto | repeat each | GST Due |
+
+## C5. Stock and purchase
+
+| Flow | Trigger | Steps (CRUD) | Gate | Mod | Card |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| Low stock reorder | stock.low | Read stock -> Create purchase -> Create task | auto | - | Low Stock |
+| Goods receipt | delivery | Read purchase -> Update stock -> Create receipt | auto | match | Inbound |
+| Stock count | schedule | Read stock -> Create adjustment | ask | - | Stock Count |
+| Transfer | tap | Read stock -> Update stock -> Create movement | auto | - | Transfers |
+| Supplier payment | schedule | Read payables -> Create payment | approve | - | Payables |
+
+## C6. Production
+
+| Flow | Trigger | Steps (CRUD) | Gate | Mod | Card |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| Start run | tap | Read recipe -> Create production -> Update materials | ask | - | Active Runs |
+| Finish run | tap | Update production -> Update stock -> Create posting | auto | - | WIP |
+| Quality check | tap | Read production -> Create inspection -> Update stock | ask | - | QC |
+| Scrap | tap | Create movement -> Update stock | auto | - | Scrap |
+| Work order schedule | schedule | Read orders -> Create plan task | auto | repeat each | Work Orders |
+
+## C7. People
+
+| Flow | Trigger | Steps (CRUD) | Gate | Mod | Card |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| Shift handover | schedule | Read shift -> Create task -> Create note | ask | - | Handover |
+| Attendance | tap | Create attendance | auto | - | Attendance |
+| Payroll | monthly | Read attendance -> Create payroll -> Create payment | approve | - | Payroll |
+| Leave request | event | Read member -> Create task -> Update attendance | ask | - | Leave |
+| Onboarding | member invited | Create document task -> Create training task | auto | repeat each | Onboarding |
+
+## C8. Delivery
+
+| Flow | Trigger | Steps (CRUD) | Gate | Mod | Card |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| Pack order | order paid | Read order -> Create pack -> Update order | auto | - | To Pack |
+| Dispatch | tap | Read order -> Create shipment -> message tracking | ask | - | Dispatch |
+| Delivery confirm | courier event | Update shipment -> Create task | auto | - | Delivered |
+| Failed delivery | failure event | Read shipment -> Create task -> reschedule | auto | retry | Failed |
+| Route trip | schedule | Read shipments -> Create trip -> assign driver | auto | repeat each | Routes |
+
+## C9. Compliance
+
+| Flow | Trigger | Steps (CRUD) | Gate | Mod | Card |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| License expiry | schedule | Read licenses -> Create task | auto | repeat | Expiring |
+| Document vault | tap | Create document | auto | - | Documents |
+| Audit export | schedule | Read events -> Create report | auto | - | Audit |
+| Backup check | schedule | Read backup -> Create task if failed | auto | retry | Backup |
+| Statutory filing | schedule | Read financials -> Create report -> deliver | approve | - | Filing |
+
+## C10. Shape to gate and modifier
+
+| Shape | Gate | Modifier | Used by |
 | :--- | :--- | :--- | :--- |
-| Muthu Mess, food | Lunch Parcels | open orders, payments today | count stock, log expense, clean, lock |
-| Iniya Dental, services | Today's Chairs | confirmed bookings, invoice outstanding | issue invoice, record payment, sterilize, count stock |
-| Velan Repairs, services | Open Repairs | waiting repairs, value outstanding | issue invoice, record payment, notify customer |
+| straight | auto | - | report, sale, receipt, finish run, audit |
+| human | ask | - | count cash, stock count, dispatch, handover |
+| approval | approve | - | refund, invoice, payroll, supplier payment, filing |
+| retry | auto | retry | failed delivery, backup check |
+| loop | auto | repeat | unpaid quote, overdue reminder, SLA, license expiry |
+| batch | auto | repeat each | campaign, repeat offer, GST, work orders, onboarding, routes |
+| reconcile | auto | match | bank match, goods receipt |
+| reverse | approve | undo | refund, cancel order |
