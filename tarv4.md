@@ -68,7 +68,7 @@ WORDS or TAP -> PLAN (LLM sketch + JEV pick + CODE wire) -> CARD -> GATE -> ONE 
 
 | Word | Meaning | Example |
 | :--- | :--- | :--- |
-| Workspace | Business boundary: members, cards, site, one DB | Aambal Neyvagam, Salem |
+| Workspace | Business boundary: members, cards, site, shared Turso DB with workspace_id | Aambal Neyvagam, Salem |
 | Canvas | Home stack, only cards allowed for you, useful now | Cashier 4, owner 6 |
 | Card | Saved read + one tap | Cash Drawer: Rs 4,350 + [Count] |
 | Flow | Ordered resumable steps, max 12 | Evening Closing, 4 steps |
@@ -88,7 +88,7 @@ These seven are the surface words. The kernel nouns below are the implementation
 | Posting | Balanced debit and credit written with a record | sale: debit cash, credit revenue |
 | Role | What a member does. Jev reads it from plain English | Cashier |
 | Reach | Risk of an action: money, customer, data, none | money |
-| Memory | A confirmed plan, reused later | daily report pattern |
+| Memory | A confirmed plan stored in Turso `plans` table, reused later | daily report pattern |
 
 ## A3. Four lanes
 
@@ -224,12 +224,12 @@ A lane never crosses.
 | ask | person | input missing OR physical step |
 | approve | owner / admin | money, customer, or over limit |
 
-| Modifier | Meaning | Scope |
-| :--- | :--- | :--- |
-| retry | run once more on failure | step |
-| repeat | again until state changes, or per row | flow / row |
-| undo | opposite posting | step |
-| match | read two sources, update the match | plan |
+| Modifier | Meaning | Scope | Limits |
+| :--- | :--- | :--- | :--- |
+| retry | run once more on failure | step | 3 attempts, backoff 2^n seconds |
+| repeat | again until state changes, or per row | flow / row | max 100 rows or 5 min timeout |
+| undo | opposite posting | step | undo failure -> owner approval |
+| match | read two sources, update the match | plan | - |
 
 Every flow is one of these forms. No other shape exists.
 
@@ -441,6 +441,21 @@ Never pay for a decision you could have made without a model. Each rung has one 
 A plan is remembered by the shape of the request, not its words.
 "every day at 10 send a sales report" and "send me a sales report at 10 every morning" are one plan.
 
+### Plan memory storage
+
+```
+plans table (Turso)
+  workspace_id     which shop
+  shape_hash       hash of (trigger type + action sequence)
+  steps            compiled step array
+  trigger          tap | schedule | event
+  confirmed_at     when owner approved
+  accuracy_score   tracked per workspace for adaptive thresholds
+```
+
+Memory lookup: hash the normalized request shape -> exact match in plans table -> reuse.
+No match -> L2 Prose. Accuracy tracking adjusts confidence thresholds per workspace.
+
 ```
  0 model calls on a card render      0 model calls on a publish
  0 model calls on a flow run         0 model calls on a scheduled run
@@ -509,11 +524,11 @@ Never auto-act on confidence alone. Above threshold is never correctness; use p 
 | Noul | step needed?, plan complete?, approval? |
 | Plan confidence | min of step confidences, free |
 
-| Risk | Auto only if | Else |
-| :--- | :--- | :--- |
-| none / data | confidence >= 0.60 | ask |
-| customer | confidence >= 0.80 | confirm |
-| money | confidence >= 0.85 | confirm + owner |
+| Risk | Auto only if | Else | Notes |
+| :--- | :--- | :--- | :--- |
+| none / data | p >= 0.60, margin >= 0.30 | ask | Learn per workspace |
+| customer | p >= 0.80, margin >= 0.40 | confirm | Adaptive threshold |
+| money | p >= 0.85, margin >= 0.50 | confirm + owner | Tracks accuracy |
 
 | Moment | LLM | JEV | Code |
 | :--- | :---: | :---: | :--- |
@@ -546,29 +561,31 @@ display conversion belongs to the product unit. Price is server resolved from an
 active price record. Stock is `available = onhand - reserved` and never
 negative. Orders and invoices snapshot commercial facts. Every mutation is a
 registered action + permission + idempotency key + audit event. Every business
-event writes balanced postings. Every record belongs to one workspace database.
+event writes balanced postings. Every record belongs to one workspace.
 
 ### A11.2 Records
 
 Commerce uses the shared `records` table. `type` selects the contract; `data`
-holds versioned fields. No table is created per trade.
+holds versioned fields. No table is created per trade. All workspaces share one
+Turso database; `workspace_id` provides isolation.
 
-| Type | Core fields | States |
-| :--- | :--- | :--- |
-| `item` | name, unit, tax, status | active, archived |
-| `variant` | item, sku, barcode, attributes | active, archived |
-| `price` | variant, amount, currency, channel, starts, ends | active, archived |
-| `stock` | variant, location, onhand, reserved | active |
-| `purchase` | supplier, lines, currency, totals | draft, ordered, partial, received, cancelled |
-| `order` | customer, lines, totals, channel | draft, accepted, fulfilled, cancelled |
-| `invoice` | party, order, lines, totals, due | issued, partial, paid, void |
-| `payment` | invoice, amount, method, provider, reference | recorded, reversed |
-| `refund` | payment, amount, reason, reference | recorded |
-| `posting` | account, debit, credit, source | posted |
+| Type | Core fields | States | Limits |
+| :--- | :--- | :--- | :--- |
+| `item` | name, unit, tax, status | active, archived | - |
+| `variant` | item, sku, barcode, attributes | active, archived | max 50 per item |
+| `price` | variant, amount, currency, channel, starts, ends | active, archived | - |
+| `stock` | variant, location, onhand, reserved | active | - |
+| `purchase` | supplier, lines, currency, totals | draft, ordered, partial, received, cancelled | - |
+| `order` | customer, lines, totals, channel | draft, accepted, fulfilled, cancelled | - |
+| `invoice` | party, order, lines, totals, due | issued, partial, paid, void | - |
+| `payment` | invoice, amount, method, provider, reference | recorded, reversed | - |
+| `refund` | payment, amount, reason, reference | recorded | - |
+| `posting` | account, debit, credit, source | posted | - |
+| `plan` | workspace_id, shape_hash, steps, trigger, confirmed_at | active, archived | reused via shape match |
 
-Long descriptions, specifications, source snapshots, documents and media use
-R2. The record stores the object key, hash, size, media type and version. Stock,
-price, quantity, invoice totals and payment state never live only in R2.
+Files, media, and text over 2KB use R2 cloud storage. The record stores the object
+key, hash, size, media type and version. Stock, price, quantity, invoice totals
+and payment state never live only in R2. All transactional facts remain in Turso.
 
 ### A11.3 Commerce actions
 
@@ -608,9 +625,11 @@ any unavailable line rejects the order
 fulfilment consumes reserved; cancellation releases only unfulfilled
 
 INVOICE -> PAYMENT -> REFUND
+  validate_postings() checks balance BEFORE commit
   invoice.issue   receivable debit + revenue/tax credit
   payment.record  cash/provider debit + receivable credit
   refund.record   reversal bounded by paid/refundable
+  balance mismatch -> entire transaction rejected, nothing written
 provider and bank references are evidence, not authority
 adapters normalize and deduplicate references, then call the Gateway
 ```
@@ -659,7 +678,7 @@ when site policy enables it, calls the same order and payment actions.
 | provider repeats webhook | unique provider/reference and operation key |
 | worker stops after commit | event/result is replayed; effect is not repeated |
 | partial multi-record write | transaction rolls back |
-| balance mismatch | posting validation rejects commit |
+| balance mismatch | validate_postings() rejects BEFORE commit, nothing written |
 
 Operational reports derive from orders, stock, payments and postings. They are
 projections or artifacts, not editable business truth.
@@ -680,7 +699,7 @@ the rest of the document describes the target.
 | Commerce kernel: actions, records, postings, stock, archive | `[S]` 116 actions, one records table, 315 tests | - |
 | 18 tool cards, roles, per-member grants | `[S]` | - |
 | Flows: run, step, resume, idempotency, versioning | `[S]` | - |
-| Flow grammar | `[P]` auto/manual, max 20 | ask/approve, approver, modifiers, triggers, max 12 |
+| Flow grammar | `[P]` auto/manual | ask/approve, approver, modifiers, triggers, max 12 steps |
 | One registry | `[P]` actions and cards separate | stage, reach, card flag on one list |
 | Card metrics and the Canvas screen | `[P]` server builds cards; app has Now/Tools/Ask/Records/Routines | Canvas tabs, add-card, live metrics |
 | Jev | `[S]` 8 call sites, 7-day cache on the store | cache everywhere, plan memory |
@@ -1164,7 +1183,7 @@ Only screen 3 pays for a model. From screen 4 on, every tap is a read, a render,
 +------------------------------------------------------------------------+
 ```
 
-Each fix writes one record. The draft rebuilds; the next Publish tap runs the gate again.
+Each fix writes one record. On record.created event, gate check runs and draft auto-rebuilds if now complete.
 
 ### B7.6 Publish confirm
 
