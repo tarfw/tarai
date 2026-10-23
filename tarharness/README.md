@@ -2,9 +2,8 @@
 
 Cloudflare Worker for TAR's identity, workspace isolation, Action Gateway,
 commerce kernel, Canvas projection and per-user sync, durable flows, sites
-and channel ingress. The current product goal is [canvas.md](../canvas.md),
-with [parai.md](../parai.md) and [commerce.md](../commerce.md) as linked
-contracts.
+and channel ingress. The current product goal is [tarv4.md](../tarv4.md),
+with [parai.md](../parai.md) as the linked store contract.
 
 ## Local checks
 

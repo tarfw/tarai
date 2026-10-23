@@ -48,5 +48,5 @@ configuration must match the Android package and EAS project in `app.json`.
 npx eas build --platform android --profile production
 ```
 
-See [canvas.md](../canvas.md) for the current Canvas contract, [parai.md](../parai.md)
-for stores, and [commerce.md](../commerce.md) as the linked commerce contract.
+See [tarv4.md](../tarv4.md) for the Canvas concept, flow grammar, flow library
+and commerce kernel, and [parai.md](../parai.md) for stores.
