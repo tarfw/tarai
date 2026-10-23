@@ -47,13 +47,6 @@ WORDS or TAP -> PLAN (LLM sketch + JEV pick + CODE wire) -> CARD -> GATE -> ONE 
 ```
 
 ```
- CARD = saved read + one tap
- FLOW = ordered steps (each step = one existing tool)
- SITE = card + design + recipes + publish gate
- TAP  -> CHECK -> ONE RECORD -> EVENT -> INBOX -> EVERY CANVAS
-```
-
-```
  SEVEN LAWS
    1  Every event writes balanced debit / credit
    2  Stock never negative: available = on hand - reserved
@@ -75,6 +68,14 @@ WORDS or TAP -> PLAN (LLM sketch + JEV pick + CODE wire) -> CARD -> GATE -> ONE 
 | Step | One existing tool call (CRUD) | count cash drawer |
 | Record | Typed row in the one records table | item, stock, order, posting |
 | Inbox | Personal to-act feed, mandatory per member | 2 waiting, 1 overdue |
+
+```
+CARD = saved read + one tap
+  2 shapes: action | flow
+  card = { title, metrics: [{ label, read }], action, reach }
+
+TAP -> GATE -> ONE RECORD -> EVENT -> INBOX -> EVERY CANVAS
+```
 
 These seven are the surface words. The kernel nouns below are the implementation terms;
 `Trigger`, `Gate`, `Approver`, `Modifier` live inside Flow only.
@@ -108,7 +109,7 @@ A lane never crosses.
    PLAN    LLM sketches, JEV picks, CODE wires
       |
       v
-   CARD    saved read + one tap
+   CARD
       |
       v
    GATE    token, grant, version, idempotency
@@ -151,12 +152,6 @@ A lane never crosses.
    Tap title  -> detail (list / search / detail)
    Tap button -> commit once (gate -> one record)
    Other actions live in detail
-
- A card is data, never hand-built:
-
- CARD = saved read + one tap
- 2 shapes: action | flow
- card = { title, metrics: [{ label, read }], action, reach }
 ```
 
 | Preset | Shape | Opens | Example |
@@ -253,16 +248,7 @@ Every flow is one of these forms. No other shape exists.
 ### Runtime is deterministic
 
 ```
- TAP / SCHEDULE / EVENT
-         |
-         v
- GATE    token, grant, version, idempotency
-         |
-         v
- CRUD    one record row (or one balanced set)
-         |
-         v
- EVENT -> INBOX (role-filtered) -> EVERY CANVAS SYNCS
+ TAP / SCHEDULE / EVENT -> GATE -> CRUD -> EVENT -> INBOX -> EVERY CANVAS SYNCS
 ```
 
 | Rule | Meaning |
@@ -271,7 +257,6 @@ Every flow is one of these forms. No other shape exists.
 | No model on run | steps are deterministic |
 | One write | one step commits alone |
 | Retry safe | same run + step never doubles |
-| Nothing erased | archive only |
 | Reversible | one-tap undo |
 
 ## A7. Access
@@ -302,7 +287,124 @@ Shift only = act in a shift. Hidden = not shown. Denied = no access.
 
 One person may belong to several workspaces; each isolated.
 
-## A8. Where Jev decides
+## A8. Inbox: role-aware, context-filtered
+
+Inbox shows only what this person can act on, right now. No event dump.
+
+```
+ EVENT (workspace-wide)
+      |
+      v
+ FILTER by role + shift + reach
+      |
+      v
+ SORT by overdue + reach + due + assigned
+      |
+      v
+ INBOX (personal, actionable only)
+```
+
+### Filter rules
+
+| Event | Owner sees | Cashier sees | Why |
+| :--- | :---: | :---: | :--- |
+| Refund approval needed | yes | - | money reach, owner only |
+| Count cash drawer | yes | yes | assigned to cashier, owner can see |
+| Low stock alert | yes | - | owner manages inventory |
+| Pack order | yes | yes | both can act |
+| Store draft ready | yes | - | owner publishes |
+| Cash drawer mismatch | yes | - | owner audits |
+
+Same 18 events -> owner sees 6, cashier sees 2.
+
+### Sort order (automatic)
+
+```
+1. OVERDUE + high reach (money/customer first)
+2. DUE NOW + assigned to you
+3. DUE TODAY + you can act
+4. LATER + background alerts
+```
+
+### Three actions only
+
+```
+[ Complete ]  marks done, writes record, event archived
+[ Defer ]     snooze: 1 hour / tomorrow / next week
+[ Assign ]    send to another member (owner/admin only)
+```
+
+No delete. Events stay, marked read/archived. Hidden from inbox, visible in history.
+
+### Screen: Cashier inbox
+
+```
++--------------------------------------------+
+| INBOX                              2 of 18 |
++--------------------------------------------+
+| OVERDUE                                    |
+| ! Count cash drawer              Shift 14  |
+|   Due 3:45pm                  [ Complete ] |
++--------------------------------------------+
+| NOW                                        |
+| Pack order for Senthamizh        2 items   |
+|   Courier pickup 4:30pm       [ Complete ] |
++--------------------------------------------+
+| 16 other tasks hidden (not your role)      |
++--------------------------------------------+
+```
+
+### Screen: Owner inbox
+
+```
++--------------------------------------------+
+| INBOX                              6 of 18 |
++--------------------------------------------+
+| URGENT - NEEDS APPROVAL                    |
+| ! Refund request Rs. 2,000    Customer #89 |
+|   Reason: damaged item         [ Approve ] |
++--------------------------------------------+
+| OVERDUE                                    |
+| Cash drawer mismatch Rs. 350    Shift 14   |
+|   Kanimozhi's count             [ Audit ]  |
++--------------------------------------------+
+| TODAY                                      |
+| Low stock alert: 3 items                   |
+|   Silk, Cotton scarf            [ Review ] |
++--------------------------------------------+
+| Store draft ready to publish               |
+|   2 sections added              [ View ]   |
++--------------------------------------------+
+| + 2 tasks for later                        |
+| 12 tasks handled by staff (hidden)         |
++--------------------------------------------+
+```
+
+### Storage
+
+```
+inbox_items table (Turso)
+  workspace_id
+  member_id       who sees this
+  event_id        source event
+  reach           money | customer | data | none
+  due_at          when it's due
+  assigned_to     specific member or null
+  status          pending | deferred | completed | archived
+  deferred_until  when to show again
+```
+
+On event write -> compute inbox items for all eligible members -> insert rows.
+Member reads their `member_id` rows, sorted by the rules above.
+
+### Overflow handling
+
+If 200+ events overnight:
+- Group by type: "3 low stock alerts" (collapse)
+- Defer non-urgent to "Later" section
+- Owner/admin sees summary: "47 tasks waiting, 12 need you"
+
+## A9. Where Jev decides
 
 One request carries many questions.
 
@@ -353,25 +455,6 @@ Judgment 10 is the "now" in access. Judgment 6 is the variant.
 
 13 questions in one call: ~12x cheaper, ~10x faster than 13 calls, same answers.
 
-```
- NEVER MODELED
-   ids from prose    money maths    stock maths
-   date compare      posting balance    access grants
-   publish decisions  layout tokens    html render
-```
-
-| Stage | Who | Job |
-| :--- | :--- | :--- |
-| Understand | LLM | goal, trigger, step phrases |
-| Extract | LLM | time, target, report |
-| Decide | Jev | action, gate, trigger, presence |
-| Verify | Jev | step needed, plan complete, approval |
-| Rank | Jev | best of two valid plans |
-| Write | LLM | card name, description, prose |
-| Explain | LLM | why this plan, in plain words |
-| Compute | Code | counts, sums, money, stock |
-| Commit | Code | gate, version, idempotency, record |
-
 ### Rules
 
 1. Never ask for an id the model did not see. Shortlist in code, let the model select.
@@ -384,19 +467,14 @@ Judgment 10 is the "now" in access. Judgment 6 is the variant.
 8. Money or customer = confirm. Always. Not model decided.
 9. A lane never crosses. The model never commits, never grants, never computes.
 
-| Bad | Instead |
-| :--- | :--- |
-| model picks the gate | derive from reach |
-| model picks ids from memory | shortlist in code first |
-| one call writes and decides | split: prose, then decide |
-| one call per question | batch into one |
-| confidence above .6 = auto | use p + margin |
-| retry until it works | one targeted repair |
-| big state, one question | filter the state in code |
-| regex router instead of a model | one choice over the registry |
-| model call on a render path | precompute it |
+```
+ NEVER MODELED
+   ids from prose    money maths    stock maths
+   date compare      posting balance    access grants
+   publish decisions  layout tokens    html render
+```
 
-## A9. The certainty ladder
+## A10. The certainty ladder
 
 Never pay for a decision you could have made without a model. Each rung has one exit test.
 
@@ -485,50 +563,35 @@ No match -> L2 Prose. Accuracy tracking adjusts confidence thresholds per worksp
 
 Never auto-act on confidence alone. Above threshold is never correctness; use p plus margin.
 
-## A10. Two model batches, then zero
+## A11. Two model batches, then zero
 
 ```
  SETUP (once)
-
   Merchant: "Weave silk sarees, UPI + cash counter, ship nationwide, need store"
        |
-  JEV #1  business    in: description, city, hours
-       |  -> { models, industry, capabilities, confidence }
-       v
-  CODE    shortlist   filter index by model + industry, rank -> max 6
+  JEV #1  business -> { models, industry, capabilities }
        |
-  JEV #2  look        in: profile, facts, shortlists, avoid[]
-       |  -> { design, recipe per type, lead, spotlight?, story?, trust? }
-       v
+  CODE    shortlist designs and recipes
+       |
+  JEV #2  look -> { design, recipe per type, spotlight?, story?, trust? }
+       |
   CODE    assemble draft + gate
 
  LIFETIME
-  similar intent  -> memory hit, 0 LLM, 1 JEV choice
-  exact repeat    -> 0 LLM, 0 JEV, code instantiates
-  every render and every step run -> 0 LLM, 0 JEV
+  similar intent  -> memory hit, 0 LLM, 1 JEV
+  exact repeat    -> 0 LLM, 0 JEV
+  every render and run -> 0 LLM, 0 JEV
 ```
 
 ```
- WORDS -> LLM sketch (goal, trigger, step phrases, slots)
-      -> JEV batch (trigger + per step: tool, gate, mod, needed?, complete?)
-      -> CODE wire, validate, derive gate, fallback, build card
-      -> OWNER confirms once
-      -> MEMORY: the confirmed plan is reused
-      -> RUN forever with 0 calls
+ WORDS -> LLM sketch -> JEV batch -> CODE wire -> OWNER confirms -> MEMORY -> RUN (0 calls)
 ```
 
-| Signal | Use |
-| :--- | :--- |
-| Choice argmax | pick tool / gate / mod / trigger |
-| Top-2 fallback | top invalid or unsafe -> second |
-| Noul | step needed?, plan complete?, approval? |
-| Plan confidence | min of step confidences, free |
-
-| Risk | Auto only if | Else | Notes |
-| :--- | :--- | :--- | :--- |
-| none / data | p >= 0.60, margin >= 0.30 | ask | Learn per workspace |
-| customer | p >= 0.80, margin >= 0.40 | confirm | Adaptive threshold |
-| money | p >= 0.85, margin >= 0.50 | confirm + owner | Tracks accuracy |
+| Risk | Auto only if | Else |
+| :--- | :--- | :--- |
+| none / data | p >= 0.60, margin >= 0.30 | ask |
+| customer | p >= 0.80, margin >= 0.40 | confirm |
+| money | p >= 0.85, margin >= 0.50 | confirm + owner |
 
 | Moment | LLM | JEV | Code |
 | :--- | :---: | :---: | :--- |
@@ -539,7 +602,7 @@ Never auto-act on confidence alone. Above threshold is never correctness; use p 
 | Workspace setup total | 1 | 2 | - |
 | Daily operation, 100 runs | 0 | 0 | - |
 
-## A11. Commerce kernel
+## A12. Commerce kernel
 
 One shared kernel supports retail, restaurant, supermarket, delivery, taxi,
 services and future domains. A domain adds facts and actions; it never forks
@@ -554,7 +617,7 @@ customer -> order -> reserve -> fulfil -> invoice -> payment -> refund
                               balanced postings
 ```
 
-### A11.1 Rules
+### A12.1 Rules
 
 Money is integer minor units plus ISO currency. Quantity is integer base units;
 display conversion belongs to the product unit. Price is server resolved from an
@@ -563,7 +626,7 @@ negative. Orders and invoices snapshot commercial facts. Every mutation is a
 registered action + permission + idempotency key + audit event. Every business
 event writes balanced postings. Every record belongs to one workspace.
 
-### A11.2 Records
+### A12.2 Records
 
 Commerce uses the shared `records` table. `type` selects the contract; `data`
 holds versioned fields. No table is created per trade. All workspaces share one
@@ -587,7 +650,7 @@ Files, media, and text over 2KB use R2 cloud storage. The record stores the obje
 key, hash, size, media type and version. Stock, price, quantity, invoice totals
 and payment state never live only in R2. All transactional facts remain in Turso.
 
-### A11.3 Commerce actions
+### A12.3 Commerce actions
 
 | Action | Commit |
 | :--- | :--- |
@@ -607,7 +670,7 @@ and payment state never live only in R2. All transactional facts remain in Turso
 POS reuses these guarantees for counter work. Cart, register, receipt and
 return interactions keep server pricing, stock movement and payment references.
 
-### A11.4 Atomic commits
+### A12.4 Atomic commits
 
 ```
 PURCHASE RECEIPT
@@ -634,7 +697,7 @@ provider and bank references are evidence, not authority
 adapters normalize and deduplicate references, then call the Gateway
 ```
 
-### A11.5 Domains
+### A12.5 Domains
 
 | Domain | Kernel reuse | Domain addition |
 | :--- | :--- | :--- |
@@ -645,7 +708,7 @@ adapters normalize and deduplicate references, then call the Gateway
 | Sales team | customer, order, invoice | lead, quote, approval and commission |
 | Services | item, order, invoice, payment | booking, time, milestone and acceptance |
 
-### A11.6 Projections and storage
+### A12.6 Projections and storage
 
 | Actor | Projection |
 | :--- | :--- |
@@ -669,7 +732,7 @@ Site generation never duplicates inventory as website truth. `site.refresh`
 rebuilds catalog bindings from active variants and prices. A public transaction,
 when site policy enables it, calls the same order and payment actions.
 
-### A11.7 Recovery and acceptance
+### A12.7 Recovery and acceptance
 
 | Failure | Recovery |
 | :--- | :--- |
@@ -689,7 +752,7 @@ reservation, fulfilment, cancellation and postings commit atomically; replay
 and conflicting keys are tested; POS keeps server pricing, returns, register and
 stock controls; Inbox consumes commerce records through authorized projections.
 
-## A12. Status
+## A13. Status
 
 Markers: `[S]` shipped, `[P]` partly shipped, `[T]` target. This table is the reality check;
 the rest of the document describes the target.
