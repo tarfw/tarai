@@ -32,8 +32,11 @@ Card rule    = title, one number, one tap, right-aligned. at most one
                no chips, no second number, no url, no status.
                the number is chosen by role: money for the owner,
                counts for the member. everything else is a detail.
-Add card     = the button browses the catalog. zero model calls.
-               the agent takes intent. both write the same one record.
+Card core    = the 14 basic tool cards, one per tool. the only
+               menu. at birth Jev names the nature and code
+               deals the cards. after, (+ Add a Card) browses
+               it, zero model calls. every path writes the
+               same one catalog record. nothing outside.
 NEXT         = the top inbox row. urgent rows carry !.
                there is no alert strip. an alert is just the top row.
 Inbox        = a property of every card, not a place. rows typed by tool.
@@ -57,13 +60,13 @@ Ask          = the personal agent, fullscreen. one long conversation.
 
 Integration  = adapter -> registered action -> one of the 14 tools
                built and reviewed at build time, never found at runtime.
-               no model on run. (the one law Memory and Site inherit)
+               no model on run. (the one law Memory, Site, and Onboard inherit)
 
 Network      = phase 2. a member's agent orders from other workspaces:
                taxi, food, grocery. the order enters the merchant the
                same way as the web store: action + gate. each side keeps
                its own records. routing lives in control, never a join.
-               the consumer is never a member of the merchant workspace.
+               the customer law holds across workspaces.
                settlement across workspaces is the one new design.
 
 Site         = one tool, two modes, one door.
@@ -143,7 +146,7 @@ Device       a window, never a copy.
 | Turso | event | id, record, type, created | what happened. feeds inbox + canvas |
 | Turso | inbox | id, member, event, tool, reach, due, assigned, status | each member's rows, typed by tool |
 
-One schema, two modes: `workspace.mode = personal | work`. Personal graduates to a business by a mode change, not a migration. Eleven tables is the floor; each has exactly one job.
+One schema, two modes: `workspace.mode = personal | work`. Personal graduates to work in place. Eleven tables is the floor; each has exactly one job.
 
 ## Tool list (14)
 
@@ -231,69 +234,163 @@ The laws live in Concept: Card rule, NEXT, Surface, Ask.
 ## Onboarding - create, join, manage on one surface (concept)
 
 ```
-Onboard       = the way in, then the way it is run. three cases,
-               one surface: Ask. before the first card, Ask is
-               the app. after the first confirm, Canvas is.
+ THE WAY IN - three cases, one line, one surface
 
-Case 1  CREATE  fresh merchant, no workspace. one sentence
-               describes the business.
-               describe once -> Jev picks the stack.
-               the same law Site Mode 1 follows.
-               words change the plan. still one confirm.
-Case 2  JOIN    invited member. no creation. one card, one tap,
-               zero model calls. join writes one member row.
-               the stack comes from grants, never choice.
-Case 3  GROW    personal -> work. a mode change, not a migration.
-               code watches the facts. Jev judges the meaning.
-               it proposes, never silent. one confirm.
+ +----------------------------------+
+ |  TAR                             |
+ |           the way in             |
+ |                                  |
+ |  CREATE   a sentence             |
+ |  JOIN     an invite              |
+ |  GROW     a fact                 |
+ |            |                     |
+ |            v                     |
+ |     +-------------+              |
+ |     |     ASK     |              |
+ |     +-------------+              |
+ |            |  one confirm        |
+ |            v                     |
+ |     +-------------+              |
+ |     |   CANVAS    |              |
+ |     +-------------+              |
+ |                                  |
+ +----------------------------------+
 
-Split         = the LLM proposes. Jev types. the action writes.
-               LLM     words, any language -> a draft. photos of
-                       price lists, excel, old pos exports ->
-                       draft rows. it never writes.
-               Jev     typed verdicts, never prose. one call,
-                       many verdicts, in parallel:
-                         nature   choice. shop | food | service
-                                  | mixed. the spread names the
-                                  runner up.
-                         stack    choice among recipes in code.
-                                  Jev selects, never invents.
-                         role     choice. owner | admin |
-                                  cashier | ... from words.
-                         rows     noul, one per row: price
-                                  sane, code valid.
-                         risk     noul per label: duplicate,
-                                  test, abuse. the create gate.
-               a noul near one half is doubt, not a middle
-               answer. doubt escalates to the one confirm.
-               no model after birth. the stack runs free.
-               (the law Integration set, inherited at birth.)
+   before the first card, Ask is the app.
+   after one confirm, Canvas is. words change
+   the plan. the confirm stays one.
 
-Provision     = one confirm -> one control action, idempotent:
-                 D1     workspace + member (owner). state active
-                 Turso  a fresh DB. 11 tables. nothing else.
-                 R2     an empty layout.
-               a draft lives in the conversation, never in
-               control. a failed provision leaves nothing. an
-               abandoned one leaves nothing.
-               creation is not a tool. it is the door: control
-               actions in the same registry, writing D1, behind
-               the same gate. 14 tools stay 14. no new tables.
-               slug from the name, collisions get a number.
-               locale gives currency, tax, words.
+   CREATE   describe once -> Jev names the
+            nature. code deals the cards.
+            Site Mode 1's law.
+   JOIN     one card, one tap, zero model calls.
+            one member row. grants choose the stack.
+   GROW     a mode change, not a migration.
+            code sees the fact. code proposes.
+            no LLM. never silent.
 
-Manage        = a conversation, not a settings screen.
-               members, roles, shifts  -> the member card.
-               name, mode, url, danger -> Ask -> plan -> one
-               confirm -> control action. the owner is the gate.
-               archive and transfer ask twice. archived is a
-               state: records are never deleted.
-               many workspaces: the door lists them. one tap
-               enters. workspaces never merge.
+ THE SPLIT - the LLM proposes. Jev types. the action writes.
+
+ +----------------------------------+
+ |  TAR                             |
+ |            the split             |
+ |                                  |
+ |        words . photos . exports  |
+ |             |                    |
+ |             v                    |
+ |    +---------------+  proposes   |
+ |    |      LLM      |             |
+ |    +---------------+             |
+ |             |  draft             |
+ |             v                    |
+ |    +---------------+  types      |
+ |    |      JEV      |             |
+ |    +---------------+             |
+ |             |  plan              |
+ |             v                    |
+ |    +---------------+  writes     |
+ |    |     ACTION    |             |
+ |    |    + gate     |             |
+ |    +---------------+             |
+ |                                  |
+ +----------------------------------+
+
+   LLM     proposes only. never writes. words,
+           any language. photos, excel, pos
+           exports -> draft rows.
+   JEV     types only. never prose. one call,
+           many verdicts, in parallel.
+   ACTION  writes it, behind a gate.
+
+   no model after birth. the stack runs free.
+
+ THE VERDICTS - one Jev call, four answers, in parallel
+
+ +----------------------------------+
+ |  TAR                             |
+ |          the verdicts            |
+ |                                  |
+ |  nature   choice                 |
+ |  role     choice                 |
+ |  rows     noul                   |
+ |  risk     noul                   |
+ |                                  |
+ +----------------------------------+
+
+   nature   choice    food 0.92 | shop 0.05 | service 0.02
+                       the spread deals the cards: top
+                       natures take their recipes.
+   role     choice    owner | admin | cashier | ...
+                       straight from the owner's words.
+   rows     noul      one per row: price sane? code valid?
+   risk     noul      test? abuse? the create gate.
+
+   code deals the cards: nature -> recipe ->
+   stack. unpicked cards stay deferred, not
+   missing. duplicate is code too: one lookup
+   in D1.
+
+   Jev speaks three times: at birth (nature +
+   risk), at import (rows), at hire (role).
+   nowhere else.
+
+   a noul near one half is doubt, not a middle answer.
+   doubt escalates to the one confirm.
+
+ BIRTH - one confirm, one control action, idempotent
+
+ +----------------------------------+
+ |  TAR                             |
+ |              birth               |
+ |                                  |
+ |        .--------+---------.      |
+ |        v        v         v      |
+ |    +------+ +------+ +------+    |
+ |    |  D1  | |TURSO | |  R2  |    |
+ |    +------+ +------+ +------+    |
+ |                                  |
+ |    D1      workspace + owner     |
+ |    TURSO   11 tables, nothing    |
+ |            else                  |
+ |    R2      an empty layout       |
+ |                                  |
+ +----------------------------------+
+
+   a draft lives in the conversation, never in
+   control. a failed or abandoned birth leaves
+   nothing.
+   not a tool: control actions, same registry,
+   same gate. 14 tools stay 14. no new tables.
+   slug from the name, collisions get a number.
+   locale gives currency, tax, words.
+   the recipe seeds the first inbox. birth ends
+   on a Canvas with a NEXT, never a blank.
+
+ MANAGE - a conversation, not a settings screen
+
+ +----------------------------------+
+ |  TAR                             |
+ |              manage              |
+ |                                  |
+ |  members, roles, shifts          |
+ |         |                        |
+ |         v                        |
+ |   [ the member card ]            |
+ |                                  |
+ |  name, mode, url, danger         |
+ |         |                        |
+ |         v                        |
+ |           [ ASK ]                |
+ |                                  |
+ +----------------------------------+
+
+   the owner is the gate. archive and transfer
+   ask twice. archived is a state: records are
+   never deleted. workspaces never merge.
 ```
 
 ```
-   CREATE - no workspace yet. Ask is the whole app.
+ 1  FIRST - the empty door.
  +----------------------------------+
  |  TAR                             |
  |                                  |
@@ -305,29 +402,97 @@ Manage        = a conversation, not a settings screen.
  |                                  |
  +----------------------------------+
 
+ 2  PLAN - one sentence in, a typed plan out.
  You
  tea shop. snacks to take away. just me.
  TAR
  PLAN    Create workspace
  name    Aambal Tea Stall
- nature  food counter                 jev 0.92
- cards   Counter Sales, Products and
-         Prices, Daily Expenses
- money   Rs . GST 5% . UPI            from locale
- site    aambal-tea.tar.site          ready
+ nature  food counter               jev 0.92
+ cards   3 of 14, from the card core
+ money   Rs . GST 5% . UPI          from locale
+ site    aambal-tea.tar.site        ready
        [ Confirm ]   [ Change ]
 
-   JOIN - invited. one card, one tap, zero model calls
+ 3  THE PICK - the whole menu, marked.
+ +----------------------------------+
+ |  CARD CORE                  14   |
+ |                                  |
+ |  [*] Counter Sales        money  |
+ |  [*] Products + Prices    data   |
+ |  [*] Daily Expenses       money  |
+ |  [ ] Orders and Dispatch  cust   |
+ |  [ ] Online Storefront    cust   |
+ |  [ ] 9 more deferred             |
+ |                                  |
+ |  the recipe marked 3. tap any   |
+ |  card to toggle it.              |
+ +----------------------------------+
+
+ 4  BORN - one action. all three stores.
+ TAR
+ done in one. Canvas is waiting.
+       [ Open Canvas ]
+
+ 5  FIRST CANVAS - what one sentence bought.
+ +----------------------------------+
+ | (1) Aambal Tea Stall            o|
+ | Owner                            |
+ +----------------------------------+
+ | NEXT  add your first item        |
+ |                    [ Add Item ]  |
+ +----------------------------------+
+ | COUNTER SALES                    |
+ | Rs. 0 today                      |
+ |                      [ New Sale ]|
+ +----------------------------------+
+ | PRODUCTS AND PRICES              |
+ | 0 items                          |
+ |                    [ Add Item ]  |
+ +----------------------------------+
+ | DAILY EXPENSES                   |
+ | Rs. 0 today                      |
+ |                   [ Log Expense ]|
+ +----------------------------------+
+ |                 [ + Add a Card ] |
+ +----------------------------------+
+ |                              (+) |
+ +----------------------------------+
+
+ 6  IMPORT - a photo becomes rows.
+ You
+ (photo of a hand written price list)
+ TAR
+ DRAFT   14 rows from the photo
+   1  chai              Rs. 10     0.98
+   2  filter coffee     Rs. 15     0.98
+   3  samosa ?          Rs. ??     0.51
+   .  11 more                      0.9+
+ row 3 is doubt, not data. fix it or post the 13 sane.
+       [ Fix row 3 ]   [ Post 13 ]
+
+ 7  INVITED - the invite card.
  +----------------------------------+
  |  TAR                             |
  |                                  |
  |  Aambal Neyvagam                 |
- |  invites you as Cashier          |
+ |  invites you as                  |
+ |  Cashier                         |
  |                                  |
  |                     [ Join ]     |
  +----------------------------------+
 
-   GROW - personal becomes work. manage is the same talk.
+ 8  MANY - one member, several boundaries.
+ +----------------------------------+
+ |  TAR                             |
+ |                                  |
+ |  Personal              you       |
+ |  Aambal Neyvagam       Cashier   |
+ |  Home Foods            Admin     |
+ |                                  |
+ +----------------------------------+
+
+ 9  GROW - a hire is a fact. a promotion is a proposal.
  You (owner)
  hire Ravi for the morning counter
  TAR
@@ -336,10 +501,28 @@ Manage        = a conversation, not a settings screen.
  more    a second member promotes your
          workspace to work mode
        [ Confirm ]   [ Change ]
+
+10  MANAGE - rename is a talk, not a form.
+ You (owner)
+ rename us to Aambal Sweets
+ TAR
+ PLAN    Change workspace
+ name    Aambal Sweets
+ url     aambal-tea.tar.site . never moves
+       [ Confirm ]   [ Change ]
+
+11  DANGER - typing it is the second ask.
+ You (owner)
+ archive this workspace
+ TAR
+ everything stays. the site goes
+ dark. type ARCHIVE to confirm.
+ You
+ ARCHIVE
+ TAR
+ archived. undo is one repoint.
 ```
 
-Three cases, one surface: no wizard, no form, no settings screen.
-Onboarding is Ask before the first card, management is Ask after it.
-Inherited: Integration (no model on run), Gate (asks first), Card
-(one tap). The floor holds: 11 tables, 14 tools.
+Five maps hold the laws, eleven screens walk them.
+one surface the whole way: no workspace to first sale.
 
