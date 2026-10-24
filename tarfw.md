@@ -72,12 +72,8 @@ Site         = one tool, two modes, one door.
                Mode 2  SANDBOX   member prompts -> LLM writes Astro code.
                                  built in an isolated box.          (later)
 
-                    |                        |
-                    +----> release in R2 <---+
-                               |
                ONE sites worker serves *.tar.site
-               subdomain -> workspace -> release
-                               |
+               subdomain -> workspace -> release in R2
                gate -> publish = an immutable release. rollback repoints.
 
                the LLM writes looks. never checkout, payment, tax, price, stock.
@@ -85,12 +81,73 @@ Site         = one tool, two modes, one door.
                sandbox, builder, releases = architecture.
 ```
 
-Rules that follow:
+## Data
 
-- A flow composes existing actions only. It never invents a step.
-- A tool with no core flow (sell, buy, close day) is deferred, not built.
+```
+Memory       = skills. describe once -> run forever, free.
+               L0 literal -> L1 shape -> L2 prose -> confirmed skill.
+               vector = one column on skill. added only when L1 misses climb.
+
+Control (D1, platform-wide)
+               who exists, who belongs where. columns in Schema.
+
+Truth (one Turso DB per workspace)
+  record      every fact. versioned, archived.
+  move        every change ever. append-only.
+  current     the number now. derived, not duplicate. rebuildable.
+  skill       memory of flow.
+  run         one execution. resume from step.
+  event       what happened. feeds inbox + every canvas.
+  inbox       each member's rows, typed by their tool.
+  columns live in the Schema table below.
+
+Bytes (R2)
+              media, papers, sites, archive, closes
+              DB = numbers, states, links. R2 = bytes.
+              never only in R2: price, stock, totals, payment state.
+
+Cost guard
+              one write = record + move + current + event. one transaction.
+              hot window 90 days -> monthly close, hash-sealed to R2 -> archive.
+              current = close + bounded move.
+              writes and models share the monthly ceiling.
+
+Device       a window, never a copy.
+              read    = granted projections. a card's slice = metrics + its inbox rows.
+              write   = tap -> queue (idempotency key) -> registry -> gate.
+                        one road. every role.
+              mirror  = personal DB only: small, own data, local-first.
+              offline = cached cards + queued taps. a syncing badge tells the truth.
+              package = @tursodatabase/sync-react-native, pinned. pull only.
+                        push() is never a road: it skips gates and postings.
+              roles   = owner, admin -> projections, more of them
+                        member -> projections, their slice
+                        personal -> the mirror
+                        customer -> R2 site pages
+              the size of the window is trust. the road for writes is one.
+```
+
+## Schema (11 tables, the floor)
+
+| DB | Table | Columns | Holds |
+| :--- | :--- | :--- | :--- |
+| D1 | user | id, email, name | who exists |
+| D1 | workspace | id, name, slug, mode, db, host, state | one business boundary |
+| D1 | member | workspace, user, role, state | who belongs where |
+| D1 | invite | workspace, email, role, state | pending members |
+| Turso | record | id, type, data, version, owner, created, archived | every fact. data under 2KB |
+| Turso | move | id, kind, key, amount, why, source, created | every change. append-only |
+| Turso | current | kind, key, data | the number now. key = kind + key |
+| Turso | skill | id, shape, trigger, steps, score, confirmed | memory of flow. embedding later |
+| Turso | run | id, skill, step, status, key, input | one execution. same key never twice |
+| Turso | event | id, record, type, created | what happened. feeds inbox + canvas |
+| Turso | inbox | id, member, event, tool, reach, due, assigned, status | each member's rows, typed by tool |
+
+One schema, two modes: `workspace.mode = personal | work`. Personal graduates to a business by a mode change, not a migration. Eleven tables is the floor; each has exactly one job.
 
 ## Tool list (14)
+
+A tool with no core flow (sell, buy, close day) is deferred, not built.
 
 | # | Tool | Card | Reach | One tap |
 | :-: | :--- | :--- | :--- | :--- |
@@ -171,67 +228,118 @@ Three screens, one app: the owner's Canvas, the member's Canvas, the agent.
 Same screen for every member - grants change the stack, not the layout.
 The laws live in Concept: Card rule, NEXT, Surface, Ask.
 
-## Data
+## Onboarding - create, join, manage on one surface (concept)
 
 ```
-Memory       = skills. describe once -> run forever, free.
-               L0 literal -> L1 shape -> L2 prose -> confirmed skill.
-               vector = one column on skill. added only when L1 misses climb.
+Onboard       = the way in, then the way it is run. three cases,
+               one surface: Ask. before the first card, Ask is
+               the app. after the first confirm, Canvas is.
 
-Control (D1, platform-wide)
-               who exists, who belongs where. columns in Schema.
+Case 1  CREATE  fresh merchant, no workspace. one sentence
+               describes the business.
+               describe once -> Jev picks the stack.
+               the same law Site Mode 1 follows.
+               words change the plan. still one confirm.
+Case 2  JOIN    invited member. no creation. one card, one tap,
+               zero model calls. join writes one member row.
+               the stack comes from grants, never choice.
+Case 3  GROW    personal -> work. a mode change, not a migration.
+               code watches the facts. Jev judges the meaning.
+               it proposes, never silent. one confirm.
 
-Truth (one Turso DB per workspace)
-  record      every fact. versioned, archived.
-  move        every change ever. append-only.
-  current     the number now. derived, not duplicate. rebuildable.
-  skill       memory of flow.
-  run         one execution. resume from step.
-  event       what happened. feeds inbox + every canvas.
-  inbox       each member's rows, typed by their tool.
-  columns live in the Schema table below.
+Split         = the LLM proposes. Jev types. the action writes.
+               LLM     words, any language -> a draft. photos of
+                       price lists, excel, old pos exports ->
+                       draft rows. it never writes.
+               Jev     typed verdicts, never prose. one call,
+                       many verdicts, in parallel:
+                         nature   choice. shop | food | service
+                                  | mixed. the spread names the
+                                  runner up.
+                         stack    choice among recipes in code.
+                                  Jev selects, never invents.
+                         role     choice. owner | admin |
+                                  cashier | ... from words.
+                         rows     noul, one per row: price
+                                  sane, code valid.
+                         risk     noul per label: duplicate,
+                                  test, abuse. the create gate.
+               a noul near one half is doubt, not a middle
+               answer. doubt escalates to the one confirm.
+               no model after birth. the stack runs free.
+               (the law Integration set, inherited at birth.)
 
-Bytes (R2)
-              media, papers, sites, archive, closes
-              DB = numbers, states, links. R2 = bytes.
-              never only in R2: price, stock, totals, payment state.
+Provision     = one confirm -> one control action, idempotent:
+                 D1     workspace + member (owner). state active
+                 Turso  a fresh DB. 11 tables. nothing else.
+                 R2     an empty layout.
+               a draft lives in the conversation, never in
+               control. a failed provision leaves nothing. an
+               abandoned one leaves nothing.
+               creation is not a tool. it is the door: control
+               actions in the same registry, writing D1, behind
+               the same gate. 14 tools stay 14. no new tables.
+               slug from the name, collisions get a number.
+               locale gives currency, tax, words.
 
-Cost guard
-              one write = record + move + current + event. one transaction.
-              hot window 90 days -> monthly close, hash-sealed to R2 -> archive.
-              current = close + bounded move.
-              writes and models share the monthly ceiling.
-
-Device       a window, never a copy.
-              read    = granted projections. a card's slice = metrics + its inbox rows.
-              write   = tap -> queue (idempotency key) -> registry -> gate.
-                        one road. every role.
-              mirror  = personal DB only: small, own data, local-first.
-              offline = cached cards + queued taps. a syncing badge tells the truth.
-              package = @tursodatabase/sync-react-native, pinned. pull only.
-                        push() is never a road: it skips gates and postings.
-              roles   = owner, admin -> projections, more of them
-                        member -> projections, their slice
-                        personal -> the mirror
-                        customer -> R2 site pages
-              the size of the window is trust. the road for writes is one.
+Manage        = a conversation, not a settings screen.
+               members, roles, shifts  -> the member card.
+               name, mode, url, danger -> Ask -> plan -> one
+               confirm -> control action. the owner is the gate.
+               archive and transfer ask twice. archived is a
+               state: records are never deleted.
+               many workspaces: the door lists them. one tap
+               enters. workspaces never merge.
 ```
 
-## Schema (11 tables, the floor)
+```
+   CREATE - no workspace yet. Ask is the whole app.
+ +----------------------------------+
+ |  TAR                             |
+ |                                  |
+ |  tell TAR about your business    |
+ |  in one line                     |
+ |                                  |
+ |   [ I have a price list ]        |
+ |   [ I have an invite ]           |
+ |                                  |
+ +----------------------------------+
 
-| DB | Table | Columns | Holds |
-| :--- | :--- | :--- | :--- |
-| D1 | user | id, email, name | who exists |
-| D1 | workspace | id, name, slug, mode, db, host, state | one business boundary |
-| D1 | member | workspace, user, role, state | who belongs where |
-| D1 | invite | workspace, email, role, state | pending members |
-| Turso | record | id, type, data, version, owner, created, archived | every fact. data under 2KB |
-| Turso | move | id, kind, key, amount, why, source, created | every change. append-only |
-| Turso | current | kind, key, data | the number now. key = kind + key |
-| Turso | skill | id, shape, trigger, steps, score, confirmed | memory of flow. embedding later |
-| Turso | run | id, skill, step, status, key, input | one execution. same key never twice |
-| Turso | event | id, record, type, created | what happened. feeds inbox + canvas |
-| Turso | inbox | id, member, event, tool, reach, due, assigned, status | each member's rows, typed by tool |
+ You
+ tea shop. snacks to take away. just me.
+ TAR
+ PLAN    Create workspace
+ name    Aambal Tea Stall
+ nature  food counter                 jev 0.92
+ cards   Counter Sales, Products and
+         Prices, Daily Expenses
+ money   Rs . GST 5% . UPI            from locale
+ site    aambal-tea.tar.site          ready
+       [ Confirm ]   [ Change ]
 
-One schema, two modes: `workspace.mode = personal | work`. Personal graduates to a business by a mode change, not a migration. Eleven tables is the floor; each has exactly one job.
+   JOIN - invited. one card, one tap, zero model calls
+ +----------------------------------+
+ |  TAR                             |
+ |                                  |
+ |  Aambal Neyvagam                 |
+ |  invites you as Cashier          |
+ |                                  |
+ |                     [ Join ]     |
+ +----------------------------------+
+
+   GROW - personal becomes work. manage is the same talk.
+ You (owner)
+ hire Ravi for the morning counter
+ TAR
+ PLAN    Add member
+ Ravi    cashier . shift 6 to 10
+ more    a second member promotes your
+         workspace to work mode
+       [ Confirm ]   [ Change ]
+```
+
+Three cases, one surface: no wizard, no form, no settings screen.
+Onboarding is Ask before the first card, management is Ask after it.
+Inherited: Integration (no model on run), Gate (asks first), Card
+(one tap). The floor holds: 11 tables, 14 tools.
 
