@@ -9,7 +9,7 @@ WORDS or TAP -> PLAN (LLM sketch + JEV pick + CODE wire) -> CARD -> GATE -> ONE 
 
 | Part | Holds |
 | :--- | :--- |
-| A | Concept: words, kernel nouns, lanes, card, flow, access, Jev, ladder, cost, commerce, status |
+| A | Concept: words, lanes, kernel, cards, flows, access, inbox, Jev, ladder, commerce |
 | B | Concept screens: canvas, card, flow, checkout, store, manager, inbox |
 | C | The store: models, designs, recipes, gate |
 | D | Three traces, lane by lane |
@@ -23,27 +23,17 @@ WORDS or TAP -> PLAN (LLM sketch + JEV pick + CODE wire) -> CARD -> GATE -> ONE 
 ## A1. The idea
 
 ```
-                    BEFORE                                                 AFTER
- +--------------------------------------------+        +--------------------------------------------+
- | 9:41                                   94% |        | 9:41                                   94% |
- +--------------------------------------------+        +--------------------------------------------+
- | 18 tools                          NO GUIDE |        | Aambal Neyvagam                      Owner |
- +--------------------------------------------+        +--------------------------------------------+
- | Search 18 tools...                         |        | COUNTER SALES                     SHIFT 14 |
- +--------------------------------------------+        | Today Rs. 18,450  UPI Rs. 14,100           |
- | [ POS      ] [ ORDER    ] [ ITEM     ]     |        | 14 bills, drawer cash Rs. 4,350            |
- | [ REGISTER ] [ STOCK    ] [ INVOICE  ]     |  -->   | [ New Counter Sale ]                       |
- | [ PAYMENT  ] [ EXPENSE  ] [ PURCHASE ]     |        +--------------------------------------------+
- | [ TEAM     ] [ CONTACT  ] [ TASKS    ]     |        | ORDERS AND FULFILMENT                      |
- | [ FLOWS    ] [ STORE    ] [ INBOX    ]     |        | Pending 3   Dispatched today 11            |
- | [ CHAT     ] [ WHATSAPP ] [ TELEGRAM ]     |        | [ Open Queue ]                             |
- +--------------------------------------------+        +--------------------------------------------+
- | Tap the right tool.                        |        | [ + Add a Card ]                           |
- | Remember the steps.                        |        | Message TAR...                         (+) |
- |  (+)    [ Tools ]    Flows    Site    You  |        |  (+)    [Canvas]    Flows    Site    You   |
- +--------------------------------------------+        +--------------------------------------------+
-  18 tool icons                                          only your cards
-  everyone needs training                                zero training, one tap
+  Aambal Neyvagam                            Owner
+ +------------------------------------+
+ | COUNTER SALES            SHIFT 14  |
+ | Today Rs. 18,450  UPI Rs. 14,100   |
+ | [ New Counter Sale ]               |
+ +------------------------------------+
+ | ORDERS  Pending 3  Shipped 11      |
+ | [ Open Queue ]                     |
+ +------------------------------------+
+ | Only the cards you may use, now.   |
+ +------------------------------------+
 ```
 
 ```
@@ -57,118 +47,79 @@ WORDS or TAP -> PLAN (LLM sketch + JEV pick + CODE wire) -> CARD -> GATE -> ONE 
    7  No model on run. Cards and runs are deterministic
 ```
 
-## A2. Seven words
+## A2. Words
 
 | Word | Meaning | Example |
 | :--- | :--- | :--- |
-| Workspace | Business boundary: members, cards, site, shared Turso DB with workspace_id | Aambal Neyvagam, Salem |
-| Canvas | Home stack, only cards allowed for you, useful now | Cashier 4, owner 6 |
+| Workspace | Business boundary: members, cards, site. Shared Turso DB, `workspace_id` | Aambal Neyvagam |
+| Canvas | Home stack: only the cards you may see, useful now | Cashier 4, owner 6 |
 | Card | Saved read + one tap | Cash Drawer: Rs 4,350 + [Count] |
-| Flow | Ordered resumable steps, max 12 | Evening Closing, 4 steps |
-| Step | One existing tool call (CRUD) | count cash drawer |
-| Record | Typed row in the one records table | item, stock, order, posting |
+| Flow | Ordered, resumable steps. Max 12 | Evening Closing, 4 steps |
+| Step | One registered action | count cash drawer |
+| Record | Typed row in the one `records` table | item, stock, order, posting |
 | Inbox | Personal to-act feed, mandatory per member | 2 waiting, 1 overdue |
 
-```
-CARD = saved read + one tap
-  2 shapes: action | flow
-  card = { title, metrics: [{ label, read }], action, reach }
+Card shape: `{ title, metrics: [{ label, read }], action, reach }`. Shape is `action` or `flow`.
 
-TAP -> GATE -> ONE RECORD -> EVENT -> INBOX -> EVERY CANVAS
-```
+Implementation nouns (not surface words):
 
-These seven are the surface words. The kernel nouns below are the implementation terms;
-`Trigger`, `Gate`, `Approver`, `Modifier` live inside Flow only.
-
-| Kernel noun | Meaning | Example |
+| Noun | Meaning | Example |
 | :--- | :--- | :--- |
-| Tool card | A card backed by one action. 18 of them | Counter Sales |
+| Tool card | Card backed by one action. 18 of them | Counter Sales |
 | Run | One execution of a flow | Run 104, step 2 of 4 |
-| Action | The only thing that writes. 116 registered | order.create |
-| Stage | A tag that groups actions for the manager. 14 of them | Sell, Money, People |
+| Action | The only thing that writes. 116 registered | `order.create` |
+| Stage | Groups actions for the manager. 14 of them | Sell, Money, People |
 | Posting | Balanced debit and credit written with a record | sale: debit cash, credit revenue |
 | Role | What a member does. Jev reads it from plain English | Cashier |
-| Reach | Risk of an action: money, customer, data, none | money |
-| Memory | A confirmed plan stored in Turso `plans` table, reused later | daily report pattern |
+| Reach | Risk of an action: `money`, `customer`, `data`, `none` | money |
+| Memory | A confirmed plan in the `plans` table, reused later | daily report |
 
-## A3. Four lanes
+Trigger, Gate, Approver and Modifier exist only inside Flow (A6).
+
+## A3. Lanes
+
+Each lane has one job. A lane never crosses into another.
 
 | Lane | Owns | Never |
 | :--- | :--- | :--- |
-| Code | numbers, money, counts, dates, gates, grants | asks a model for a derivable fact |
-| Jev | which of N, how risky, how useful | prose, computes, grants, commits |
-| LLM | the words, the layout, the prose | picks ids, decides, computes |
-| Code | the commit, always | anything a model influences |
+| Code | numbers, money, counts, dates, gates, grants, the commit | asks a model for a derivable fact |
+| Jev | which of N, how risky, how useful | writes prose, computes, grants, commits |
+| LLM | words, layout, prose | picks ids, decides, computes |
 
-A lane never crosses.
+Pipeline: `WORDS or TAP -> PLAN -> CARD -> GATE -> RECORD -> every card syncs`. The gate checks token, grant, version and idempotency.
 
-```
- WORDS or TAP
-      |
-      v
-   PLAN    LLM sketches, JEV picks, CODE wires
-      |
-      v
-   CARD
-      |
-      v
-   GATE    token, grant, version, idempotency
-      |
-      v
-   RECORD  one row, then every card syncs
-```
+## A4. Kernel
 
-## A4. One kernel
-
-```
- C create -> one new record
- R read   -> count, sum, list, report   (projections are read-only)
- U update -> one new version of a record
- D delete -> archive (never erase)
-```
+| Verb | Meaning |
+| :-: | :--- |
+| C create | one new record |
+| R read | count, sum, list, report. Projections are read-only |
+| U update | one new version of a record |
+| D delete | archive. Never erase |
 
 | Record | Writes | Also writes |
 | :--- | :--- | :--- |
-| sale | order + invoice + payment | posting (debit cash / credit revenue) + stock |
+| sale | order, invoice, payment | posting (debit cash, credit revenue), stock |
 | expense | expense | posting |
 | stock move | inventory | - |
 | member | member | - |
-| flow run | run + step pointer | - |
+| flow run | run, step pointer | - |
 
-```
- P&L, GST, forecast, stock on hand: computed by CODE from records.
- LLM never computes. JEV never computes.
-```
+P&L, GST, forecast and stock on hand are computed by code from records. Never by a model.
 
 ## A5. Cards
 
-```
- +----------------------------------------+
- | [icon] Counter Sales           [SHIFT] |
- | Today Rs 18,450  UPI 14,100            |
- | 14 bills, drawer cash Rs 4,350         |
- | [ New Counter Sale ]                   |
- +----------------------------------------+
-   Tap title  -> detail (list / search / detail)
-   Tap button -> commit once (gate -> one record)
-   Other actions live in detail
-```
+Tap the title for detail. Tap the button to commit once (gate, then one record). Other actions live in detail.
 
 | Preset | Shape | Opens | Example |
 | :--- | :--- | :--- | :--- |
 | tool | action | list, search, detail | Products, Stock |
 | flow | flow | checklist run | Evening Closing |
-| site | action | store preview + edit | Online Store |
-| channel | action / read | feed or chat | WhatsApp, Telegram |
+| site | action | store preview, edit | Online Store |
+| channel | action or read | feed or chat | WhatsApp |
 | human | action | task list | Manual Tasks |
 
-| Surface | Holds |
-| :--- | :--- |
-| Canvas | Home stack: allowed + useful cards |
-| Flows | Active runs + available flows |
-| Site | Storefront preview, edit, publish |
-| You | Profile, settings, workspaces |
-| Inbox | Personal to-act feed (mandatory) |
+Surfaces: **Canvas** (home), **Flows** (active runs), **Site** (storefront), **You** (profile, workspaces), **Inbox** (to-act feed, mandatory).
 
 | Tool | Card | Reach | Glance | One tap |
 | :--- | :--- | :--- | :--- | :--- |
@@ -193,40 +144,30 @@ A lane never crosses.
 
 ## A6. Flows
 
-```
- PLAN  trigger  tap | schedule | event
-       steps    [ step, ... ]        max 12
-       card     title + 0-2 metrics + 1 tap
+A step is: `crud` (C, R, U or D), one registered `tool`, `input` (known at plan time or asked at run), `gate`, `approver`, `mod`.
 
- STEP  crud     C | R | U | D
-       tool     one registered action only
-       input    known at plan time OR ask at run
-       gate     auto | ask | approve
-       approver assignee | owner    (ask -> assignee, approve -> owner)
-       mod      none | retry | repeat | undo | match
-```
-
-```
- TRIGGER
-   tap       a person presses the card
-   schedule  a clock: "every day at 22:00"
-   event     a record changed: "when an order is paid"
-```
+| Trigger | Fires when |
+| :--- | :--- |
+| tap | a person presses the card |
+| schedule | a clock: "every day at 22:00" |
+| event | a record changes: "when an order is paid" |
 
 | Gate | Who acts | When |
 | :--- | :--- | :--- |
-| auto | code | inputs known AND reach in {none, data} |
-| ask | person | input missing OR physical step |
-| approve | owner / admin | money, customer, or over limit |
+| auto | code | inputs known AND reach is `none` or `data` |
+| ask | person | input missing, or physical step |
+| approve | owner or admin | money, customer, or over limit |
 
-| Modifier | Meaning | Scope | Limits |
+Code upgrades the gate on the safety floor: auto + money becomes approve.
+
+| Modifier | Meaning | Scope | Limit |
 | :--- | :--- | :--- | :--- |
-| retry | run once more on failure | step | 3 attempts, backoff 2^n seconds |
-| repeat | again until state changes, or per row | flow / row | max 100 rows or 5 min timeout |
-| undo | opposite posting | step | undo failure -> owner approval |
+| retry | run again on failure | step | 3 tries, backoff 2^n s |
+| repeat | until state changes, or per row | flow or row | 100 rows or 5 min |
+| undo | opposite posting | step | undo failure needs owner approval |
 | match | read two sources, update the match | plan | - |
 
-Every flow is one of these forms. No other shape exists.
+Every flow is one of these eight forms:
 
 | Form | Gate | Approver | Modifier | Reads as |
 | :--- | :--- | :--- | :--- | :--- |
@@ -239,21 +180,15 @@ Every flow is one of these forms. No other shape exists.
 | retry | auto or ask | - | retry | retry a failed action |
 | reconcile | auto | - | match | reconcile two reads |
 
-```
- JEV picks tool + gate + modifier.
- CODE checks the tool supports them, else falls back to derived gate/mod.
- CODE upgrades gate on safety floor: auto + money -> approve.
-```
+JEV picks tool, gate and modifier. CODE checks the tool supports them, else falls back to a derived gate and modifier.
 
 ### Runtime is deterministic
 
-```
- TAP / SCHEDULE / EVENT -> GATE -> CRUD -> EVENT -> INBOX -> EVERY CANVAS SYNCS
-```
+TAP, SCHEDULE or EVENT -> GATE -> CRUD -> EVENT -> INBOX -> CANVAS SYNCS.
 
 | Rule | Meaning |
 | :--- | :--- |
-| No model on render | cards read records / metrics |
+| No model on render | cards read records and metrics |
 | No model on run | steps are deterministic |
 | One write | one step commits alone |
 | Retry safe | same run + step never doubles |
@@ -262,15 +197,12 @@ Every flow is one of these forms. No other shape exists.
 ## A7. Access
 
 ```
- workspace enabled AND JEV grants for this member AND now = visible cards
+ visible card = workspace enabled
+              AND Jev grant for this member
+              AND card is useful now
 ```
 
-```
- JEV reads: "cashier, packs orders, no price edits"
-   -> ALLOW  Counter Sales, Cash Drawer, Order Fulfilment, Inbox
-   -> HIDE   Products and Prices, Store Studio, Team, Revenue
- Roles never picked from a dropdown. Grants derived, not assigned.
-```
+Roles are never picked from a dropdown. Grants are derived, not assigned.
 
 | Card or action | Owner | Admin | Cashier | Guest |
 | :--- | :---: | :---: | :---: | :--- |
@@ -282,491 +214,279 @@ Every flow is one of these forms. No other shape exists.
 | Storefront Studio | Full | Full | View only | Public view |
 | Team and Grants | Full | Full | Hidden | Denied |
 
-Full = see + act. Execute only = act, no settings. View only = see only.
+Full = see and act. Execute only = act, no settings. View only = see only.
 Shift only = act in a shift. Hidden = not shown. Denied = no access.
 
-One person may belong to several workspaces; each isolated.
+One person may belong to several workspaces. Each is isolated.
 
-## A8. Inbox: role-aware, context-filtered
+## A8. Inbox
 
-Inbox shows only what this person can act on, right now. No event dump.
+Inbox shows only what this member can act on now. Screens: B9.
 
-```
- EVENT (workspace-wide)
-      |
-      v
- FILTER by role + shift + reach
-      |
-      v
- SORT by overdue + reach + due + assigned
-      |
-      v
- INBOX (personal, actionable only)
-```
+Filter by role, shift and reach. Sort by overdue, reach, due and assignment. Show only what this member can act on now.
 
-### Filter rules
+| Event | Owner | Cashier |
+| :--- | :---: | :---: |
+| Refund approval needed (money, owner only) | yes | - |
+| Count cash drawer (assigned to cashier) | yes | yes |
+| Low stock alert | yes | - |
+| Pack order | yes | yes |
+| Cash drawer mismatch | yes | - |
 
-| Event | Owner sees | Cashier sees | Why |
-| :--- | :---: | :---: | :--- |
-| Refund approval needed | yes | - | money reach, owner only |
-| Count cash drawer | yes | yes | assigned to cashier, owner can see |
-| Low stock alert | yes | - | owner manages inventory |
-| Pack order | yes | yes | both can act |
-| Store draft ready | yes | - | owner publishes |
-| Cash drawer mismatch | yes | - | owner audits |
+Same 18 events: owner sees 6, cashier sees 2.
 
-Same 18 events -> owner sees 6, cashier sees 2.
+Sort order:
 
-### Sort order (automatic)
+1. Overdue + high reach (money, customer first)
+2. Due now + assigned to you
+3. Due today + you can act
+4. Later + background alerts
+
+Three actions only: **Complete** (writes the record, archives the event), **Defer** (1 hour, tomorrow, next week), **Assign** (owner or admin). No delete. Events stay in history.
 
 ```
-1. OVERDUE + high reach (money/customer first)
-2. DUE NOW + assigned to you
-3. DUE TODAY + you can act
-4. LATER + background alerts
+inbox_items (Turso)
+  workspace_id, member_id, event_id
+  reach         money | customer | data | none
+  due_at, assigned_to, deferred_until
+  status        pending | deferred | completed | archived
 ```
 
-### Three actions only
+On event write, code computes the inbox rows for every eligible member. Members read their own rows.
 
-```
-[ Complete ]  marks done, writes record, event archived
-[ Defer ]     snooze: 1 hour / tomorrow / next week
-[ Assign ]    send to another member (owner/admin only)
-```
-
-No delete. Events stay, marked read/archived. Hidden from inbox, visible in history.
-
-### Screen: Cashier inbox
-
-```
-+--------------------------------------------+
-| INBOX                              2 of 18 |
-+--------------------------------------------+
-| OVERDUE                                    |
-| ! Count cash drawer              Shift 14  |
-|   Due 3:45pm                  [ Complete ] |
-+--------------------------------------------+
-| NOW                                        |
-| Pack order for Senthamizh        2 items   |
-|   Courier pickup 4:30pm       [ Complete ] |
-+--------------------------------------------+
-| 16 other tasks hidden (not your role)      |
-+--------------------------------------------+
-```
-
-### Screen: Owner inbox
-
-```
-+--------------------------------------------+
-| INBOX                              6 of 18 |
-+--------------------------------------------+
-| URGENT - NEEDS APPROVAL                    |
-| ! Refund request Rs. 2,000    Customer #89 |
-|   Reason: damaged item         [ Approve ] |
-+--------------------------------------------+
-| OVERDUE                                    |
-| Cash drawer mismatch Rs. 350    Shift 14   |
-|   Kanimozhi's count             [ Audit ]  |
-+--------------------------------------------+
-| TODAY                                      |
-| Low stock alert: 3 items                   |
-|   Silk, Cotton scarf            [ Review ] |
-+--------------------------------------------+
-| Store draft ready to publish               |
-|   2 sections added              [ View ]   |
-+--------------------------------------------+
-| + 2 tasks for later                        |
-| 12 tasks handled by staff (hidden)         |
-+--------------------------------------------+
-```
-
-### Storage
-
-```
-inbox_items table (Turso)
-  workspace_id
-  member_id       who sees this
-  event_id        source event
-  reach           money | customer | data | none
-  due_at          when it's due
-  assigned_to     specific member or null
-  status          pending | deferred | completed | archived
-  deferred_until  when to show again
-```
-
-On event write -> compute inbox items for all eligible members -> insert rows.
-Member reads their `member_id` rows, sorted by the rules above.
-
-### Overflow handling
-
-If 200+ events overnight:
-- Group by type: "3 low stock alerts" (collapse)
-- Defer non-urgent to "Later" section
-- Owner/admin sees summary: "47 tasks waiting, 12 need you"
+Overflow: 200+ overnight events collapse by type ("3 low stock alerts"). Non-urgent items go to Later. Owner sees a summary: "47 waiting, 12 need you".
 
 ## A9. Where Jev decides
 
-One request carries many questions.
-
-| # | Judgment | Type | Replaces |
-| :-: | :--- | :--- | :--- |
-| 1 | Cards this workspace needs | CHOICE over 18 | module picker |
-| 2 | Cards this member may see | NOUL per card | role dropdown |
-| 3 | Job this member does | CHOICE over roles | job dropdown |
-| 4 | Action this request means | CHOICE over registry | intent regex |
-| 5 | Action each flow line means | CHOICE per line, batched | line regex |
-| 6 | Variant of this product | CHOICE over variants | variant picker |
-| 7 | Is this step needed | NOUL per step | over-built flows |
-| 8 | Is the plan complete | NOUL | half-built flows |
-| 9 | Does an action already do this | NOUL | fake steps |
-| 10 | Is this card useful now | NOUL per card | fixed card list |
-| 11 | Next card for this role | CHOICE over 6 | render-time rank |
-| 12 | Urgency for this role | SCORE over 3 | fixed priority |
-| 13 | Is this order amount normal | NOUL | fraud net |
-| 14 | Which commerce models | NOUL per model | model picker |
-| 15 | Which trade | CHOICE over 9 | trade picker |
-| 16 | Which capabilities | CHOICE x4 | checkboxes |
-| 17 | Which design | CHOICE over 6 | default design |
-| 18 | Which recipe per section | CHOICE per type | default recipe |
-| 19 | Spotlight, story, trust | NOUL x3 | fixed sections |
-
-Judgment 10 is the "now" in access. Judgment 6 is the variant.
+One request carries many questions. Jev answers them in one batched call.
 
 | Type | Ask | Use for | Never |
 | :--- | :--- | :--- | :--- |
 | CHOICE | pick one of N | tool, variant, design, recipe, next card | N large: split into levels |
 | NOUL | how likely yes | risk, gap, needed, useful, normal | compute anything |
-| SCORE | where on a ladder | tier, quality, graded rank | exact number |
+| SCORE | where on a ladder | tier, quality, urgency | an exact number |
+
+| # | Judgment | Type |
+| :-: | :--- | :--- |
+| 1 | Cards this workspace needs | CHOICE over 18 |
+| 2 | Cards this member may see | NOUL per card |
+| 3 | Job this member does | CHOICE over roles |
+| 4 | Action this request means | CHOICE over registry |
+| 5 | Action each flow line means | CHOICE per line, batched |
+| 6 | Variant of this product | CHOICE over variants |
+| 7 | Is this step needed | NOUL per step |
+| 8 | Is the plan complete | NOUL |
+| 9 | Does an action already do this | NOUL |
+| 10 | Is this card useful now | NOUL per card |
+| 11 | Next card for this role | CHOICE over 6 |
+| 12 | Urgency for this role | SCORE over 3 |
+| 13 | Is this order amount normal | NOUL |
+| 14 | Which commerce models | NOUL per model |
+| 15 | Which trade | CHOICE over 9 |
+| 16 | Which capabilities | CHOICE x4 |
+| 17 | Which design | CHOICE over 6 |
+| 18 | Which recipe per section | CHOICE per type |
+| 19 | Spotlight, story, trust | NOUL x3 |
+
+Rules:
+
+1. Never ask for an id the model did not see. Code shortlists, the model selects.
+2. Models never compute a number, a count, a total, or compare dates.
+3. Send only what the question reads.
+4. Cache on model version + question version + the exact state read.
+5. Pin the model id, not the alias.
+6. Every deep answer graduates to the fast path.
+7. Money or customer always needs a confirm. Not model decided.
+
+Never modelled: ids from prose, money and stock maths, date compares, posting balance, access grants, publish decisions, layout tokens, HTML render.
+
+Act on p(chosen) and margin, never on confidence alone. A small margin means ambiguous, so ask.
+
+## A10. Certainty ladder
+
+Never pay for a decision that needs no model. Each rung has one exit test.
 
 ```
- ONE REQUEST
- +-------------------------------------------+
- | state filtered to what the questions need |
- | q1 CHOICE  which tool?                    |
- | q2 CHOICE  which variant?                 |
- | q3 NOUL    does this move money?          |
- | q4 NOUL    is this card useful now?       |
- | q5 SCORE   how urgent?                    |
- +-------------------------------------------+
-             |
-             v
-   one batched call -> many typed answers
+ WORDS / TAP
+   |
+   v
+ [L0] LITERAL  exact match to a known intent ---------> plan     0 calls
+   |  no match
+   v
+ [L1] MEMORY   same shape as a saved plan ------------> plan     0-1 calls
+   |  no near match
+   v
+ [L2] PROSE    LLM: the steps, in words  ----------->            1 call
+   |
+   v
+ [L3] DECIDE   Jev: tool, variant, risk, rank -------->           1 batched
+   |
+   v
+ [L4] VERIFY   Jev: does each step match? ------------>           1 batched
+   |
+   v
+ [L5] CONFIRM  human approves the plan
+   |
+   v
+ [COMPILE] -> card -> [RUN] 0 model calls, forever
 ```
 
-13 questions in one call: ~12x cheaper, ~10x faster than 13 calls, same answers.
+| Rung | Who | Calls | Exit test |
+| :--- | :--- | :---: | :--- |
+| L0 Literal | code | 0 | exact match, compile |
+| L1 Memory | code + Jev | 0-1 | near match, fill the slots |
+| L2 Prose | LLM | 1 | always goes to L3 |
+| L3 Decide | Jev | 1 batched | p and margin pass, go to L4 |
+| L4 Verify | Jev | 1 batched | all steps yes, go to L5 |
+| L5 Confirm | human | 0 | approve, compile |
 
-### Rules
-
-1. Never ask for an id the model did not see. Shortlist in code, let the model select.
-2. Never let a model compute a number, a count, a total, or compare dates.
-3. One request, many questions. Never one request per question.
-4. Send only what the question needs. Extra detail is noise.
-5. Cache on model version + question version + the exact state the question reads.
-6. Pin the model id, not the alias.
-7. Every deep answer must graduate to the fast path, or the bill never drops.
-8. Money or customer = confirm. Always. Not model decided.
-9. A lane never crosses. The model never commits, never grants, never computes.
+A plan is remembered by its shape, not its words. "Every day at 10 send a sales report" and "send me a sales report at 10 every morning" are one plan.
 
 ```
- NEVER MODELED
-   ids from prose    money maths    stock maths
-   date compare      posting balance    access grants
-   publish decisions  layout tokens    html render
+plans (Turso)
+  workspace_id, shape_hash   hash of (trigger type + action sequence)
+  steps, trigger             compiled steps; tap | schedule | event
+  confirmed_at               when the owner approved
+  accuracy_score             per workspace, tunes thresholds
 ```
 
-## A10. The certainty ladder
+Lookup: hash the request shape, exact match in `plans`, reuse. No match goes to L2.
 
-Never pay for a decision you could have made without a model. Each rung has one exit test.
-
-```
-  WORDS / TAP
-      |
-      v
-  [L0] LITERAL -------------------------------------> plan       0 calls
-      |  no match
-      v
-  [L1] MEMORY  -------------------------------------> plan       0-1 calls
-      |  no near match
-      v
-  [L2] PROSE   (LLM)   step phrases --------------->            1 call
-      |
-      v
-  [L3] DECIDE  (Jev)   tool / variant / risk /     -->            1 call
-      |                rank / gap
-      v
-  [L4] VERIFY  (Jev)   does each step match? ------>            1 call
-      |
-      v
-  [L5] CONFIRM (human) approve the plan
-      |
-      v
-  [COMPILE] --------------> card
-      |
-      v
-  [RUN] -----------------> 0 model calls, forever
-```
-
-| Rung | Who | Calls | Question it answers | Exit test |
-| :--- | :--- | :---: | :--- | :--- |
-| L0 Literal | code | 0 | does the wording match a known intent | exact match, compile |
-| L1 Memory | code + Jev | 0-1 | is this the same shape as a saved plan | near match, fill the slots |
-| L2 Prose | LLM | 1 | what are the steps, in words | always goes to L3 |
-| L3 Decide | Jev | 1 batched | which tool, which variant, how risky, how useful | p + margin, go to L4 |
-| L4 Verify | Jev | 1 batched | does each step actually do this | all yes, go to L5 |
-| L5 Confirm | human | 0 | is this what you meant | approve, compile |
-| Run | code | 0 | - | forever |
-
-A plan is remembered by the shape of the request, not its words.
-"every day at 10 send a sales report" and "send me a sales report at 10 every morning" are one plan.
-
-### Plan memory storage
-
-```
-plans table (Turso)
-  workspace_id     which shop
-  shape_hash       hash of (trigger type + action sequence)
-  steps            compiled step array
-  trigger          tap | schedule | event
-  confirmed_at     when owner approved
-  accuracy_score   tracked per workspace for adaptive thresholds
-```
-
-Memory lookup: hash the normalized request shape -> exact match in plans table -> reuse.
-No match -> L2 Prose. Accuracy tracking adjusts confidence thresholds per workspace.
-
-```
- 0 model calls on a card render      0 model calls on a publish
- 0 model calls on a flow run         0 model calls on a scheduled run
-```
-
-| Request | Naive | Ladder |
-| :--- | :---: | :---: |
-| known intent | 3 calls | 0 |
-| similar intent | 3 calls | 1 |
-| new intent | 5 calls | 3 |
-| every run afterwards | 3 calls | 0 |
-| a card's glance value | a model call | a materialized read |
-
-### Reading a Jev answer
-
-```
-  p(chosen)   0.86  ---.
-  p(top2)     0.11  ---+---> margin = 0.75   confident -> act
-  confidence  0.41  ---'
-```
-
-| Signal | Meaning | Use |
-| :--- | :--- | :--- |
-| p(chosen) | chance the pick is right | above threshold act, else ask |
-| margin | p(top1) - p(top2) | small margin = ambiguous, ask |
-| confidence | how concentrated the spread is | only to detect a spread answer |
-
-Never auto-act on confidence alone. Above threshold is never correctness; use p plus margin.
-
-## A11. Two model batches, then zero
-
-```
- SETUP (once)
-  Merchant: "Weave silk sarees, UPI + cash counter, ship nationwide, need store"
-       |
-  JEV #1  business -> { models, industry, capabilities }
-       |
-  CODE    shortlist designs and recipes
-       |
-  JEV #2  look -> { design, recipe per type, spotlight?, story?, trust? }
-       |
-  CODE    assemble draft + gate
-
- LIFETIME
-  similar intent  -> memory hit, 0 LLM, 1 JEV
-  exact repeat    -> 0 LLM, 0 JEV
-  every render and run -> 0 LLM, 0 JEV
-```
-
-```
- WORDS -> LLM sketch -> JEV batch -> CODE wire -> OWNER confirms -> MEMORY -> RUN (0 calls)
-```
+Auto-act thresholds by risk:
 
 | Risk | Auto only if | Else |
 | :--- | :--- | :--- |
-| none / data | p >= 0.60, margin >= 0.30 | ask |
+| none, data | p >= 0.60, margin >= 0.30 | ask |
 | customer | p >= 0.80, margin >= 0.40 | confirm |
 | money | p >= 0.85, margin >= 0.50 | confirm + owner |
 
-| Moment | LLM | JEV | Code |
-| :--- | :---: | :---: | :--- |
-| New intent, first time | 1 sketch | 1 batch | compile |
-| Similar to memory | 0 | 1 choice | instantiate |
-| Exact repeat | 0 | 0 | instantiate |
-| Every run / every render | 0 | 0 | execute / read |
-| Workspace setup total | 1 | 2 | - |
-| Daily operation, 100 runs | 0 | 0 | - |
+## A11. Commerce kernel
 
-## A12. Commerce kernel
-
-One shared kernel supports retail, restaurant, supermarket, delivery, taxi,
-services and future domains. A domain adds facts and actions; it never forks
-inventory, orders, payments or accounting.
+One shared kernel serves retail, restaurant, supermarket, delivery, taxi and services. A domain adds facts and actions. It never forks inventory, orders, payments or accounting.
 
 ```
-BUY                                             SELL
-supplier -> purchase -> receive -> on hand
-                                    |
-customer -> order -> reserve -> fulfil -> invoice -> payment -> refund
-                                    |
-                              balanced postings
+BUY    supplier -> purchase -> receive -> on hand
+SELL   customer -> order -> reserve -> fulfil -> invoice -> payment -> refund
+                                                     |
+                                      balanced postings (every event)
 ```
 
-### A12.1 Rules
+### Rules
 
-Money is integer minor units plus ISO currency. Quantity is integer base units;
-display conversion belongs to the product unit. Price is server resolved from an
-active price record. Stock is `available = onhand - reserved` and never
-negative. Orders and invoices snapshot commercial facts. Every mutation is a
-registered action + permission + idempotency key + audit event. Every business
-event writes balanced postings. Every record belongs to one workspace.
+| Topic | Rule |
+| :--- | :--- |
+| Money | integer minor units + ISO currency |
+| Quantity | integer base units. Display conversion belongs to the product unit |
+| Price | server resolved from an active price record |
+| Stock | `available = onhand - reserved`, never negative |
+| Snapshots | orders and invoices freeze commercial facts |
+| Mutation | registered action + permission + idempotency key + audit event |
+| Postings | every business event is balanced, checked before commit |
+| Isolation | every record belongs to one workspace |
 
-### A12.2 Records
+### Records
 
-Commerce uses the shared `records` table. `type` selects the contract; `data`
-holds versioned fields. No table is created per trade. All workspaces share one
-Turso database; `workspace_id` provides isolation.
+Commerce uses the shared `records` table. `type` selects the contract, `data` holds versioned fields. No table is created per trade.
 
-| Type | Core fields | States | Limits |
-| :--- | :--- | :--- | :--- |
-| `item` | name, unit, tax, status | active, archived | - |
-| `variant` | item, sku, barcode, attributes | active, archived | max 50 per item |
-| `price` | variant, amount, currency, channel, starts, ends | active, archived | - |
-| `stock` | variant, location, onhand, reserved | active | - |
-| `purchase` | supplier, lines, currency, totals | draft, ordered, partial, received, cancelled | - |
-| `order` | customer, lines, totals, channel | draft, accepted, fulfilled, cancelled | - |
-| `invoice` | party, order, lines, totals, due | issued, partial, paid, void | - |
-| `payment` | invoice, amount, method, provider, reference | recorded, reversed | - |
-| `refund` | payment, amount, reason, reference | recorded | - |
-| `posting` | account, debit, credit, source | posted | - |
-| `plan` | workspace_id, shape_hash, steps, trigger, confirmed_at | active, archived | reused via shape match |
+| Type | Core fields | States |
+| :--- | :--- | :--- |
+| `item` | name, unit, tax, status | active, archived |
+| `variant` | item, sku, barcode, attributes. Max 50 per item | active, archived |
+| `price` | variant, amount, currency, channel, starts, ends | active, archived |
+| `stock` | variant, location, onhand, reserved | active |
+| `purchase` | supplier, lines, currency, totals | draft, ordered, partial, received, cancelled |
+| `order` | customer, lines, totals, channel | draft, accepted, fulfilled, cancelled |
+| `invoice` | party, order, lines, totals, due | issued, partial, paid, void |
+| `payment` | invoice, amount, method, provider, reference | recorded, reversed |
+| `refund` | payment, amount, reason, reference | recorded |
+| `posting` | account, debit, credit, source | posted |
+| `plan` | workspace_id, shape_hash, steps, trigger, confirmed_at | active, archived |
 
-Files, media, and text over 2KB use R2 cloud storage. The record stores the object
-key, hash, size, media type and version. Stock, price, quantity, invoice totals
-and payment state never live only in R2. All transactional facts remain in Turso.
+Files and text over 2KB live in R2. The record keeps the key, hash, size, media type and version. Stock, price, quantity, totals and payment state never live only in R2.
 
-### A12.3 Commerce actions
+### Actions
 
-| Action | Commit |
+| Action | Commits |
 | :--- | :--- |
 | `catalog.item.save` | create or revise an item |
 | `catalog.variant.save` | create or revise a sellable variant |
 | `price.set` | add an effective price |
 | `stock.adjust` | audited stock correction |
 | `purchase.create` | purchase with exact lines |
-| `purchase.receive` | atomically receive lines and increase stock |
-| `order.create` | snapshot prices and reserve stock |
+| `purchase.receive` | receive lines, increase stock, atomically |
+| `order.create` | snapshot prices, reserve stock |
 | `order.fulfill` | consume reserved stock |
-| `order.cancel` | release remaining reservation |
-| `invoice.issue` | issue receivable from exact order facts |
+| `order.cancel` | release unfulfilled reservation |
+| `invoice.issue` | receivable from exact order facts |
 | `payment.record` | settle all or part of an invoice |
-| `refund.record` | refund within the recorded paid balance |
+| `refund.record` | refund within the paid balance |
 
-POS reuses these guarantees for counter work. Cart, register, receipt and
-return interactions keep server pricing, stock movement and payment references.
+POS reuses these actions for counter work: server pricing, returns, register and stock controls.
 
-### A12.4 Atomic commits
+### Atomic commits
 
 ```
-PURCHASE RECEIPT
-  validate remaining quantities
-    -> update received -> increment stock per variant/location
-    -> set partial or received -> append event
-COMMIT
-over-receipt rejects the whole transaction
+PURCHASE RECEIPT   validate remaining qty -> raise received -> +stock -> set status -> event
+                   over-receipt rejects the whole transaction
 
-CUSTOMER ORDER
-  read active prices + stock -> lines/tax/total -> reserve every line
-    -> create order snapshot -> append event
-COMMIT
-any unavailable line rejects the order
-fulfilment consumes reserved; cancellation releases only unfulfilled
+CUSTOMER ORDER     read prices + stock -> lines, tax, total -> reserve every line -> snapshot -> event
+                   any unavailable line rejects the order
 
 INVOICE -> PAYMENT -> REFUND
-  validate_postings() checks balance BEFORE commit
-  invoice.issue   receivable debit + revenue/tax credit
-  payment.record  cash/provider debit + receivable credit
-  refund.record   reversal bounded by paid/refundable
-  balance mismatch -> entire transaction rejected, nothing written
-provider and bank references are evidence, not authority
-adapters normalize and deduplicate references, then call the Gateway
+  invoice.issue   debit receivable, credit revenue + tax
+  payment.record  debit cash or provider, credit receivable
+  refund.record   reversal bounded by paid balance
+  unbalanced      validate_postings() rejects before commit, nothing written
 ```
 
-### A12.5 Domains
+Provider and bank references are evidence, not authority. Adapters normalise and deduplicate them, then call the Gateway.
 
-| Domain | Kernel reuse | Domain addition |
+### Domains
+
+| Domain | Reuses | Adds |
 | :--- | :--- | :--- |
-| Restaurant | variants, stock, order, payment | stations, course timing, table/delivery handoff |
-| Supermarket | catalog, barcode, price, POS | scales, batches, expiry and promotions |
-| Delivery | order and payment linkage | pickup, route, proof and settlement |
-| Taxi | customer, service order, payment | trip, fare meter, route and driver state |
-| Sales team | customer, order, invoice | lead, quote, approval and commission |
-| Services | item, order, invoice, payment | booking, time, milestone and acceptance |
+| Restaurant | variants, stock, order, payment | stations, course timing, table and delivery handoff |
+| Supermarket | catalog, barcode, price, POS | scales, batches, expiry, promotions |
+| Delivery | order, payment | pickup, route, proof, settlement |
+| Taxi | customer, service order, payment | trip, fare meter, route, driver state |
+| Sales team | customer, order, invoice | lead, quote, approval, commission |
+| Services | item, order, invoice, payment | booking, time, milestone, acceptance |
 
-### A12.6 Projections and storage
+### Views and storage
 
-| Actor | Projection |
+Projections show each actor only what their role and action policy allow.
+
+| Actor | Sees |
 | :--- | :--- |
-| Owner | accept, reject, exception and refund review |
-| Kitchen/station | assigned lines and preparation state |
-| Courier | reach, collect, deliver and proof |
-| Customer | pay, receive and rate |
+| Owner | accept, reject, exceptions, refund review |
+| Kitchen or station | assigned lines and prep state |
+| Courier | reach, collect, deliver, proof |
+| Customer | pay, receive, rate |
 
-The parent record remains canonical. Projections expose only fields allowed by
-membership, work role and action policy.
+The parent record is canonical. Projections are never truth.
 
 | Need | Store |
 | :--- | :--- |
-| live catalog title, price, availability | Turso records through a public binding |
-| product image or long description | R2 object referenced by variant or item |
-| invoice facts and status | Turso invoice, payment and posting records |
-| rendered invoice PDF | immutable R2 artifact plus hash and version |
+| live title, price, availability | Turso records, through a public binding |
+| product image, long description | R2 object, referenced by variant or item |
+| invoice facts and status | Turso invoice, payment, posting |
+| rendered invoice PDF | immutable R2 artifact, with hash and version |
 | compiled public pages | site release bucket |
 
-Site generation never duplicates inventory as website truth. `site.refresh`
-rebuilds catalog bindings from active variants and prices. A public transaction,
-when site policy enables it, calls the same order and payment actions.
+The site never stores inventory as its own truth. `site.refresh` rebuilds catalog bindings from active variants and prices. A public checkout, when enabled, calls the same order and payment actions.
 
-### A12.7 Recovery and acceptance
+### Failure recovery
 
 | Failure | Recovery |
 | :--- | :--- |
 | client retries | same key + same hash returns the committed result |
 | same key, changed input | conflict |
-| provider repeats webhook | unique provider/reference and operation key |
-| worker stops after commit | event/result is replayed; effect is not repeated |
+| provider repeats a webhook | unique provider + reference + operation key |
+| worker stops after commit | replay the stored result, never repeat the effect |
 | partial multi-record write | transaction rolls back |
-| balance mismatch | validate_postings() rejects BEFORE commit, nothing written |
+| unbalanced postings | rejected before commit |
 
-Operational reports derive from orders, stock, payments and postings. They are
-projections or artifacts, not editable business truth.
-
-Shipped: catalog, variant, price, stock, purchase, order, invoice, payment and
-refund actions are registered in `tarharness/src/commerce/`; receiving,
-reservation, fulfilment, cancellation and postings commit atomically; replay
-and conflicting keys are tested; POS keeps server pricing, returns, register and
-stock controls; Inbox consumes commerce records through authorized projections.
-
-## A13. Status
-
-Markers: `[S]` shipped, `[P]` partly shipped, `[T]` target. This table is the reality check;
-the rest of the document describes the target.
-
-| Area | Shipped | Still target |
-| :--- | :--- | :--- |
-| Commerce kernel: actions, records, postings, stock, archive | `[S]` 116 actions, one records table, 315 tests | - |
-| 18 tool cards, roles, per-member grants | `[S]` | - |
-| Flows: run, step, resume, idempotency, versioning | `[S]` | - |
-| Flow grammar | `[P]` auto/manual | ask/approve, approver, modifiers, triggers, max 12 steps |
-| One registry | `[P]` actions and cards separate | stage, reach, card flag on one list |
-| Card metrics and the Canvas screen | `[P]` server builds cards; app has Now/Tools/Ask/Records/Routines | Canvas tabs, add-card, live metrics |
-| Jev | `[S]` 8 call sites, 7-day cache on the store | cache everywhere, plan memory |
-| The store | `[S]` 3 designs, 23 recipes | 100 designs, larger library |
+Reports (orders, stock, payments, postings) are projections or artifacts, never editable truth.
 
 ---
 
@@ -1117,16 +837,16 @@ Two web surfaces over one kernel: the merchant builds and publishes; the custome
 
 | # | Screen | Who | Commits |
 | :-: | :--- | :--- | :--- |
-| 1 | Store Studio | owner | reads site + gate |
-| 2 | Describe once | owner | brief + facts |
-| 3 | Building | code | draft record |
-| 4 | Draft editor | owner | one site version |
-| 5 | Gate | code | draft stays |
-| 6 | Publish confirm | owner | live release |
-| 7 | Storefront | customer | - |
-| 8 | Item | customer | - |
-| 9 | Cart and checkout | customer | order + stock + person |
-| 10 | Order placed | code | event -> Inbox |
+| 1 | Store Studio | owner |
+| 2 | Describe once | owner |
+| 3 | Building | code |
+| 4 | Draft editor | owner |
+| 5 | Gate | code |
+| 6 | Publish confirm | owner |
+| 7 | Storefront | customer |
+| 8 | Item | customer |
+| 9 | Cart and checkout | customer |
+| 10 | Order placed | code |
 
 Only screen 3 pays for a model. From screen 4 on, every tap is a read, a render, or one commit.
 
@@ -1673,14 +1393,14 @@ Overrides survive regeneration. Jev sees them as fixed picks, so it does not fig
 
 | # | Step | Lane | Commits |
 | :-: | :--- | :--- | :--- |
-| 1 | understand goal, trigger, slots | LLM | - |
-| 2 | pick action, gate, trigger | JEV | - |
-| 3 | step needed, plan complete | JEV | - |
-| 4 | wire inputs, derive gate | CODE | - |
-| 5 | owner confirms | HUMAN | - |
-| 6 | save the plan | CODE | memory |
-| 7 | read sales | CODE | - |
-| 8 | create the delivery | CODE | 1 row |
+| 1 | understand goal, trigger, slots | LLM |
+| 2 | pick action, gate, trigger | JEV |
+| 3 | step needed, plan complete | JEV |
+| 4 | wire inputs, derive gate | CODE |
+| 5 | owner confirms | HUMAN |
+| 6 | save the plan | CODE |
+| 7 | read sales | CODE |
+| 8 | create the delivery | CODE |
 
 ```
  day 1   2 model calls

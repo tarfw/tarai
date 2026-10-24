@@ -1,0 +1,410 @@
+---
+import DeckLayout from '../layouts/DeckLayout.astro';
+import '../styles/part-a.css';
+---
+
+<DeckLayout
+  title="TAR v4 — Visual System"
+  description="Eight scenes on one Canvas OS: words, lanes, cards, gates, flows, the certainty ladder, store publishing and the commerce kernel."
+>
+<svg class="sprite" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+  <symbol id="i-chat" viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4V5z"/><path d="M8 9h8M8 12h5"/></symbol>
+  <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 2.5l1.8 6.9 6.7 2.6-6.7 2.6L12 21.5l-1.8-6.9L3.5 12l6.7-2.6L12 2.5z"/></symbol>
+  <symbol id="i-card" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M3 10h18"/><path d="M7 15h4"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l7 3v5.5c0 4.7-3 7.9-7 9.5-4-1.6-7-4.8-7-9.5V6l7-3z"/><path d="M9 12l2 2 4-4"/></symbol>
+  <symbol id="i-db" viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6"/><path d="M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"/></symbol>
+  <symbol id="i-sync" viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 13.7-5.6"/><path d="M20 12a8 8 0 0 1-13.7 5.6"/><path d="M17 3v4h-4"/><path d="M7 21v-4h4"/></symbol>
+  <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2L5 14h6l-1 8 9-13h-6l1-7z"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M4 12.5l5 5L20 6"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M4 12h15"/><path d="M14 6l6 6-6 6"/></symbol>
+  <symbol id="i-money" viewBox="0 0 24 24"><path d="M6 4l6 7 6-7"/><path d="M12 11v9"/><path d="M8 14h8"/><path d="M8 17h8"/></symbol>
+  <symbol id="i-cart" viewBox="0 0 24 24"><path d="M3 4h2l2.4 10.5h10.9L21 7H6"/><circle cx="9" cy="20" r="1"/><circle cx="18" cy="20" r="1"/></symbol>
+  <symbol id="i-box" viewBox="0 0 24 24"><path d="M4 7l8-4 8 4v10l-8 4-8-4V7z"/><path d="M4 7l8 4 8-4"/><path d="M12 11v10"/></symbol>
+  <symbol id="i-store" viewBox="0 0 24 24"><path d="M4 10v10h16V10"/><path d="M3 10l2-6h14l2 6"/><path d="M3 10c0 1.7 1.3 3 3 3s3-1.3 3-3c0 1.7 1.3 3 3 3s3-1.3 3-3c0 1.7 1.3 3 3 3s3-1.3 3-3"/><path d="M9 20v-5h6v5"/></symbol>
+  <symbol id="i-flow" viewBox="0 0 24 24"><rect x="3" y="4" width="6" height="5" rx="1"/><rect x="15" y="15" width="6" height="5" rx="1"/><path d="M9 6.5h3a3 3 0 0 1 3 3v8"/><path d="M12 15l3 3 3-3"/></symbol>
+  <symbol id="i-inbox" viewBox="0 0 24 24"><path d="M3 13l3-8h12l3 8v6H3v-6z"/><path d="M3 13h5l1 2h6l1-2h5"/></symbol>
+  <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M2.5 20c.9-3.5 3.3-5.2 6.5-5.2s5.6 1.7 6.5 5.2"/><path d="M16 5.2a3.2 3.2 0 0 1 0 6.1"/><path d="M18 14.8c2.1.6 3.4 2.4 3.9 5.2"/></symbol>
+  <symbol id="i-scale" viewBox="0 0 24 24"><path d="M12 3v18"/><path d="M5 21h14"/><path d="M3 7h18"/><path d="M6 7l-3 7h6L6 7z"/><path d="M18 7l-3 7h6l-3-7z"/></symbol>
+  <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 7L3 12l6 5"/><path d="M3 12h11a7 7 0 0 1 0 14h-2"/></symbol>
+  <symbol id="i-archive" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="5" rx="1"/><path d="M5 9v10h14V9"/><path d="M10 13h4"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="2.5"/></symbol>
+  <symbol id="i-code" viewBox="0 0 24 24"><path d="M9 7l-5 5 5 5"/><path d="M15 7l5 5-5 5"/><path d="M13 4l-2 16"/></symbol>
+  <symbol id="i-hex" viewBox="0 0 24 24"><path d="M12 2l8 5v10l-8 5-8-5V7l8-5z"/><circle cx="12" cy="12" r="2.5"/><path d="M12 9.5V7M12 14.5V17M9.8 10.7L7.6 9.4M14.2 13.3l2.2 1.3M9.8 13.3l-2.2 1.3M14.2 10.7l2.2-1.3"/></symbol>
+  <symbol id="i-wand" viewBox="0 0 24 24"><path d="M4 20L15 9"/><path d="M16 4l.7 2.3L19 7l-2.3.7L16 10l-.7-2.3L13 7l2.3-.7L16 4z"/><path d="M20 13l.5 1.5L22 15l-1.5.5L20 17l-.5-1.5L18 15l1.5-.5L20 13z"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+  <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="8" r="4"/><path d="M11 11l9 9"/><path d="M17 17l3-3"/><path d="M15 15l2-2"/></symbol>
+  <symbol id="i-finger" viewBox="0 0 24 24"><path d="M6 12a6 6 0 0 1 12 0v3"/><path d="M9 12a3 3 0 0 1 6 0v5"/><path d="M12 12v7"/><path d="M6 16v2"/><path d="M18 17v2"/></symbol>
+  <symbol id="i-layers" viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 12l9 5 9-5"/><path d="M3 16l9 5 9-5"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5l11 7-11 7V5z"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 8V3l-2 2a8 8 0 1 0 2.3 10"/><path d="M20 3h-5"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="4" cy="6" r=".8"/><circle cx="4" cy="12" r=".8"/><circle cx="4" cy="18" r=".8"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c3 3.5 3 14.5 0 18"/><path d="M12 3c-3 3.5-3 14.5 0 18"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3l10 18H2L12 3z"/><path d="M12 9v5"/><path d="M12 17.2v.1"/></symbol>
+  <symbol id="i-swatch" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18"/><path d="M12 7a5 5 0 0 1 0 10"/></symbol>
+  <symbol id="i-branch" viewBox="0 0 24 24"><circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="12" r="2"/><path d="M6 7v10"/><path d="M6 9c0 4 10 1 10 4"/></symbol>
+  <symbol id="i-phone" viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="3"/><path d="M10 18h4"/></symbol>
+  <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></symbol>
+</svg>
+
+<div class="app">
+  <aside class="rail">
+    <div class="brand"><b>TAR</b><span>v4</span><small>one canvas os</small></div>
+    <nav class="nav" aria-label="Scenes">
+      <button class="nav-item is-active" data-go="0"><span class="n">01</span><span class="nl">Loop</span><span class="nd"></span></button>
+      <button class="nav-item" data-go="1"><span class="n">02</span><span class="nl">Lanes</span><span class="nd"></span></button>
+      <button class="nav-item" data-go="2"><span class="n">03</span><span class="nl">Canvas</span><span class="nd"></span></button>
+      <button class="nav-item" data-go="3"><span class="n">04</span><span class="nl">Card</span><span class="nd"></span></button>
+      <button class="nav-item" data-go="4"><span class="n">05</span><span class="nl">Flow</span><span class="nd"></span></button>
+      <button class="nav-item" data-go="5"><span class="n">06</span><span class="nl">Ladder</span><span class="nd"></span></button>
+      <button class="nav-item" data-go="6"><span class="n">07</span><span class="nl">Store</span><span class="nd"></span></button>
+      <button class="nav-item" data-go="7"><span class="n">08</span><span class="nl">Kernel</span><span class="nd"></span></button>
+    </nav>
+    <div class="rail-bottom">
+      <div class="rail-lanes">
+        <div class="lane-pill"><i class="l"></i> LLM · words</div>
+        <div class="lane-pill"><i class="j"></i> JEV · picks</div>
+        <div class="lane-pill"><i class="c"></i> CODE · truth</div>
+      </div>
+      <div class="rail-arrows">
+        <button class="arrow-btn" id="prevBtn" aria-label="Previous scene"><svg class="ico" style="transform:rotate(180deg)"><use href="#i-arrow"/></svg></button>
+        <button class="arrow-btn" id="nextBtn" aria-label="Next scene"><svg class="ico"><use href="#i-arrow"/></svg></button>
+      </div>
+    </div>
+  </aside>
+
+  <main class="stage">
+    <header class="top">
+      <div>
+        <div class="kicker" id="kicker">01 / The loop</div>
+        <h1 id="title">One request. One loop.</h1>
+      </div>
+      <div class="top-side"><div class="no-model"><span class="pulse"></span> 0 model calls</div><a class="cross-link" href="/part-b/">Part B · screens <span>→</span></a></div>
+    </header>
+
+    <div class="scenes">
+
+      <section class="scene is-active" data-scene="loop">
+        <div class="loop-panel panel">
+          <div class="entry-note"><i></i> merchant describes once</div>
+          <div class="nodes" id="loopNodes">
+            <div class="node" data-node="0"><div class="orb"><svg class="ico"><use href="#i-chat"/></svg></div><div class="node-label">Words <em>or</em> Tap</div><div class="node-sub">intent</div></div>
+            <div class="node" data-node="1"><div class="orb"><svg class="ico"><use href="#i-hex"/></svg></div><div class="node-label">Plan</div><div class="node-sub">LLM + JEV + code</div></div>
+            <div class="node" data-node="2"><div class="orb"><svg class="ico"><use href="#i-card"/></svg></div><div class="node-label">Card</div><div class="node-sub">saved read + tap</div></div>
+            <div class="node" data-node="3"><div class="orb"><svg class="ico"><use href="#i-shield"/></svg></div><div class="node-label">Gate</div><div class="node-sub">token · grant · key</div></div>
+            <div class="node" data-node="4"><div class="orb"><svg class="ico"><use href="#i-db"/></svg></div><div class="node-label">Record</div><div class="node-sub">one commit</div></div>
+            <div class="node" data-node="5"><div class="orb"><svg class="ico"><use href="#i-sync"/></svg></div><div class="node-label">Sync</div><div class="node-sub">every card</div></div>
+            <div class="traveler" id="traveler"></div>
+          </div>
+          <div class="return-wrap">
+            <svg class="return-path" viewBox="0 0 1000 90" preserveAspectRatio="none" aria-hidden="true"><path d="M920 4 C 920 78, 80 78, 80 4"/></svg>
+            <div class="return-label">every card syncs</div>
+          </div>
+          <div class="loop-stats">
+            <div class="stat"><span>model calls at render</span><b>0<small>always</small></b></div>
+            <div class="stat"><span>model calls at run</span><b>0<small>always</small></b></div>
+            <div class="stat"><span>writes per owner tap</span><b>1<small>one commit</small></b></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="scene" data-scene="lanes">
+        <div class="lanes-head"><div class="request-quote">refunds above ₹2,000 need me</div></div>
+        <div class="lane-grid">
+          <article class="lane lane-llm panel">
+            <div class="lane-top"><div class="lane-icon"><svg class="ico"><use href="#i-wand"/></svg></div><div class="lane-index">01</div></div>
+            <h2>Words</h2>
+            <div class="lane-rule">writes prose &amp; layout <b>never decides</b></div>
+            <div class="lane-visual"><div class="prose-bubble"><i></i><i></i><i></i><i></i></div></div>
+          </article>
+          <article class="lane lane-jev panel">
+            <div class="lane-top"><div class="lane-icon"><svg class="ico"><use href="#i-hex"/></svg></div><div class="lane-index">02</div></div>
+            <h2>Picks</h2>
+            <div class="lane-rule">chooses one of N <b>never computes</b></div>
+            <div class="lane-visual">
+              <div class="choice-stack">
+                <div class="choice pick"><span>refund.record</span><b>0.81</b></div>
+                <div class="choice"><span>payment.record</span><b>0.09</b></div>
+                <div class="choice"><span>order.cancel</span><b>0.06</b></div>
+                <div class="choice"><span>expense.create</span><b>0.04</b></div>
+              </div>
+            </div>
+          </article>
+          <article class="lane lane-code panel">
+            <div class="lane-top"><div class="lane-icon"><svg class="ico"><use href="#i-code"/></svg></div><div class="lane-index">03</div></div>
+            <h2>Truth</h2>
+            <div class="lane-rule">computes &amp; commits <b>never guesses</b></div>
+            <div class="lane-visual">
+              <div class="code-ledger">
+                <div class="ledger-row"><span>refund</span><b>₹2,400</b></div>
+                <div class="ledger-row"><span>debit</span><b>revenue</b></div>
+                <div class="ledger-row"><span>credit</span><b>cash</b></div>
+                <div class="ledger-row total"><span>balance</span><b>0.00</b></div>
+              </div>
+            </div>
+          </article>
+        </div>
+        <div class="lane-join">
+          <div class="join-cell">describe <b>→</b></div>
+          <div class="join-cell">choose <b>→</b></div>
+          <div class="join-cell">commit <b>✓</b></div>
+        </div>
+      </section>
+
+      <section class="scene" data-scene="canvas">
+        <div class="canvas-grid">
+          <div class="canvas-left">
+            <div class="role-bar panel">
+              <div class="role-label">Member</div>
+              <div class="role-switch" id="roleSwitch">
+                <button class="role-btn is-active" data-role="owner">Owner</button>
+                <button class="role-btn" data-role="cashier">Cashier</button>
+                <button class="role-btn" data-role="guest">Guest</button>
+              </div>
+            </div>
+            <div class="access-panel panel">
+              <div class="panel-eyebrow">Visible card =</div>
+              <div class="key-row" id="keyEnabled"><div class="key-ico"><svg class="ico"><use href="#i-store"/></svg></div><div><b>Enabled</b><small>workspace</small></div><i class="key-dot"></i></div>
+              <div class="and-line">and</div>
+              <div class="key-row" id="keyGrant"><div class="key-ico"><svg class="ico"><use href="#i-hex"/></svg></div><div><b>Grant</b><small>Jev, this member</small></div><i class="key-dot"></i></div>
+              <div class="and-line">and</div>
+              <div class="key-row" id="keyUseful"><div class="key-ico"><svg class="ico"><use href="#i-clock"/></svg></div><div><b>Useful now</b><small>state &amp; shift</small></div><i class="key-dot"></i></div>
+              <div class="and-line">=</div>
+              <div class="visible-strip" id="visibleStrip"><svg class="ico"><use href="#i-eye"/></svg> visible cards <b id="visibleCount">6</b></div>
+            </div>
+            <div class="inbox-panel panel">
+              <div class="inbox-head"><b>Inbox</b><span>same 18 events</span></div>
+              <div class="event-dots" id="eventDots"></div>
+              <div class="route-counts"><span class="o"><i></i> owner · 6</span><span class="c"><i></i> cashier · 2</span></div>
+            </div>
+          </div>
+          <div class="phone-wrap">
+            <div class="phone">
+              <div class="phone-screen">
+                <div class="phone-status"><span>9:41</span><span>94%</span></div>
+                <div class="phone-head">
+                  <div class="phone-head-row"><b>Aambal Neyvagam</b><span class="phone-role" id="phoneRole">Owner</span></div>
+                  <div class="phone-sub" id="phoneSub">Full access · 6 cards</div>
+                </div>
+                <div class="phone-cards" id="phoneCards"></div>
+                <div class="phone-nav"><span class="on"><i></i>Canvas</span><span><i></i>Flows</span><span><i></i>Site</span><span><i></i>You</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="scene" data-scene="card">
+        <div class="card-grid">
+          <div class="anatomy panel">
+            <div class="hint-rules">
+              <span><i></i> title → <b>detail</b></span>
+              <span><i></i> button → <b>commit once</b></span>
+              <span><i></i> other actions → <b>inside</b></span>
+            </div>
+            <div class="big-card">
+              <span class="pin pin-1">1</span>
+              <span class="pin pin-2">2</span>
+              <span class="pin pin-3">3</span>
+              <div class="big-head"><h2>Counter Sales</h2><span class="reach money">money</span></div>
+              <div class="big-metrics">
+                <div class="big-metric"><b>₹18,450</b><span>today</span></div>
+                <div class="big-metric"><b>₹14,100</b><span>UPI</span></div>
+                <div class="big-metric"><b>14</b><span>bills</span></div>
+              </div>
+              <button class="big-action">New Counter Sale</button>
+              <div class="big-foot"><span>shift 14 · cashier</span><span>one tap</span></div>
+            </div>
+            <div class="legend">
+              <div><b>1</b> saved read</div>
+              <div><b>2</b> gate + commit</div>
+              <div><b>3</b> risk reach</div>
+            </div>
+          </div>
+          <div class="commit-panel panel">
+            <div class="commit-title">Gate</div>
+            <div class="gate-row"><svg class="ico"><use href="#i-key"/></svg><span>token</span><svg class="ico tick"><use href="#i-check"/></svg></div>
+            <div class="gate-row"><svg class="ico"><use href="#i-eye"/></svg><span>grant</span><svg class="ico tick"><use href="#i-check"/></svg></div>
+            <div class="gate-row"><svg class="ico"><use href="#i-layers"/></svg><span>version</span><svg class="ico tick"><use href="#i-check"/></svg></div>
+            <div class="gate-row"><svg class="ico"><use href="#i-finger"/></svg><span>idempotency</span><svg class="ico tick"><use href="#i-check"/></svg></div>
+            <div class="commit-title">One commit</div>
+            <div class="record-slip">
+              <div class="slip-top"><span>sale</span><b>₹5,350</b></div>
+              <div class="slip-rows"><span>order</span><span>invoice</span><span>payment</span><span>stock</span><span>posting</span></div>
+              <div class="slip-stamp">one commit · 5 typed rows</div>
+            </div>
+            <div class="sync-row"><span>sync</span><i class="sync-card"></i><i class="sync-card"></i><i class="sync-card"></i><i class="sync-card"></i><i class="sync-card"></i></div>
+            <button class="undo-btn"><svg class="ico"><use href="#i-undo"/></svg> undo · opposite posting</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="scene" data-scene="flow">
+        <div class="flow-layout">
+          <div class="shape-panel panel">
+            <div class="shape-ring" id="shapeRing">
+              <button class="shape" data-shape="straight"><svg class="ico"><use href="#i-arrow"/></svg><span>Straight</span></button>
+              <button class="shape" data-shape="ask"><svg class="ico"><use href="#i-user"/></svg><span>Ask</span></button>
+              <button class="shape is-active" data-shape="approval"><svg class="ico"><use href="#i-shield"/></svg><span>Approval</span></button>
+              <button class="shape" data-shape="loop"><svg class="ico"><use href="#i-refresh"/></svg><span>Loop</span></button>
+              <div class="run-core"><b>RUN</b><span id="runShape">approval</span></div>
+              <button class="shape" data-shape="batch"><svg class="ico"><use href="#i-grid"/></svg><span>Batch</span></button>
+              <button class="shape" data-shape="reverse"><svg class="ico"><use href="#i-undo"/></svg><span>Reverse</span></button>
+              <button class="shape" data-shape="retry"><svg class="ico"><use href="#i-refresh"/></svg><span>Retry</span></button>
+              <button class="shape" data-shape="reconcile"><svg class="ico"><use href="#i-scale"/></svg><span>Reconcile</span></button>
+            </div>
+          </div>
+          <div class="shape-detail panel">
+            <div class="detail-top"><div><h2 id="shapeTitle">Approval</h2><p>one of eight shapes</p></div><div class="detail-index" id="shapeIndex">03 / 08</div></div>
+            <div class="shape-attrs">
+              <div class="attr gate"><span>Gate</span><b id="shapeGate">approve</b></div>
+              <div class="attr who"><span>Who</span><b id="shapeWho">owner</b></div>
+              <div class="attr mod"><span>Modifier</span><b id="shapeMod">none</b></div>
+            </div>
+            <div class="shape-example" id="shapeExample">approve a refund</div>
+            <div class="mini-run" id="miniRun"></div>
+            <div class="safety-floor"><svg class="ico"><use href="#i-shield"/></svg> safety floor <b>auto + money → approve</b></div>
+          </div>
+        </div>
+        <div class="runtime"><b>Tap</b><i></i><b>Schedule</b><i></i><b>Event</b><span>→</span><b>Gate</b><span>→</span><b>CRUD</b><span>→</span><b>Event</b><span>→</span><b>Inbox</b><span>→</span><b>Sync</b></div>
+      </section>
+
+      <section class="scene" data-scene="ladder">
+        <div class="ladder-grid">
+          <div class="ladder-panel panel">
+            <div class="ladder" id="ladder">
+              <button class="rung is-active" style="--i:0" data-rung="0"><span class="l">L0</span><span class="nm">Literal</span><span class="calls">0 calls</span></button>
+              <button class="rung" style="--i:1" data-rung="1"><span class="l">L1</span><span class="nm">Memory</span><span class="calls">0–1</span></button>
+              <button class="rung" style="--i:2" data-rung="2"><span class="l">L2</span><span class="nm">Prose</span><span class="calls">1 call</span></button>
+              <button class="rung" style="--i:3" data-rung="3"><span class="l">L3</span><span class="nm">Decide</span><span class="calls">1 batched</span></button>
+              <button class="rung" style="--i:4" data-rung="4"><span class="l">L4</span><span class="nm">Verify</span><span class="calls">1 batched</span></button>
+              <button class="rung" style="--i:5" data-rung="5"><span class="l">L5</span><span class="nm">Confirm</span><span class="calls">0</span></button>
+              <div class="compile-landing"><span><svg class="ico"><use href="#i-code"/></svg> compile</span><b>card → run</b><span>0 calls ∞</span></div>
+            </div>
+          </div>
+          <div class="ladder-detail panel">
+            <div class="rung-big"><b id="ladderBig">L0</b><span><strong id="ladderName">Literal</strong><small id="ladderWho">code</small></span></div>
+            <div class="detail-line"><span>Calls</span><div class="call-meter" id="callMeter"><i></i><i></i></div><b id="ladderCalls">0</b></div>
+            <div class="exit-test" id="ladderTest">Exact match to a known intent. <b>Compile.</b></div>
+            <div class="thresholds">
+              <div class="thresholds-title">Auto act · p / margin</div>
+              <div class="threshold"><span>none · data</span><div class="threshold-bars"><div class="tbar"><i style="--w:60%"></i></div><div class="tbar"><i style="--w:30%"></i></div></div></div>
+              <div class="threshold"><span>customer</span><div class="threshold-bars"><div class="tbar"><i style="--w:80%"></i></div><div class="tbar"><i style="--w:40%"></i></div></div></div>
+              <div class="threshold"><span>money</span><div class="threshold-bars"><div class="tbar"><i style="--w:85%"></i></div><div class="tbar"><i style="--w:50%"></i></div></div></div>
+            </div>
+          </div>
+        </div>
+        <div class="same-shape">
+          <div class="speech">every day at 10 send a sales report</div>
+          <div class="arr">+</div>
+          <div class="speech">send me a sales report at 10 every morning</div>
+          <div class="arr">→</div>
+          <div class="shape-hash"><svg class="ico" style="width:13px;height:13px"><use href="#i-finger"/></svg> same shape</div>
+          <div class="arr">→</div>
+          <div class="one-plan"><svg class="ico" style="width:13px;height:13px"><use href="#i-check"/></svg> one remembered plan</div>
+        </div>
+      </section>
+
+      <section class="scene" data-scene="store">
+        <div class="store-grid">
+          <div class="build-panel panel">
+            <h2>Describe once.</h2>
+            <div class="build-step done"><div class="bs-icon"><svg class="ico"><use href="#i-chat"/></svg></div><div class="bs-body"><b>Words</b><p>silk sarees · UPI · ship nationwide</p></div><span class="bs-state">once</span></div>
+            <div class="build-step done"><div class="bs-icon"><svg class="ico"><use href="#i-hex"/></svg></div><div class="bs-body"><b>Jev · business</b><p>models, industry, capabilities</p><div class="bs-chips"><span>products</span><span>booking</span><span>apparel</span></div></div><span class="bs-state">1 call</span></div>
+            <div class="build-step done"><div class="bs-icon"><svg class="ico"><use href="#i-grid"/></svg></div><div class="bs-body"><b>Code · shortlist</b><p>designs and recipes, max six</p><div class="bs-chips"><span>luxury</span><span>warm</span><span>commerce</span><span>+3</span></div></div><span class="bs-state">6</span></div>
+            <div class="build-step done"><div class="bs-icon"><svg class="ico"><use href="#i-wand"/></svg></div><div class="bs-body"><b>Jev · look</b><p>design, recipes, optional sections</p><div class="bs-chips"><span>luxury · .79</span><span>grid · .88</span><span>spotlight</span></div></div><span class="bs-state">1 call</span></div>
+            <div class="build-step done"><div class="bs-icon"><svg class="ico"><use href="#i-layers"/></svg></div><div class="bs-body"><b>Code · assemble</b><p>fixed section order, one document</p><div class="bs-chips"><span>10 sections</span><span>desktop</span><span>tablet</span><span>phone</span></div></div><span class="bs-state">0 calls</span></div>
+            <div class="build-step now" id="gateBuildStep"><div class="bs-icon"><svg class="ico"><use href="#i-shield"/></svg></div><div class="bs-body"><b>Gate</b><p id="gateStepText">2 things missing · draft is safe</p></div><span class="bs-state" id="gateStepState">draft</span></div>
+            <div class="build-reset"><button id="resetStore">reset demo</button></div>
+          </div>
+          <div class="browser" id="browser">
+            <div class="browser-bar"><div class="browser-dots"><i></i><i></i><i></i></div><div class="url">aambal.tar.site</div><button class="publish" id="publishBtn" disabled>Publish</button></div>
+            <div class="site-preview">
+              <div class="site-nav"><b>AAMBAL NEYVAGAM</b><span>catalog · book · contact</span></div>
+              <div class="site-hero"><span>Pongal sale · 20% off</span><h3>Handloom silk</h3><p>Woven in Kanchipuram</p><button>Shop now</button></div>
+              <div class="site-products">
+                <div class="site-product"><i style="--swatch:#bd7f5c"></i><div><b>Silk saree</b><span>₹4,500</span></div></div>
+                <div class="site-product"><i style="--swatch:#d7c7ad"></i><div><b>Cotton scarf</b><span>₹850</span></div></div>
+                <div class="site-product"><i style="--swatch:#8c9b8d"></i><div><b>Fabric</b><span>₹1,200</span></div></div>
+              </div>
+              <div class="site-strip"><span><b>Silk Mark</b> certified</span><span id="bookingSlot">booking —</span></div>
+              <div class="site-foot"><span>Aambal Neyvagam · Kanchipuram</span><span id="contactSlot">contact —</span></div>
+              <div class="gate-overlay" id="gateOverlay"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="scene" data-scene="kernel">
+        <div class="laws">
+          <span class="law"><b>1</b> balanced</span>
+          <span class="law"><b>2</b> stock ≥ 0</span>
+          <span class="law"><b>3</b> archive only</span>
+          <span class="law"><b>4</b> one registry</span>
+          <span class="law"><b>5</b> confirm money</span>
+          <span class="law"><b>6</b> one-tap undo</span>
+          <span class="law"><b>7</b> no model on run</span>
+        </div>
+        <div class="kernel-grid">
+          <div class="fan-panel panel">
+            <div class="fan-stage" id="fanStage">
+              <svg class="fan-links" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+                <line data-link="0" x1="50" y1="50" x2="25" y2="16"/>
+                <line data-link="1" x1="50" y1="50" x2="75" y2="16"/>
+                <line data-link="2" x1="50" y1="50" x2="90" y2="50"/>
+                <line data-link="3" x1="50" y1="50" x2="73" y2="84"/>
+                <line data-link="4" x1="50" y1="50" x2="27" y2="84"/>
+                <line data-link="5" x1="50" y1="50" x2="10" y2="50"/>
+              </svg>
+              <button class="fan-core" id="saleBtn"><b>₹5,350</b><small>record a sale</small></button>
+              <div class="rec-card rec-order" data-rec="0"><span>order</span><b>#42 · 2 items</b></div>
+              <div class="rec-card rec-invoice" data-rec="1"><span>invoice</span><b>₹5,350</b></div>
+              <div class="rec-card rec-payment" data-rec="2"><span>payment</span><b>UPI · cleared</b></div>
+              <div class="rec-card rec-stock" data-rec="3"><span>stock</span><b>−2 units</b></div>
+              <div class="rec-card rec-posting" data-rec="4"><span>posting</span><b>DR = CR</b></div>
+              <div class="rec-card rec-event" data-rec="5"><span>event</span><b>sale · audit</b></div>
+            </div>
+            <div class="fan-note"><i></i> one commit → typed rows in one table</div>
+          </div>
+          <div class="kernel-side panel">
+            <div class="side-block">
+              <div class="side-title"><span>Stock</span><span id="stockState">before</span></div>
+              <div class="stock-eq">
+                <div class="stock-item"><b id="onhand">12</b><span>on hand</span></div>
+                <div class="stock-op">−</div>
+                <div class="stock-item"><b id="reserved">0</b><span>reserved</span></div>
+                <div class="stock-op">=</div>
+                <div class="stock-item"><b id="available" style="color:var(--accent2)">12</b><span>available</span></div>
+              </div>
+              <div class="stock-bar"><i id="stockBar"></i></div>
+            </div>
+            <div class="side-block">
+              <div class="side-title"><span>Posting</span><span>balanced</span></div>
+              <div class="balance-visual"><span>DR cash</span><b>₹5,350</b></div>
+              <div class="balance-visual"><span>CR revenue</span><b>₹5,350</b></div>
+              <div class="balance-bars" id="balanceBars"><i></i><i></i></div>
+              <div class="side-caption">unbalanced postings never commit</div>
+            </div>
+            <div class="side-block">
+              <div class="side-title"><span>Every card syncs</span><span id="syncCount">0 / 5</span></div>
+              <div class="sync-mini" id="syncMini"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+              <div class="undo-line"><svg class="ico"><use href="#i-undo"/></svg> one tap undo writes the reverse</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+    <footer class="footer"><span>TAR v4 · one canvas os</span><span>words → plan → card → gate → record → sync</span></footer>
+  </main>
+</div>
+
+</DeckLayout>
+
+<script>
+  import '../scripts/part-a.js';
+</script>
