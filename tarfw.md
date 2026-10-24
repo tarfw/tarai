@@ -29,6 +29,25 @@ Inbox, Flow  = surfaces and card shapes. never tools.
 Integration  = adapter -> registered action -> one of the 14 tools
                built and reviewed at build time, never found at runtime.
                no model on run.
+
+Site         = one tool, two modes, one door.
+
+               Mode 1  CURATED   describe once -> Jev picks design + recipes.
+               Mode 2  SANDBOX   member prompts -> LLM writes Astro code.
+                                 built in an isolated box.          (later)
+
+                    |                        |
+                    +----> release in R2 <---+
+                               |
+               ONE sites worker serves *.tar.site
+               subdomain -> workspace -> release
+                               |
+               gate -> publish tap -> rollback tap
+               publish writes an immutable release. rollback repoints.
+
+               the LLM writes looks. never checkout, payment, tax, price, stock.
+               the workspace owns the URL. the mode can change, the URL does not.
+               sandbox, builder, releases = architecture. the tool stays one.
 ```
 
 Rules that follow:

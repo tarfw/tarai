@@ -1381,6 +1381,8 @@ Overrides survive regeneration. Jev sees them as fixed picks, so it does not fig
  JEV owns       which options, with a probability
 ```
 
+A publish writes an immutable, versioned release to R2. Rollback repoints to the previous release. A release does not record who built it: a second builder (sandbox mode) can join later. The workspace owns the subdomain; the mode can change, the URL does not.
+
 ---
 
 # PART D - THREE TRACES
