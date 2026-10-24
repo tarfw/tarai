@@ -28,7 +28,7 @@ Inbox, Flow  = surfaces and card shapes. never tools.
 
 Integration  = adapter -> registered action -> one of the 14 tools
                built and reviewed at build time, never found at runtime.
-               no model on run.
+               no model on run. (the one law Memory and Site inherit)
 
 Site         = one tool, two modes, one door.
 
@@ -74,3 +74,88 @@ Rules that follow:
 | 12 | site | Online Storefront | customer | View Store |
 | 13 | task | Manual Tasks | none | Mark Done |
 | 14 | channel | Messages | customer | Open Chat |
+
+## Canvas - one screen, every member (concept)
+
+```
+   OWNER - alerts, money, site        MEMBER - own tools, inbox, shift
+ +--------------------------------+  +--------------------------------+
+ | 9:41                      94%  |  | 16:12                    76%  |
+ +--------------------------------+  +--------------------------------+
+ | Aambal Neyvagam         Owner |  | Aambal Neyvagam   Kanimozhi   |
+ | ! Cash drawer out Rs. 350  >  |  | Cashier - Shift 14            |
+ +--------------------------------+  +--------------------------------+
+ | NEXT  Pack order 42   due 15m |  | NEXT  Pack parcel, 2 items    |
+ |                    [ Complete ]|  |                [ Complete ]   |
+ +--------------------------------+  +--------------------------------+
+ | COUNTER SALES         SHIFT 14 |  | COUNTER SALES         SHIFT 14 |
+ | Today Rs. 18,450    14 bills  |  | Bills 9       Drawer Rs. 4,350 |
+ | [ New Sale ]                  |  | [ New Sale ]                  |
+ +--------------------------------+  +--------------------------------+
+ | ORDERS   Pending 3  Shipped 11|  | INBOX    2 waiting, 1 overdue |
+ | [ Open Queue ]                |  | [ Open Feed ]                 |
+ +--------------------------------+  +--------------------------------+
+ | SITE  aambal.tar.site    LIVE  |  | SHIFT HANDOVER        16:00   |
+ | Visits 142     [ View Store ] |  | Not started                   |
+ | [ + Add a Card ]              |  | [ Start Handover ]            |
+ +--------------------------------+  +--------------------------------+
+ | Ask TAR anything...        (+)|  | Ask TAR anything...        (+)|
+ | (+)  [Canvas] Flows Site You  |  | (+)  [Canvas] Flows      You  |
+ +--------------------------------+  +--------------------------------+
+```
+
+One screen, one stack: alert, next, then only the cards this member may use now.
+Grants build the stack. The owner gets alerts, site and add-card. The member
+gets their tools, their inbox and their shift. The member's bar has no Site.
+Every card is a saved read + one tap.
+
+## Data
+
+```
+Memory       = skills. describe once -> run forever, free.
+               L0 literal -> L1 shape -> L2 prose -> confirmed skill.
+               vector = one column on skill. added only when L1 misses climb.
+
+Control (D1, platform-wide)
+               user, workspace, member, invite
+
+Truth (one Turso DB per workspace)
+  record      every fact. versioned, archived.
+  move        every change ever. append-only.
+  current     the number now. derived, not duplicate. rebuildable.
+  skill       memory of flow.
+  run         one execution. resume from step.
+  event       what happened. feeds inbox + every canvas.
+  inbox       each member's to-act rows.
+  columns live in the Schema table below.
+
+Bytes (R2)
+              media, papers, sites, archive, closes
+              DB = numbers, states, links. R2 = bytes.
+              never only in R2: price, stock, totals, payment state.
+
+Cost guard
+              one write = record + move + current + event. one transaction.
+              hot window 90 days -> monthly close, hash-sealed to R2 -> archive.
+              current = close + bounded move.
+              writes and models share the monthly ceiling.
+```
+
+## Schema (11 tables, the floor)
+
+| DB | Table | Columns | Holds |
+| :--- | :--- | :--- | :--- |
+| D1 | user | id, email, name | who exists |
+| D1 | workspace | id, name, slug, mode, db, host, state | one business, one Turso DB |
+| D1 | member | workspace, user, role, state | who belongs where |
+| D1 | invite | workspace, email, role, state | pending members |
+| Turso | record | id, type, data, version, owner, created, archived | every fact. data under 2KB |
+| Turso | move | id, kind, key, amount, why, source, created | every change. append-only |
+| Turso | current | kind, key, data | the number now. key = kind + key |
+| Turso | skill | id, shape, trigger, steps, score, confirmed | memory of flow. embedding later |
+| Turso | run | id, skill, step, status, key, input | one execution. same key never twice |
+| Turso | event | id, record, type, created | what happened. feeds inbox + canvas |
+| Turso | inbox | id, member, event, reach, due, assigned, status | each member's to-act rows |
+
+Rechecked once for simplification: `current` can't fold into record (bounded hot cache, natural key), `inbox` can't fold into event (per-member rows), `run` can't fold into skill (many runs per skill). Eleven tables is the floor; each has exactly one job.
+
