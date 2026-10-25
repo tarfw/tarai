@@ -19,11 +19,13 @@ import { siteRegenerate } from './site/store.ts';
 import { canExecute, canReadRecord, canRunFlowStep, managesMembers } from './access.ts';
 import { inviteMember, listMembers, updateMember } from './team.ts';
 import { searchContacts } from './contacts/search.ts';
-import { acceptFlowRequest, sweepFlowDispatches } from './flows/dispatch.ts';
 import { cardDeck, deckStatement, findTool, readCardStack, readDeck, toolForAction } from './tools/registry.ts';
+import { ask, confirmSkill, findSkill, listSkills } from './skill/engine.ts';
+import { proposePlan } from './skill/propose.ts';
+import { advanceRun, listRuns, startRun } from './skill/run.ts';
+import { birthMoment, hireMoment, importMoment } from './brain/moments.ts';
 import { deriveGate, mayExecute, missingFields } from './truth/gate.ts';
 import { currentStatement, inboxStatement, lastMoveId, readInbox } from './truth/write.ts';
-export { FlowWorkflow } from './flows/workflow.ts';
 
 type RuntimeEnv = Env & { readonly TURSO_PLATFORM_TOKEN?: string; readonly TAR_SESSION_SECRET?: string; readonly TYPESAFE_API_KEY?: string; readonly GROQ_API_KEY?: string; readonly PEXELS_API_KEY?: string; readonly SITE_BASE_DOMAIN?: string; readonly SITE_WORKER_ORIGIN?: string; readonly SITE_MODEL?: string };
 const jsonHeaders = { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' };
@@ -211,6 +213,9 @@ async function createWorkspace(request: Request, env: RuntimeEnv): Promise<Respo
   if (!name || !slug) throw badRequest('Workspace name is required.');
   const databaseName = `${identityKey(owner.id)}-${slug}`.slice(0, 56);
   const input = { identity: owner, name, slug, databaseName, mode: 'work' as const };
+  // Birth: Jev names the nature, code deals the cards. One call, once.
+  const words = typeof body.words === 'string' ? body.words : name;
+  const birth = await birthMoment(env.TYPESAFE_API_KEY, words);
   const pending = await Effect.runPromise(control.resumeErroredWorkspace(input)) ?? await Effect.runPromise(control.createPendingWorkspace(input));
   const provisioned = await provision(control, env, pending);
   try {
@@ -223,8 +228,9 @@ async function createWorkspace(request: Request, env: RuntimeEnv): Promise<Respo
         { sql: "INSERT INTO records(id,type,title,state,data,owner,version,created,updated) VALUES(?,'site',?,'draft',?,?,1,?,?)", args: [siteId, name, JSON.stringify(siteDoc), owner.id, at, at] },
         // Birth deals the cards (general recipe until Jev names the nature at
         // the birth moment) and seeds the first NEXT: never a blank Canvas.
-        deckStatement(cardDeck('general')),
+        deckStatement(cardDeck(birth.nature)),
         currentStatement('card', 'catalog', { itemCount: '0 items', pending: 'add your first item' }),
+        currentStatement('workspace', 'nature', { nature: birth.nature, confidence: birth.confidence, doubt: birth.doubt }),
         inboxStatement({ member: owner.id, tool: 'catalog', reach: 'data', title: 'Add your first item', action: 'catalog.item.save' }),
       ], 'write');
     } finally {
@@ -273,10 +279,10 @@ async function handle(request: Request, env: RuntimeEnv, ctx: ExecutionContext):
       const version = await lastMoveId(client);
       const etag = `"${version ?? 'empty'}"`;
       if (request.headers.get('If-None-Match') === etag) return new Response(null, { status: 304, headers: { ETag: etag, ...corsHeaders } });
-      const [inbox, deck] = await Promise.all([readInbox(client, current.member.userId), readDeck(client)]);
+      const [inbox, deck, skills] = await Promise.all([readInbox(client, current.member.userId), readDeck(client), listSkills(client)]);
       const cards = await readCardStack(client, current.member.role, deck);
       const sorted = [...inbox].sort((a, b) => Number(b.urgent) - Number(a.urgent) || (a.due ?? Infinity) - (b.due ?? Infinity) || b.created - a.created);
-      return response({ version, next: sorted[0] ?? null, inbox: sorted, cards, workspace: { id: current.workspace.id, name: current.workspace.name, slug: current.workspace.slug, mode: current.workspace.mode, role: current.member.role } }, 200, { ETag: etag });
+      return response({ version, next: sorted[0] ?? null, inbox: sorted, cards, skills, workspace: { id: current.workspace.id, name: current.workspace.name, slug: current.workspace.slug, mode: current.workspace.mode, role: current.member.role } }, 200, { ETag: etag });
     });
   }
   if (request.method === 'POST' && path === '/v1/intent') {
@@ -368,8 +374,7 @@ async function handle(request: Request, env: RuntimeEnv, ctx: ExecutionContext):
         await client.batch([
           { sql: 'DELETE FROM records' },
           { sql: 'DELETE FROM move' },
-          { sql: 'DELETE FROM definitions' },
-          { sql: 'DELETE FROM runs' },
+          { sql: 'DELETE FROM run' },
         ], 'write');
       } catch { /* proceed */ }
     });
@@ -525,13 +530,6 @@ async function handle(request: Request, env: RuntimeEnv, ctx: ExecutionContext):
     return response(result);
   }
     if (request.method === 'GET' && nested === 'actions') return response({ actions: actionCatalog.filter((action) => canExecute(current.member, action.id)), interfaces: interfaceCatalog });
-  if (request.method === 'POST' && /^actions\/flow\.(start|advance)$/.test(nested)) {
-    const key = request.headers.get('Idempotency-Key') || '';
-    const input = await Effect.runPromise(parseJson(request));
-    const actionId = nested.slice(8) as GatewayRequest['actionId'];
-    const result = await acceptFlowRequest(env, current, { actionId, idempotencyKey: key, input });
-    return response(result, 201);
-  }
   return withWorkspace(env, current, async (client) => {
     if (request.method === 'DELETE' && nested === 'site') {
       if (current.member.role === 'guest') throw forbidden();
@@ -679,39 +677,20 @@ async function handle(request: Request, env: RuntimeEnv, ctx: ExecutionContext):
       const rows = await Effect.runPromise(query<Record<string, unknown>>(client, { sql: 'SELECT id,contact,channel,purpose,state,source,actor,created FROM consents WHERE contact=? ORDER BY created DESC,id DESC LIMIT 100', args: [id] }));
       return response({ consents: rows.map((item) => ({ id: String(item.id), contact: String(item.contact), channel: String(item.channel), purpose: String(item.purpose), state: String(item.state), source: String(item.source), actor: String(item.actor), created: Number(item.created) })) });
     }
-    if (request.method === 'GET' && nested === 'flows') {
-      const definitions = await Effect.runPromise(query<Record<string, unknown>>(client, { sql: "SELECT id,name,version,state,data FROM definitions WHERE kind='flow' AND state='published' ORDER BY name COLLATE NOCASE" }));
-      const runs = await Effect.runPromise(query<Record<string, unknown>>(client, { sql: "SELECT * FROM runs WHERE state IN ('ready','blocked') ORDER BY updated_at DESC LIMIT 100" }));
-      const allBooks = definitions.map((item) => ({ id: String(item.id), name: String(item.name), version: Number(item.version), data: object(JSON.parse(String(item.data))) }));
-      const startable = allBooks.filter((book) => {
-        const actions = Array.isArray(book.data.actions) ? book.data.actions.map(object) : [];
-        return Boolean(actions[0] && canRunFlowStep(current.member, actions[0], current.identity.id));
-      });
-      const active = await Promise.all(runs.map(async (item) => {
-        const context = object(JSON.parse(String(item.context)));
-        const owner = String(context.startedBy || '');
-        if (!(await runVisible(client, current.member, owner, item.record_id)) && !canContinueRun(current.member, context)) return null;
-        const book = allBooks.find((candidate) => candidate.id === String(item.flow_id));
-        if (!book) return null;
-        return { id: String(item.id), flowId: String(item.flow_id), name: book.name, flowVersion: Number(item.flow_version), state: String(item.state), actionId: typeof item.action_id === 'string' ? item.action_id : null, recordId: typeof item.record_id === 'string' ? item.record_id : null, step: Number(context.step || 0), version: Number(item.version), updatedAt: Number(item.updated_at) };
-      }));
-      const visibleRuns = active.filter((item): item is NonNullable<typeof item> => item !== null);
-      const visibleBookIds = new Set([...startable.map((book) => book.id), ...visibleRuns.map((run) => run.flowId)]);
-      const books = allBooks.filter((book) => visibleBookIds.has(book.id));
-      return response({ books, runs: visibleRuns });
-    }
-    const runMatch = /^runs\/([A-Za-z0-9_-]+)$/.exec(nested);
-    if (request.method === 'GET' && runMatch) {
-      const rows = await Effect.runPromise(query<Record<string, unknown>>(client, { sql: 'SELECT * FROM runs WHERE id=?', args: [decodeURIComponent(runMatch[1])] }));
-      const item = rows[0]; if (!item) throw notFound('Flow Book run not found.');
-      const runContext = object(JSON.parse(String(item.context)));
-      const owner = String(runContext.startedBy || '');
-      if (!(await runVisible(client, current.member, owner, item.record_id)) && !canContinueRun(current.member, runContext)) throw forbidden();
-      const full = owner === current.identity.id || managesMembers(current.member);
-      const saved = await Effect.runPromise(query<Record<string, unknown>>(client, { sql: 'SELECT id,action,occurrence,state,input,output,version,created,updated FROM steps WHERE run=? ORDER BY occurrence', args: [String(item.id)] }));
-      const steps = saved.map((row) => ({ id: String(row.id), action: String(row.action), occurrence: Number(row.occurrence), state: String(row.state), input: full ? object(JSON.parse(String(row.input))) : {}, output: full && row.output !== null ? object(JSON.parse(String(row.output))) : null, version: Number(row.version), created: Number(row.created), updated: Number(row.updated) }));
-      const visibleContext = full ? runContext : { source: runContext.source, step: runContext.step, actions: Array.isArray(runContext.actions) ? runContext.actions.map((entry) => { const action = object(entry); return { id: action.id, version: action.version, auto: action.auto, role: action.role }; }) : [] };
-      return response({ run: { id: String(item.id), flowId: String(item.flow_id), flowVersion: Number(item.flow_version), state: String(item.state), actionId: typeof item.action_id === 'string' ? item.action_id : null, recordId: typeof item.record_id === 'string' ? item.record_id : null, context: visibleContext, version: Number(item.version), updatedAt: Number(item.updated_at), steps } });
+    if (request.method === 'GET' && nested === 'skills') return response({ skills: await listSkills(client) });
+    if (request.method === 'GET' && nested === 'runs') return response({ runs: await listRuns(client) });
+    const runPost = /^runs\/([A-Za-z0-9_-]+)\/advance$/.exec(nested);
+    if (request.method === 'POST' && runPost) {
+      const body = await Effect.runPromise(parseJson(request));
+      const skill = await findSkill(client, runPost[1]);
+      if (skill) {
+        const run = await startRun(client, current, skill, request.headers.get('Idempotency-Key') || `run-${crypto.randomUUID()}`);
+        return response({ run }, 201);
+      }
+      const view = await advanceRun(client, current, runPost[1], {
+        execute: async (actionId, input, key) => Effect.runPromise(executeGateway(client, current, { actionId: actionId as GatewayRequest['actionId'], idempotencyKey: key, input }, { productContent: env.PRODUCT_CONTENT, siteReleases: env.SITE_RELEASES, publication: env.CONTROL, siteDomain: env.SITE_WORKER_ORIGIN || env.SITE_BASE_DOMAIN, ai: env.AI, typesafe: env.TYPESAFE_API_KEY, siteModel: env.SITE_MODEL, groqApiKey: env.GROQ_API_KEY, pexelsApiKey: env.PEXELS_API_KEY })),
+      }, object(body.input));
+      return response({ run: view });
     }
     const actionMatch = /^actions\/([A-Za-z0-9_.-]+)$/.exec(nested);
     if (request.method === 'POST' && actionMatch) {
@@ -729,7 +708,6 @@ async function handle(request: Request, env: RuntimeEnv, ctx: ExecutionContext):
 export default {
   fetch(request: Request, env: RuntimeEnv, ctx: ExecutionContext): Promise<Response> { return handle(request, env, ctx).catch(errorResponse); },
   async scheduled(_controller: ScheduledController, env: RuntimeEnv): Promise<void> {
-    await sweepFlowDispatches(env);
     await scoutPublishedSites(env);
     await regenerateDriftedSites(env);
     await env.CONTROL.prepare('DELETE FROM previews WHERE expires<=?').bind(Date.now()).run();

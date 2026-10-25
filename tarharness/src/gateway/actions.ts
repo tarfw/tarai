@@ -28,8 +28,8 @@ const rowToRecord = (row: Record<string, unknown>): RecordItem => ({
   createdAt: Number(row.created),
   updatedAt: Number(row.updated),
 });
-const bookActions = new Set(['record.create', 'contact.create', 'organization.create', 'task.create', 'site.generate', 'pos.register.count', 'pos.register.close']);
-const unattendedActions = new Set(['record.create', 'contact.create', 'organization.create', 'task.create']);
+
+
 const managedCommerceTypes = new Set([
   'item', 'variant', 'price', 'stock', 'purchase', 'order', 'invoice', 'payment',
   'refund', 'posting', 'movement', 'receipt', 'capability',
@@ -252,73 +252,7 @@ export function executeGateway(client: Client, context: AccessContext, request: 
         return { taskId, state: 'completed' };
       }
 
-      if (request.actionId === 'flow.advance') {
-        const runId = text(request.input.runId, 160); const actionId = text(request.input.actionId, 160); let input = object(request.input.data);
-        const rows = await query<Record<string, unknown>>(client, { sql: 'SELECT * FROM runs WHERE id=?', args: [runId] }).pipe(Effect.runPromise);
-        const current = rows[0]; if (!current) throw notFound('Flow Book run not found.');
-        if (typeof current.record_id === 'string') {
-          const linked = await query<Record<string, unknown>>(client, { sql: 'SELECT * FROM records WHERE id=? AND archived IS NULL', args: [current.record_id] }).pipe(Effect.runPromise);
-          if (!linked[0]) throw notFound('The record linked to this Flow Book is unavailable.');
-          if (!canReadRecord(context.member, rowToRecord(linked[0]))) throw forbidden();
-        }
-        const runContext = object(JSON.parse(String(current.context)));
-        const actions = Array.isArray(runContext.actions) ? runContext.actions.map(object) : [];
-        const index = Number(runContext.step || 0);
-        if (String(current.state) !== 'ready' || !Number.isInteger(index) || index < 0 || index >= actions.length) throw conflict('This Flow Book is not waiting for a step. Refresh its status.');
-        const expected = text(actions[index].id, 160);
-        if (!expected || expected !== actionId) throw conflict('The Flow Book changed. Refresh before continuing.');
-        if (actions[index].auto === true) throw conflict('This step is dispatched by the Flow Book runner. Refresh its status.');
-        if (!canRunFlowStep(context.member, actions[index], String(runContext.startedBy || ''))) throw forbidden();
-        if (['pos.register.count', 'pos.register.close'].includes(expected)) {
-          if (typeof current.record_id !== 'string') throw badRequest('Link this Flow Book run to an open register.');
-          const registerRows = await query<Record<string, unknown>>(client, { sql: "SELECT type,state FROM records WHERE id=? AND archived IS NULL", args: [current.record_id] }).pipe(Effect.runPromise);
-          if (registerRows[0]?.type !== 'pos.register' || registerRows[0]?.state !== 'open') throw conflict('The linked register is no longer open.');
-          input = { ...input, registerId: current.record_id };
-        }
-        if (Number(actions[index].version || 0) > 0 && findAction(expected)?.version !== Number(actions[index].version)) throw conflict('This Flow Book step needs a reviewed action migration before it can continue.');
-        if (['flow.start', 'flow.advance', 'flow.publish'].includes(expected) || (runContext.source === 'book' && !bookActions.has(expected))) throw badRequest('This Flow Book contains a non-runnable Action.');
-        const childKey = `flow:${runId}:${index}`;
-        const result = await Effect.runPromise(executeGateway(client, context, { actionId: expected as ActionId, idempotencyKey: childKey, input }, services));
-        const nextIndex = index + 1; const nextAction = nextIndex < actions.length ? text(actions[nextIndex].id, 160) : null;
-        const nextContext = { ...runContext, step: nextIndex, outputs: [...(Array.isArray(runContext.outputs) ? runContext.outputs : []), { actionId: expected, result }] };
-        const nextState = nextAction ? 'ready' : 'completed'; const finishedAt = nextAction ? null : at; const nextVersion = Number(current.version) + 1;
-        const nextRun = { id: runId, flowId: String(current.flow_id), flowVersion: Number(current.flow_version), state: nextState, actionId: nextAction, step: nextIndex, version: nextVersion };
-        const eventResult = { run: nextRun, result };
-        const committed = await client.batch([
-          { sql: 'UPDATE runs SET state=?,action_id=?,context=?,version=?,finished_at=?,updated_at=? WHERE id=? AND version=? AND state=\'ready\'', args: [nextState, nextAction, json(nextContext), nextVersion, finishedAt, at, runId, Number(current.version)] },
-          stepStatement(runId, index, expected, input, result, at),
-          { sql: `INSERT INTO move (id,kind,run_id,record_id,action_id,state,actor_id,input_hash,idempotency_key,data,created_at,updated_at)
-            SELECT ?, 'action', ?, ?, ?, 'accepted', ?, ?, ?, ?, ?, ? WHERE changes()=1`,
-            args: [`evt_${crypto.randomUUID()}`, runId, typeof current.record_id === 'string' ? current.record_id : null, request.actionId, context.identity.id, hash, request.idempotencyKey, json({ result: eventResult }), at, at] },
-        ], 'write');
-        if (committed[0]?.rowsAffected !== 1 || committed[1]?.rowsAffected !== 1 || committed[2]?.rowsAffected !== 1) throw conflict('This Flow Book step was already continued. Refresh its status.');
-        return eventResult;
-      }
-
-      const flowId = text(request.input.flowId, 160); if (!flowId) throw badRequest('Flow ID is required.');
-      const definitions = await query<Record<string, unknown>>(client, { sql: 'SELECT * FROM definitions WHERE id=? AND kind=\'flow\' AND state=\'published\'', args: [flowId] }).pipe(Effect.runPromise);
-      const flowDefinition = definitions[0]; if (!flowDefinition) throw notFound('Published Flow not found.');
-      const data = object(JSON.parse(String(flowDefinition.data))); const actions = Array.isArray(data.actions) ? data.actions.map(object) : [];
-      const first = actions[0]; if (!first || !text(first.id)) throw badRequest('Flow needs at least one Action.');
-      const source = text(data.source, 40);
-      if (actions.length > 20 || actions.some((item) => !findAction(text(item.id, 160)) || (source === 'book' && !bookActions.has(text(item.id, 160))) || (Number(item.version || 0) > 0 && findAction(text(item.id, 160))?.version !== Number(item.version)))) throw badRequest('Flow Book has an invalid, changed or unavailable Action.');
-      if (source === 'book' && !canRunFlowStep(context.member, first, context.identity.id)) throw forbidden();
-      const recordId = text(request.input.recordId, 160) || null;
-      const usesRegister = actions.some((item) => ['pos.register.count', 'pos.register.close'].includes(text(item.id, 160)));
-      if (usesRegister && !recordId) throw badRequest('Choose the open register this Flow Book will update.');
-      if (recordId) {
-        const linked = await query<Record<string, unknown>>(client, { sql: 'SELECT * FROM records WHERE id=? AND archived IS NULL', args: [recordId] }).pipe(Effect.runPromise);
-        if (!linked[0]) throw notFound('Related record not found.');
-        if (!canReadRecord(context.member, rowToRecord(linked[0]))) throw forbidden();
-        if (usesRegister && (String(linked[0].type) !== 'pos.register' || String(linked[0].state) !== 'open')) throw badRequest('Choose an open register record.');
-      }
-      const initialContext = { ...object(request.input.context), source, startedBy: context.identity.id, actions, step: 0, outputs: [] };
-      const run: FlowRun = { id: `run_${crypto.randomUUID()}`, flowId, flowVersion: Number(flowDefinition.version), occurrence: request.idempotencyKey, recordId, state: 'ready', actionId: text(first.id), context: initialContext, version: 1 };
-      await client.batch([
-        runStatement({ id: run.id, flowId: run.flowId, flowVersion: run.flowVersion, occurrence: run.occurrence, recordId: run.recordId, state: run.state, actionId: run.actionId, context: run.context }),
-        eventStatement({ action: request.actionId, actor: context.identity.id, runId: run.id, recordId: run.recordId, key: request.idempotencyKey, hash, result: { run } }),
-      ], 'write');
-      return { run };
+      throw badRequest(`Action ${request.actionId} is not executable through the gateway.`);
     },
     catch: (cause) => cause instanceof Error && '_tag' in cause ? cause as GatewayError : unavailable('Action execution failed.', cause),
   }), (result) => Effect.promise(async () => {
@@ -332,44 +266,4 @@ export function executeGateway(client: Client, context: AccessContext, request: 
     }
     return result;
   }));
-}
-
-export async function executeAutomaticFlowStep(client: Client, context: AccessContext, runId: string, expectedStep: number, services: GatewayServices = {}): Promise<{ state: string; step: number; advanced: boolean }> {
-  const rows = await Effect.runPromise(query<Record<string, unknown>>(client, { sql: 'SELECT * FROM runs WHERE id=?', args: [runId] }));
-  const current = rows[0];
-  if (!current) throw notFound('Flow Book run not found.');
-  const runContext = object(JSON.parse(String(current.context)));
-  const actions = Array.isArray(runContext.actions) ? runContext.actions.map(object) : [];
-  const index = Number(runContext.step || 0);
-  if (runContext.startedBy !== context.identity.id) throw forbidden();
-  if (String(current.state) !== 'ready' || !Number.isSafeInteger(index) || index < 0 || index >= actions.length) return { state: String(current.state), step: index, advanced: false };
-  if (index !== expectedStep) return { state: 'ready', step: index, advanced: index > expectedStep };
-  const step = actions[index];
-  const actionId = text(step.id, 160);
-  if (step.auto !== true) return { state: 'ready', step: index, advanced: false };
-  if (runContext.source !== 'book' || !unattendedActions.has(actionId) || !findAction(actionId) || findAction(actionId)?.version !== Number(step.version)) throw conflict('This automatic step needs review before it can resume.');
-  if (typeof current.record_id === 'string') {
-    const linked = await Effect.runPromise(query<Record<string, unknown>>(client, { sql: 'SELECT * FROM records WHERE id=? AND archived IS NULL', args: [current.record_id] }));
-    if (!linked[0] || !canReadRecord(context.member, rowToRecord(linked[0]))) throw forbidden();
-  }
-  const input = object(step.input);
-  const childKey = `flow:${runId}:${index}`;
-  const result = await Effect.runPromise(executeGateway(client, context, { actionId: actionId as ActionId, idempotencyKey: childKey, input }, services));
-  const nextIndex = index + 1;
-  const nextAction = nextIndex < actions.length ? text(actions[nextIndex].id, 160) : null;
-  const nextState = nextAction ? 'ready' : 'completed';
-  const nextContext = { ...runContext, step: nextIndex, outputs: [...(Array.isArray(runContext.outputs) ? runContext.outputs : []), { actionId, result }] };
-  const at = stamp();
-  const progress = { run: { id: runId, flowId: String(current.flow_id), flowVersion: Number(current.flow_version), state: nextState, actionId: nextAction, step: nextIndex, version: Number(current.version) + 1 }, result };
-  const hash = await fingerprint({ actor: context.identity.id, action: 'flow.advance', input: { runId, actionId, data: input } });
-  const committed = await client.batch([
-    { sql: "UPDATE runs SET state=?,action_id=?,context=?,version=version+1,finished_at=?,updated_at=? WHERE id=? AND version=? AND state='ready'", args: [nextState, nextAction, json(nextContext), nextAction ? null : at, at, runId, Number(current.version)] },
-    stepStatement(runId, index, actionId, input, result, at),
-    { sql: `INSERT INTO move (id,kind,run_id,record_id,action_id,state,actor_id,input_hash,idempotency_key,data,created_at,updated_at)
-      SELECT ?, 'action', ?, ?, 'flow.advance', 'accepted', ?, ?, ?, ?, ?, ? WHERE changes()=1`,
-      args: [`evt_${crypto.randomUUID()}`, runId, typeof current.record_id === 'string' ? current.record_id : null, context.identity.id, hash, `auto:${runId}:${index}`, json({ result: progress }), at, at] },
-  ], 'write');
-  if (committed[0]?.rowsAffected !== 1) return { state: 'ready', step: index, advanced: false };
-  if (committed[1]?.rowsAffected !== 1 || committed[2]?.rowsAffected !== 1) throw unavailable('Flow Book progress could not be saved.');
-  return { state: nextState, step: nextIndex, advanced: true };
 }

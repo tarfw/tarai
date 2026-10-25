@@ -2,7 +2,7 @@ import { createClient } from '@libsql/client';
 import { Effect } from 'effect';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { WORKSPACE_SCHEMA } from '../src/db/schema.ts';
-import { executeAutomaticFlowStep, executeGateway } from '../src/gateway/actions.ts';
+import { executeGateway } from '../src/gateway/actions.ts';
 import type { AccessContext } from '../src/types.ts';
 
 const clients: ReturnType<typeof createClient>[] = [];

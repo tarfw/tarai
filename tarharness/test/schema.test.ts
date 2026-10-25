@@ -12,7 +12,7 @@ describe('workspace schema', () => {
       const names = tables.rows.map((row) => String(row.name));
       // The tarfw floor: record, move, current, skill, run, inbox (+ legacy
       // tables still serving the un-migrated writers until Tile 3 drops them).
-      for (const floor of ['records', 'move', 'current', 'skill', 'inbox', 'runs']) {
+      for (const floor of ['records', 'move', 'current', 'skill', 'inbox', 'run']) {
         expect(names).toContain(floor);
       }
       expect(names).not.toContain('events');

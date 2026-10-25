@@ -23,7 +23,6 @@
       "migrations_dir": "migrations"
     }
   ],
-  "workflows": [{ "binding": "FLOWS", "name": "tarharness-flows", "class_name": "FlowWorkflow" }],
   "triggers": { "crons": ["*/5 * * * *"] },
   "observability": { "enabled": true, "head_sampling_rate": 1 },
   "r2_buckets": [
