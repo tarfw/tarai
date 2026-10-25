@@ -142,6 +142,16 @@ Device       a window, never a copy. one door: the TAR API.
                         the size of the slice is trust.
                         the road for writes is one.
 
+Realtime     freshness in layers. the bell is never the data.
+              own tap = the answer returns the fresh slice.
+              open app = a 20s version check: if-none-match
+              on the last move id. 304 = nothing changed.
+              nearly free at any scale.
+              closed phone = OS push (FCM / APNs). the only
+              bell that reaches a pocket. the driver's road.
+              instant = later. a CF websocket hub, opened on
+              demand. the poll is the floor.
+
 Plug         the DB is a plug behind the API. today Turso.
               if bills ever grow: our servers + SQLite
               files. laws unchanged. files copy.
@@ -185,18 +195,61 @@ A tool with no core flow (sell, buy, close day) is deferred, not built.
 | 13 | task | Manual Tasks | none | Mark Done |
 | 14 | channel | Messages | customer | Open Chat |
 
+## Shapes - the detail behind a card
+
+```
+Shape        = four, not fourteen. the tool is a row in the
+               registry, never a file.
+
+               list      one route. queue, bills, receipts,
+                         cash, items, stock, po, pos,
+                         expenses, contacts, members, tasks.
+                         rows + the number + the one tap.
+               sale      one route. pos. invoice is sale in
+                         gst mode.
+               chat      one route. channel. the one shape
+                         earned, never assumed.
+               sheet     one form, many configs. receipt,
+                         cash, item, stock, po, expense,
+                         contact. fields from the registry.
+               site      no screen. view store is a url.
+
+               row tap   one record detail. any tool. read +
+                         status. the fourth shape.
+
+               a new tool is an entry, not a screen. a new
+               screen is earned by a new shape, and only
+               that. the branch lives in data, never code.
+
+ the files (six routes, one sheet, one registry):
+
+ src/
+   screens/
+     Canvas.tsx        the app
+     Ask.tsx           the agent
+     ToolList.tsx      /tool/:toolId        12 tools
+     Sale.tsx          pos + invoice        gst mode
+     Chat.tsx          channel
+     RecordDetail.tsx  /record/:id          any row tap
+   components/
+     ActionSheet.tsx   one form sheet, config-driven
+     Card.tsx
+   tools/
+     registry.ts       the file that makes 14 = 4
+```
+
 ## Canvas - one screen, every member (concept)
 
 ```
    OWNER - alerts, money, site           MEMBER - own tools, own tasks
  +----------------------------------+  +----------------------------------+
- | 9:41                          94%|  | 16:12                          76%|
+ | 9:41                         94%|  | 16:12                          76%|
  +----------------------------------+  +----------------------------------+
  | (3) Aambal Neyvagam           (o)|  | (2) Aambal Neyvagam          (o) |
  | Owner                            |  | Cashier - Shift 14               |
  +----------------------------------+  +----------------------------------+
  | ! NEXT  Cash drawer out Rs. 350  |  | NEXT  Pack parcel, 2 items       |
- |                        [ Audit ]|  |                  [ Complete ]|
+ |                         [ Audit ]|  |                      [ Complete ]|
  +----------------------------------+  +----------------------------------+
  | COUNTER SALES                    |  | COUNTER SALES                    |
  | Rs. 18,450 today                 |  | 9 bills today                    |
@@ -220,7 +273,7 @@ A tool with no core flow (sell, buy, close day) is deferred, not built.
  | < TAR                            |
  +----------------------------------+
  | You                              |
- | every day 10am send me the      |
+ | every day 10am send me the       |
  | sales report                     |
  | TAR                              |
  | PLAN   Daily Sales Report        |
@@ -250,197 +303,113 @@ The laws live in Concept: Card rule, NEXT, Surface, Ask.
 ## Onboarding - create, join, manage on one surface (concept)
 
 ```
- THE WAY IN - three cases, one line, one surface
+ THE WAY IN - three cases, one confirm, one surface
 
- +----------------------------------+
- |  TAR                             |
- |           the way in             |
- |                                  |
- |  CREATE   a sentence             |
- |  JOIN     an invite              |
- |  GROW     a fact                 |
- |            |                     |
- |            v                     |
- |     +-------------+              |
- |     |     ASK     |              |
- |     +-------------+              |
- |            |  one confirm        |
- |            v                     |
- |     +-------------+              |
- |     |   CANVAS    |              |
- |     +-------------+              |
- |                                  |
- +----------------------------------+
+   CREATE a sentence . JOIN an invite . GROW a fact
+                        |
+                        v
+                  [ ASK ] --- one confirm ---> [ CANVAS ]
 
-   before the first card, Ask is the app.
-   after one confirm, Canvas is. words change
-   the plan. the confirm stays one.
+   before the first card, Ask is the app. after one
+   confirm, Canvas is. words change the plan.
+   the confirm stays one.
 
-   CREATE   describe once -> Jev names the
-            nature. code deals the cards.
-            Site Mode 1's law.
-   JOIN     one card, one tap, zero model calls.
-            one member row. grants choose the stack.
-   GROW     a mode change, not a migration.
-            code sees the fact. code proposes.
-            no LLM. never silent.
+   CREATE  words. Jev names the nature, code deals
+           the cards. Site Mode 1's law.
+   JOIN    one card, one tap, zero model calls. one
+           member row. grants choose the stack.
+   GROW    a mode change, not a migration. code sees
+           the fact, code proposes. no LLM. never silent.
 
  THE SPLIT - the LLM proposes. Jev types. the action writes.
 
- +----------------------------------+
- |  TAR                             |
- |            the split             |
- |                                  |
- |        words . photos . exports  |
- |             |                    |
- |             v                    |
- |    +---------------+  proposes   |
- |    |      LLM      |             |
- |    +---------------+             |
- |             |  draft             |
- |             v                    |
- |    +---------------+  types      |
- |    |      JEV      |             |
- |    +---------------+             |
- |             |  plan              |
- |             v                    |
- |    +---------------+  writes     |
- |    |     ACTION    |             |
- |    |    + gate     |             |
- |    +---------------+             |
- |                                  |
- +----------------------------------+
+   words . photos . exports
+        |
+        v
+      LLM --draft--> JEV --plan--> ACTION + gate
 
-   LLM     proposes only. never writes. words,
-           any language. photos, excel, pos
-           exports -> draft rows.
-   JEV     types only. never prose. one call,
-           many verdicts, in parallel.
+   LLM     proposes only, never writes. words, any
+           language. photos, excel, pos exports.
+   JEV     types only, never prose. one call, many
+           verdicts, in parallel.
    ACTION  writes it, behind a gate.
 
    no model after birth. the stack runs free.
 
  THE VERDICTS - one Jev call, four answers, in parallel
 
- +----------------------------------+
- |  TAR                             |
- |          the verdicts            |
- |                                  |
- |  nature   choice                 |
- |  role     choice                 |
- |  rows     noul                   |
- |  risk     noul                   |
- |                                  |
- +----------------------------------+
+   nature   choice   food 0.92 | shop 0.05 | service 0.02
+                     the spread deals the cards: top
+                     natures take their recipes.
+   role     choice   owner | admin | cashier, straight
+                     from the owner's words.
+   rows     noul     one per row: price sane? code valid?
+   risk     noul     test? abuse? the create gate.
 
-   nature   choice    food 0.92 | shop 0.05 | service 0.02
-                       the spread deals the cards: top
-                       natures take their recipes.
-   role     choice    owner | admin | cashier | ...
-                       straight from the owner's words.
-   rows     noul      one per row: price sane? code valid?
-   risk     noul      test? abuse? the create gate.
-
-   Jev speaks three times: at birth (nature +
-   risk), at import (rows), at hire (role).
-   nowhere else.
-
+   Jev speaks three times: at birth (nature + risk),
+   at import (rows), at hire (role). nowhere else.
    a noul near one half is doubt, not a middle answer.
    doubt escalates to the one confirm.
 
  BIRTH - one confirm, one control action, idempotent
 
- +----------------------------------+
- |  TAR                             |
- |              birth               |
- |                                  |
- |        .--------+---------.      |
- |        v        v         v      |
- |    +------+ +------+ +------+    |
- |    |  D1  | |TURSO | |  R2  |    |
- |    +------+ +------+ +------+    |
- |                                  |
- |    D1      workspace + owner     |
- |    TURSO   10 tables, nothing    |
- |            else                  |
- |    R2      an empty layout       |
- |                                  |
- +----------------------------------+
+   [ the one confirm ]
+        |
+        v
+   D1       workspace + owner
+   TURSO    10 tables, nothing else
+   R2       an empty layout
 
-   a draft lives in the conversation, never in
-   control. a failed or abandoned birth leaves
-   nothing.
-   not a tool: control actions, same registry,
-   same gate. 14 tools stay 14. no new tables.
+   a draft lives in the conversation, never in control.
+   a failed or abandoned birth leaves nothing.
+   not a tool: control actions, same registry, same
+   gate. 14 tools stay 14. no new tables.
    slug from the name, collisions get a number.
    locale gives currency, tax, words.
-   the recipe seeds the first inbox. birth ends
-   on a Canvas with a NEXT, never a blank.
+   the recipe seeds the first inbox. birth ends on
+   a Canvas with a NEXT, never a blank.
 
  MANAGE - a conversation, not a settings screen
 
- +----------------------------------+
- |  TAR                             |
- |              manage              |
- |                                  |
- |  members, roles, shifts          |
- |         |                        |
- |         v                        |
- |   [ the member card ]            |
- |                                  |
- |  name, mode, url, danger         |
- |         |                        |
- |         v                        |
- |           [ ASK ]                |
- |                                  |
- +----------------------------------+
+   members, roles, shifts   ->  the member card
+   name, mode, url, danger  ->  ASK
 
-   the owner is the gate. archive and transfer
-   ask twice. archived is a state: records are
-   never deleted. workspaces never merge.
+   the owner is the gate. archive and transfer ask
+   twice. archived is a state: records are never
+   deleted. workspaces never merge.
 ```
 
 ```
- 1  FIRST - the empty door.
- +----------------------------------+
- |  TAR                             |
- |                                  |
- |  tell TAR about your business    |
- |  in one line                     |
- |                                  |
- |   [ I have a price list ]        |
- |   [ I have an invite ]           |
- |                                  |
- +----------------------------------+
+ 1  FIRST - the empty door.            2  INVITED - the invite card.
+ +----------------------------------+  +----------------------------------+
+ |  TAR                             |  |  TAR                             |
+ |                                  |  |                                  |
+ |  tell TAR about your business    |  |  Aambal Neyvagam                 |
+ |  in one line                     |  |  invites you as                  |
+ |                                  |  |  Cashier                         |
+ |   [ I have a price list ]        |  |                                  |
+ |   [ I have an invite ]           |  |                                  |
+ |                                  |  |                     [ Join ]     |
+ +----------------------------------+  +----------------------------------+
 
- 2  PLAN - one sentence in, a typed plan out.
- You
- tea shop. snacks to take away. just me.
- TAR
- PLAN    Create workspace
- name    Aambal Tea Stall
- nature  food counter               jev 0.92
- cards   3 of 14, from the card core
- money   Rs . GST 5% . UPI          from locale
- site    aambal-tea.tar.site        ready
-       [ Confirm ]   [ Change ]
+ 3  PLAN - one sentence, a typed plan.  4  THE PICK - the menu, marked.
+ +----------------------------------+  +----------------------------------+
+ |  < TAR                           |  |                                  |
+ +----------------------------------+  |  CARD CORE                  14   |
+ | You                              |  |                                  |
+ | tea shop. snacks to go. just me. |  |  [*] Counter Sales        money  |
+ | TAR                              |  |  [*] Products + Prices    data   |
+ | PLAN    Create workspace         |  |  [*] Daily Expenses       money  |
+ | name    Aambal Tea Stall         |  |  [ ] Orders and Dispatch  cust   |
+ | nature  food counter      jev .92|  |  [ ] Online Storefront    cust   |
+ | cards   3 of 14, from the core   |  |  [ ] 9 more deferred             |
+ | money   Rs . GST 5% . UPI        |  |                                  |
+ | site    aambal-tea.tar.site      |  |                                  |
+ |       [ Confirm ]   [ Change ]   |  |                                  |
+ +----------------------------------+  +----------------------------------+
+   the recipe marked 3. tap any card to toggle it.
 
- 3  THE PICK - the whole menu, marked.
- +----------------------------------+
- |  CARD CORE                  14   |
- |                                  |
- |  [*] Counter Sales        money  |
- |  [*] Products + Prices    data   |
- |  [*] Daily Expenses       money  |
- |  [ ] Orders and Dispatch  cust   |
- |  [ ] Online Storefront    cust   |
- |  [ ] 9 more deferred             |
- |                                  |
- |  the recipe marked 3. tap any   |
- |  card to toggle it.              |
- +----------------------------------+
-
- 4  FIRST CANVAS - what one sentence bought.
+ 5  FIRST CANVAS - what one sentence bought.
  +----------------------------------+
  | (1) Aambal Tea Stall            o|
  | Owner                            |
@@ -454,7 +423,7 @@ The laws live in Concept: Card rule, NEXT, Surface, Ask.
  +----------------------------------+
  | PRODUCTS AND PRICES              |
  | 0 items                          |
- |                    [ Add Item ]  |
+ |                      [ Add Item ]|
  +----------------------------------+
  | DAILY EXPENSES                   |
  | Rs. 0 today                      |
@@ -465,30 +434,22 @@ The laws live in Concept: Card rule, NEXT, Surface, Ask.
  |                              (+) |
  +----------------------------------+
 
- 5  IMPORT - a photo becomes rows.
- You
- (photo of a hand written price list)
- TAR
- DRAFT   14 rows from the photo
-   1  chai              Rs. 10     0.98
-   2  filter coffee     Rs. 15     0.98
-   3  samosa ?          Rs. ??     0.51
-   .  11 more                      0.9+
- row 3 is doubt, not data. fix it or post the 13 sane.
-       [ Fix row 3 ]   [ Post 13 ]
+ 6  IMPORT - a photo becomes rows.     7  GROW - a hire is a fact.
+ +----------------------------------+  +----------------------------------+
+ |  < TAR                           |  |  < TAR                           |
+ +----------------------------------+  +----------------------------------+
+ | You                              |  | You (owner)                      |
+ | (photo of a price list)          |  | hire Ravi for the morning counter|
+ | TAR                              |  | TAR                              |
+ | DRAFT   14 rows from the photo   |  | PLAN    Add member               |
+ |   1  chai            Rs. 10 .98  |  | Ravi    cashier . shift 6 to 10  |
+ |   2  filter coffee  Rs. 15 .98   |  | more    a second member makes    |
+ |   3  samosa ?       Rs. ?? .51   |  |         this work mode           |
+ | row 3 is doubt. fix or post 13.  |  |       [ Confirm ]   [ Change ]   |
+ |    [ Fix row 3 ]  [ Post 13 ]    |  |                                  |
+ +----------------------------------+  +----------------------------------+
 
- 6  INVITED - the invite card.
- +----------------------------------+
- |  TAR                             |
- |                                  |
- |  Aambal Neyvagam                 |
- |  invites you as                  |
- |  Cashier                         |
- |                                  |
- |                     [ Join ]     |
- +----------------------------------+
-
- 7  MANY - one user, many boundaries.
+ 8  MANY - one user, many boundaries.
  +----------------------------------+
  |  TAR                             |
  |                                  |
@@ -497,16 +458,6 @@ The laws live in Concept: Card rule, NEXT, Surface, Ask.
  |  Home Foods            Admin     |
  |                                  |
  +----------------------------------+
-
- 8  GROW - a hire is a fact. a promotion is a proposal.
- You (owner)
- hire Ravi for the morning counter
- TAR
- PLAN    Add member
- Ravi    cashier . shift 6 to 10
- more    a second member promotes your
-         workspace to work mode
-       [ Confirm ]   [ Change ]
 ```
 
 Five maps hold the laws, eight screens walk them.
