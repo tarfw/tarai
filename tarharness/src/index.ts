@@ -1,6 +1,7 @@
 import { Effect } from 'effect';
 import type { Client } from '@libsql/client/web';
 import { verifyGoogleIdentity } from './auth/google.ts';
+import { mintSession, verifySession } from './auth/session.ts';
 import { ControlStore } from './db/control.ts';
 import { openWorkspaceDatabase, provisionWorkspaceDatabase, query } from './db/turso.ts';
 import { executeGateway, type GatewayRequest } from './gateway/actions.ts';
@@ -22,9 +23,12 @@ import { canExecute, canReadRecord, canRunFlowStep, isCook, managesMembers } fro
 import { inviteMember, listMembers, updateMember } from './team.ts';
 import { searchContacts } from './contacts/search.ts';
 import { acceptFlowRequest, sweepFlowDispatches } from './flows/dispatch.ts';
+import { cardDeck, deckStatement, findTool, readCardStack, readDeck, toolForAction } from './tools/registry.ts';
+import { deriveGate, mayExecute, missingFields } from './truth/gate.ts';
+import { currentStatement, inboxStatement, lastMoveId, readInbox } from './truth/write.ts';
 export { FlowWorkflow } from './flows/workflow.ts';
 
-type RuntimeEnv = Env & { readonly TURSO_PLATFORM_TOKEN?: string; readonly TYPESAFE_API_KEY?: string; readonly GROQ_API_KEY?: string; readonly PEXELS_API_KEY?: string; readonly SITE_BASE_DOMAIN?: string; readonly SITE_WORKER_ORIGIN?: string; readonly SITE_MODEL?: string };
+type RuntimeEnv = Env & { readonly TURSO_PLATFORM_TOKEN?: string; readonly TAR_SESSION_SECRET?: string; readonly TYPESAFE_API_KEY?: string; readonly GROQ_API_KEY?: string; readonly PEXELS_API_KEY?: string; readonly SITE_BASE_DOMAIN?: string; readonly SITE_WORKER_ORIGIN?: string; readonly SITE_MODEL?: string };
 const jsonHeaders = { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' };
 const corsHeaders = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'Authorization, Content-Type, Idempotency-Key', 'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS' };
 const now = () => Date.now();
@@ -95,6 +99,10 @@ function canContinueRun(member: AccessContext['member'], context: Record<string,
 }
 
 async function identity(request: Request, env: RuntimeEnv) {
+  // One credential after the first exchange: the TAR session. Google tokens
+  // still verify during the transition so nothing falls over mid-build.
+  const session = await verifySession(env, request.headers.get('Authorization'));
+  if (session) return { value: session, control: new ControlStore(env.CONTROL) };
   const value = await Effect.runPromise(verifyGoogleIdentity(request.headers.get('Authorization'), env));
   const control = new ControlStore(env.CONTROL);
   await Effect.runPromise(control.upsertUser(value));
@@ -216,6 +224,11 @@ async function createWorkspace(request: Request, env: RuntimeEnv): Promise<Respo
       const at = Date.now();
       await client.batch([
         { sql: "INSERT INTO records(id,type,title,state,data,owner,version,created,updated) VALUES(?,'site',?,'draft',?,?,1,?,?)", args: [siteId, name, JSON.stringify(siteDoc), owner.id, at, at] },
+        // Birth deals the cards (general recipe until Jev names the nature at
+        // the birth moment) and seeds the first NEXT: never a blank Canvas.
+        deckStatement(cardDeck('general')),
+        currentStatement('card', 'catalog', { itemCount: '0 items', pending: 'add your first item' }),
+        inboxStatement({ member: owner.id, tool: 'catalog', reach: 'data', title: 'Add your first item', action: 'catalog.item.save' }),
       ], 'write');
     } finally {
       client.close();
@@ -231,6 +244,70 @@ async function handle(request: Request, env: RuntimeEnv, ctx: ExecutionContext):
   const url = new URL(request.url); const path = url.pathname;
   if (request.method === 'GET' && path === '/health') return response({ ok: true, service: 'tarharness', now: new Date().toISOString(), tursoProvisioning: Boolean(env.TURSO_PLATFORM_TOKEN && env.TURSO_ORG && !env.TURSO_ORG.startsWith('REPLACE_')) });
   if (request.method === 'GET' && path === '/v1/actions') return response({ actions: actionCatalog, interfaces: interfaceCatalog });
+  // --- the TAR API door: session, /me, slice, intent ---
+  if (request.method === 'POST' && path === '/v1/auth/session') {
+    const google = await Effect.runPromise(verifyGoogleIdentity(request.headers.get('Authorization'), env));
+    const control = new ControlStore(env.CONTROL);
+    await Effect.runPromise(control.upsertUser(google));
+    const session = await mintSession(env, google);
+    return response({ token: session.token, expiresAt: session.expiresAt, user: google });
+  }
+  if (request.method === 'GET' && path === '/v1/me') {
+    const { value, control } = await identity(request, env);
+    await ensurePersonalWorkspace(value, control, env);
+    const workspaces = await Effect.runPromise(control.listWorkspaces(value.id));
+    const badges = await Promise.all(workspaces.map(async (entry) => {
+      if (entry.workspace.state !== 'active' || !entry.workspace.databaseHost) return 0;
+      try {
+        return await withWorkspace(env, { identity: value, workspace: entry.workspace, member: { workspaceId: entry.workspace.id, userId: value.id, role: entry.role, workRole: entry.workRole, roles: entry.roles, state: 'active' } },
+          (client) => client.execute({ sql: "SELECT COUNT(*) FROM inbox WHERE member=? AND status='pending'", args: [value.id] }).then((rows) => Number(rows.rows[0]?.[0] ?? 0)));
+      } catch { return 0; }
+    }));
+    return response({ user: value, workspaces: workspaces.map((entry, index) => ({
+      id: entry.workspace.id, name: entry.workspace.name, slug: entry.workspace.slug, mode: entry.workspace.mode,
+      role: entry.role, state: entry.workspace.state, badge: badges[index],
+    })) });
+  }
+  if (request.method === 'GET' && path === '/v1/slice') {
+    const slug = url.searchParams.get('ws') || '';
+    if (!slug) throw badRequest('The ws parameter names the workspace.');
+    const { access: current } = await access(request, env, slug);
+    return withWorkspace(env, current, async (client) => {
+      const version = await lastMoveId(client);
+      const etag = `"${version ?? 'empty'}"`;
+      if (request.headers.get('If-None-Match') === etag) return new Response(null, { status: 304, headers: { ETag: etag, ...corsHeaders } });
+      const [inbox, deck] = await Promise.all([readInbox(client, current.member.userId), readDeck(client)]);
+      const cards = await readCardStack(client, current.member.role, deck);
+      const sorted = [...inbox].sort((a, b) => Number(b.urgent) - Number(a.urgent) || (a.due ?? Infinity) - (b.due ?? Infinity) || b.created - a.created);
+      return response({ version, next: sorted[0] ?? null, inbox: sorted, cards, workspace: { id: current.workspace.id, name: current.workspace.name, slug: current.workspace.slug, mode: current.workspace.mode, role: current.member.role } }, 200, { ETag: etag });
+    });
+  }
+  if (request.method === 'POST' && path === '/v1/intent') {
+    const body = await Effect.runPromise(parseJson(request));
+    const slug = typeof body.ws === 'string' ? body.ws : '';
+    const actionName = typeof body.action === 'string' ? body.action : '';
+    const key = typeof body.key === 'string' ? body.key : '';
+    if (!slug || !actionName || !key) throw badRequest('An intent needs ws, action and key.');
+    const confirmed = body.confirmed === true;
+    const { access: current } = await access(request, env, slug);
+    const registered = findAction(actionName);
+    if (!registered) throw notFound(`Action ${actionName} is not registered.`);
+    const owner = toolForAction(registered.id);
+    const reach = owner ? findTool(owner)!.reach : 'data';
+    const required = registered.fields.filter((field) => field.required).map((field) => field.key);
+    const input = object(body.input);
+    const gate = deriveGate({ action: { reach, requiredFields: required }, input, confirmed });
+    if (!mayExecute(reach, gate, confirmed)) {
+      return response({ gate, missing: missingFields(required, input), action: registered.id, reach }, 202);
+    }
+    const result = await withWorkspace(env, current, (client) =>
+      Effect.runPromise(executeGateway(client, current, { actionId: registered.id as GatewayRequest['actionId'], idempotencyKey: key, input }, { productContent: env.PRODUCT_CONTENT, siteReleases: env.SITE_RELEASES, publication: env.CONTROL, siteDomain: env.SITE_WORKER_ORIGIN || env.SITE_BASE_DOMAIN, ai: env.AI, typesafe: env.TYPESAFE_API_KEY, siteModel: env.SITE_MODEL, groqApiKey: env.GROQ_API_KEY, pexelsApiKey: env.PEXELS_API_KEY })));
+    const client = await Effect.runPromise(openWorkspaceDatabase(tursoEnv(env), current.workspace.databaseName, current.workspace.databaseHost!));
+    try {
+      const version = await lastMoveId(client);
+      return response({ result, version }, 201);
+    } finally { client.close(); }
+  }
   const previewMatch = /^\/v1\/site-previews\/([a-f0-9-]{36})(\/.*)?$/.exec(path);
   if (request.method === 'GET' && previewMatch) return serveSitePreview(previewMatch[1], previewMatch[2] || '/', env.CONTROL, env.SITE_RELEASES, siteSecurityHeaders, {
     frame: url.searchParams.get('frame'),
