@@ -694,8 +694,17 @@ async function handle(request: Request, env: RuntimeEnv, ctx: ExecutionContext):
         sql: "SELECT id,type,title,state,data,version,created,updated FROM records WHERE type=? AND archived IS NULL AND (?='' OR instr(lower(title),lower(?))>0) ORDER BY updated DESC LIMIT 51 OFFSET ?",
         args: [tool.rowType, search, search, offset],
       }));
-      const visible = rows.slice(0, 50).map((row) => ({ id: String(row.id), type: String(row.type), title: String(row.title), state: String(row.state), data: object(typeof row.data === 'string' ? JSON.parse(row.data) : row.data), assignee: null, version: Number(row.version), updatedAt: Number(row.updated) }))
+      let visible = rows.slice(0, 50).map((row) => ({ id: String(row.id), type: String(row.type), title: String(row.title), state: String(row.state), data: object(typeof row.data === 'string' ? JSON.parse(String(row.data)) : row.data), assignee: null, version: Number(row.version), updatedAt: Number(row.updated) }))
         .filter((row) => canReadRecord(current.member, row));
+      if (tool.id === 'catalog' && visible.length) {
+        // the sale needs the sellable variant under each item
+        const variants = await Effect.runPromise(query<Record<string, unknown>>(client, {
+          sql: "SELECT json_extract(data,'$.item') AS item, id FROM records WHERE type='variant' AND archived IS NULL",
+        }));
+        const byItem = new Map<string, string>();
+        for (const row of variants) byItem.set(String(row.item), String(row.id));
+        visible = visible.map((row) => ({ ...row, data: { ...row.data, variantId: byItem.get(row.id) ?? null } }));
+      }
       return response({ tool: tool.id, rows: visible, next: rows.length > 50 ? offset + 50 : null });
     }
     if (request.method === 'GET' && nested === 'runs') return response({ runs: await listRuns(client) });
