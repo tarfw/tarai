@@ -93,7 +93,10 @@ export async function computeCard(client: Client, tool: ToolId): Promise<CardMet
       const open = await scalar(client, "SELECT COUNT(*) FROM records WHERE type='task' AND state='open' AND archived IS NULL");
       return { openTasks: count(open) };
     }
-    case 'channel':
+    case 'channel': {
+      const pending = await scalar(client, "SELECT COUNT(*) FROM records WHERE type='channel.message' AND state='received' AND archived IS NULL");
+      return { pendingChats: count(pending) };
+    }
     case 'site':
       return {};
   }
@@ -120,6 +123,7 @@ export function toolsTouchedBy(actionId: string): ToolId[] {
     touched.add('pos'); touched.add('register'); touched.add('payment');
   }
   if (owner === 'stock' || owner === 'purchase' || owner === 'catalog') touched.add('stock');
+  if (owner === 'channel') touched.add('channel');
   return [...touched];
 }
 

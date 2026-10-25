@@ -12,10 +12,11 @@ import { appendEvent, eventStatement, findReplay, fingerprint, runStatement, sta
 import { commerceActionIds } from '../commerce/catalog.ts';
 import { executeCommerce } from '../commerce/store.ts';
 import { refreshCards, seedInbox, toolsTouchedBy } from '../truth/cards.ts';
+import { executeChannelLog, executeChannelSend } from '../channel/adapters.ts';
 
 type GatewayError = ReturnType<typeof badRequest> | ReturnType<typeof conflict> | ReturnType<typeof forbidden> | ReturnType<typeof notFound> | ReturnType<typeof unavailable>;
 export interface GatewayRequest { readonly idempotencyKey: string; readonly actionId: ActionId; readonly input: Record<string, unknown>; }
-export interface GatewayServices { readonly productContent?: R2Bucket; readonly siteReleases?: R2Bucket; readonly publication?: D1Database; readonly siteDomain?: string; readonly ai?: Ai; readonly tinyfish?: string; readonly typesafe?: string; readonly siteModel?: string; readonly groqApiKey?: string; readonly pexelsApiKey?: string }
+export interface GatewayServices { readonly productContent?: R2Bucket; readonly telegramBotToken?: string; readonly siteReleases?: R2Bucket; readonly publication?: D1Database; readonly siteDomain?: string; readonly ai?: Ai; readonly tinyfish?: string; readonly typesafe?: string; readonly siteModel?: string; readonly groqApiKey?: string; readonly pexelsApiKey?: string }
 
 const object = (value: unknown): Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 const text = (value: unknown, max = 200): string => typeof value === 'string' ? value.trim().slice(0, max) : '';

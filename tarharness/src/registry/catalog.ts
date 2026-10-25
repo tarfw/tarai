@@ -45,6 +45,30 @@ export const interfaceCatalog = [
 export const actionCatalog = [
   ...commerceActions,
   {
+    id: 'channel.log', version: 1, type: 'app', title: 'Log a chat',
+    description: 'Record a WhatsApp or Telegram exchange on the Messages card.',
+    interfaceKey: 'form',
+    fields: [
+      { key: 'channel', label: 'Channel (whatsapp, telegram)', kind: 'text', required: true },
+      { key: 'phone', label: 'Phone', kind: 'text' },
+      { key: 'text', label: 'Message', kind: 'textarea', required: true },
+      { key: 'direction', label: 'Direction (out or in)', kind: 'text' },
+    ],
+    output: ['message'], roles: ['owner', 'admin', 'member'], effects: ['record_create'],
+  },
+  {
+    id: 'channel.send', version: 1, type: 'app', title: 'Send a message',
+    description: 'Send through the channel adapters: telegram notify, or the WhatsApp manual handoff.',
+    interfaceKey: 'form',
+    fields: [
+      { key: 'method', label: 'Method (whatsapp, telegram)', kind: 'text', required: true },
+      { key: 'to', label: 'Destination (phone or chat id)', kind: 'text', required: true },
+      { key: 'text', label: 'Message', kind: 'textarea', required: true },
+    ],
+    output: ['delivered', 'handoff'], roles: ['owner', 'admin'], effects: [],
+  },
+
+  {
     id: 'brief.save', version: 1, type: 'app', title: 'Save brief',
     description: 'Save the workspace brief and classified trade.', interfaceKey: 'form',
     fields: [

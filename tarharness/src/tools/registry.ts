@@ -70,8 +70,8 @@ export const TOOLS: readonly ToolDefinition[] = [
     actions: ['site.generate', 'site.designs', 'site.scout', 'site.edit', 'site.ask', 'site.undo', 'site.brief.add', 'site.brief.remove', 'site.notice.set', 'site.sections.set', 'site.checks', 'site.releases', 'site.compile', 'site.publish', 'site.publishLatest', 'site.rollback', 'site.refresh', 'site.unpublish', 'site.design.import', 'site.asset.upload', 'site.asset.generate', 'site.assets'], natures: [] },
   { id: 'task', reach: 'none', shape: 'list', rowType: 'task', card: card('Manual Tasks', 'openTasks', 'openTasks', 'Mark Done', 'task.complete'),
     actions: ['task.create', 'task.complete', 'record.create', 'record.update'], natures: [] },
-  { id: 'channel', reach: 'customer', shape: 'chat', rowType: 'channel.message', card: card('Messages', 'pendingChats', 'pendingChats', 'Open Chat'),
-    actions: [], natures: [], deferred: true },
+  { id: 'channel', reach: 'customer', shape: 'chat', rowType: 'channel.message', card: card('Messages', 'pendingChats', 'pendingChats', 'Open Chat', 'channel.send'),
+    actions: ['channel.log', 'channel.send'], natures: [] },
 ];
 
 const byId = new Map(TOOLS.map((tool) => [tool.id, tool]));

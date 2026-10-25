@@ -26,7 +26,7 @@ const FALLBACK_FIELDS: Record<string, FieldConfig[]> = {
   default: [],
 };
 
-const CORE_TOOLS: readonly { id: string; title: string; deferred?: boolean }[] = [
+const CORE_TOOLS: readonly { id: string; title: string }[] = [
   { id: 'pos', title: 'Counter Sales' },
   { id: 'order', title: 'Orders and Dispatch' },
   { id: 'invoice', title: 'Billing and GST' },
@@ -40,7 +40,7 @@ const CORE_TOOLS: readonly { id: string; title: string; deferred?: boolean }[] =
   { id: 'member', title: 'Team and Shifts' },
   { id: 'site', title: 'Online Storefront' },
   { id: 'task', title: 'Manual Tasks' },
-  { id: 'channel', title: 'Messages', deferred: true },
+  { id: 'channel', title: 'Messages' },
 ];
 
 export default function Canvas() {
@@ -230,9 +230,9 @@ function DeckSheet({ visible, ws, dealt, onClose }: { visible: boolean; ws: stri
           </View>
           <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
             {CORE_TOOLS.map((tool) => (
-              <TouchableOpacity key={tool.id} accessibilityRole="button" style={[sheetStyles.deckRow, { borderBottomColor: theme.border }]} onPress={() => void toggle(tool.id)} disabled={tool.deferred}>
-                <Text style={{ color: theme.text, opacity: tool.deferred ? 0.4 : 1 }}>{tool.title}</Text>
-                <Text style={{ color: state.has(tool.id) ? theme.primary : theme.textSecondary }}>{tool.deferred ? 'soon' : state.has(tool.id) ? 'on' : 'off'}</Text>
+              <TouchableOpacity key={tool.id} accessibilityRole="button" style={[sheetStyles.deckRow, { borderBottomColor: theme.border }]} onPress={() => void toggle(tool.id)} >
+                <Text style={{ color: theme.text }}>{tool.title}</Text>
+                <Text style={{ color: state.has(tool.id) ? theme.primary : theme.textSecondary }}>{state.has(tool.id) ? "on" : "off"}</Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
