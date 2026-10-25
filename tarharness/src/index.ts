@@ -24,10 +24,12 @@ import { ask, confirmSkill, findSkill, listSkills } from './skill/engine.ts';
 import { proposePlan } from './skill/propose.ts';
 import { advanceRun, listRuns, startRun } from './skill/run.ts';
 import { birthMoment, hireMoment, importMoment } from './brain/moments.ts';
+import { buildClose, monthlyWriteCount, pruneHotWindow, sealClose } from './cost/close.ts';
+import { sendPush, tokensFor } from './push/expo.ts';
 import { deriveGate, mayExecute, missingFields } from './truth/gate.ts';
 import { currentStatement, inboxStatement, lastMoveId, readInbox } from './truth/write.ts';
 
-type RuntimeEnv = Env & { readonly TURSO_PLATFORM_TOKEN?: string; readonly TAR_SESSION_SECRET?: string; readonly TELEGRAM_BOT_TOKEN?: string; readonly TYPESAFE_API_KEY?: string; readonly GROQ_API_KEY?: string; readonly PEXELS_API_KEY?: string; readonly SITE_BASE_DOMAIN?: string; readonly SITE_WORKER_ORIGIN?: string; readonly SITE_MODEL?: string };
+type RuntimeEnv = Env & { readonly TURSO_PLATFORM_TOKEN?: string; readonly TAR_SESSION_SECRET?: string; readonly TELEGRAM_BOT_TOKEN?: string; readonly EXPO_ACCESS_TOKEN?: string; readonly TAR_MONTHLY_WRITE_CEILING?: string; readonly TYPESAFE_API_KEY?: string; readonly GROQ_API_KEY?: string; readonly PEXELS_API_KEY?: string; readonly SITE_BASE_DOMAIN?: string; readonly SITE_WORKER_ORIGIN?: string; readonly SITE_MODEL?: string };
 const jsonHeaders = { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' };
 const corsHeaders = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'Authorization, Content-Type, Idempotency-Key', 'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS' };
 const now = () => Date.now();
@@ -271,6 +273,17 @@ async function handle(request: Request, env: RuntimeEnv, ctx: ExecutionContext):
       role: entry.role, state: entry.workspace.state, badge: badges[index],
     })) });
   }
+  if (request.method === 'POST' && path === '/v1/push/register') {
+    const { value } = await identity(request, env);
+    const body = await Effect.runPromise(parseJson(request));
+    const token = typeof body.token === 'string' ? body.token.trim().slice(0, 300) : '';
+    const platform = body.platform === 'ios' ? 'ios' : 'android';
+    if (!token) throw badRequest('A device token is required.');
+    await env.CONTROL.prepare(`INSERT INTO push_tokens (user, token, platform, updated) VALUES (?,?,?,?)
+      ON CONFLICT(token) DO UPDATE SET user=excluded.user, platform=excluded.platform, updated=excluded.updated`)
+      .bind(value.id, token, platform, Date.now()).run();
+    return response({ registered: true });
+  }
   if (request.method === 'GET' && path === '/v1/slice') {
     const slug = url.searchParams.get('ws') || '';
     if (!slug) throw badRequest('The ws parameter names the workspace.');
@@ -303,11 +316,27 @@ async function handle(request: Request, env: RuntimeEnv, ctx: ExecutionContext):
     if (!mayExecute(reach, gate, confirmed)) {
       return response({ gate, missing: missingFields(required, input), action: registered.id, reach }, 202);
     }
+    const writeClient = await Effect.runPromise(openWorkspaceDatabase(tursoEnv(env), current.workspace.databaseName, current.workspace.databaseHost!));
+    let writesThisMonth: number;
+    try { writesThisMonth = await monthlyWriteCount(writeClient); } finally { writeClient.close(); }
+    const ceiling = Number(env.TAR_MONTHLY_WRITE_CEILING || 10_000);
+    if (writesThisMonth >= ceiling) throw unavailable(`This workspace reached its monthly write ceiling (${ceiling}). Reads keep working; writes resume next month.`);
     const result = await withWorkspace(env, current, (client) =>
       Effect.runPromise(executeGateway(client, current, { actionId: registered.id as GatewayRequest['actionId'], idempotencyKey: key, input }, { productContent: env.PRODUCT_CONTENT, siteReleases: env.SITE_RELEASES, publication: env.CONTROL, siteDomain: env.SITE_WORKER_ORIGIN || env.SITE_BASE_DOMAIN, ai: env.AI, typesafe: env.TYPESAFE_API_KEY, siteModel: env.SITE_MODEL, groqApiKey: env.GROQ_API_KEY, pexelsApiKey: env.PEXELS_API_KEY, telegramBotToken: env.TELEGRAM_BOT_TOKEN })));
     const client = await Effect.runPromise(openWorkspaceDatabase(tursoEnv(env), current.workspace.databaseName, current.workspace.databaseHost!));
     try {
       const version = await lastMoveId(client);
+      // the bell: an urgent row pushes to the owner's devices
+      const urgent = await client.execute("SELECT json_extract(data,'$.title') AS title FROM inbox WHERE status='pending' AND json_extract(data,'$.urgent')=1 ORDER BY created DESC LIMIT 1").catch(() => undefined);
+      const urgentTitle = urgent?.rows[0]?.[0] !== undefined && urgent?.rows[0]?.[0] !== null ? String(urgent.rows[0][0]) : null;
+      if (urgentTitle && env.EXPO_ACCESS_TOKEN) {
+        ctx.waitUntil((async () => {
+          const ownerRow = await env.CONTROL.prepare('SELECT owner_id FROM workspaces WHERE id=?').bind(current.workspace.id).first<{ owner_id: string }>();
+          if (!ownerRow) return;
+          const tokens = await tokensFor(env.CONTROL, [ownerRow.owner_id]);
+          await sendPush(env, tokens, 'TAR', urgentTitle);
+        })().catch(() => undefined));
+      }
       return response({ result, version }, 201);
     } finally { client.close(); }
   }
@@ -737,6 +766,28 @@ async function handle(request: Request, env: RuntimeEnv, ctx: ExecutionContext):
 export default {
   fetch(request: Request, env: RuntimeEnv, ctx: ExecutionContext): Promise<Response> { return handle(request, env, ctx).catch(errorResponse); },
   async scheduled(_controller: ScheduledController, env: RuntimeEnv): Promise<void> {
+    // the cost guard: close the finished month, seal it to R2, prune the hot window
+    if (env.SITE_RELEASES && env.TURSO_PLATFORM_TOKEN) {
+      const now = Date.now();
+      const previous = new Date(Date.UTC(new Date(now).getUTCFullYear(), new Date(now).getUTCMonth() - 1, 1));
+      const month = `${previous.getUTCFullYear()}-${String(previous.getUTCMonth() + 1).padStart(2, '0')}`;
+      const active = await env.CONTROL.prepare("SELECT id, database_name, database_host FROM workspaces WHERE state='active' AND database_host IS NOT NULL").all<{ id: string; database_name: string; database_host: string }>();
+      for (const row of active.results) {
+        try {
+          const client = await Effect.runPromise(openWorkspaceDatabase(tursoEnv(env), row.database_name, row.database_host));
+          try {
+            const already = await client.execute({ sql: "SELECT key FROM current WHERE kind='close' AND key=?", args: [month] });
+            if (!already.rows[0]) {
+              const seal = await buildClose(client, row.id, month);
+              if (seal) await sealClose(client, env.SITE_RELEASES, seal);
+            }
+            await pruneHotWindow(client, now);
+          } finally { client.close(); }
+        } catch (cause) {
+          console.error(JSON.stringify({ event: 'cost.close.failed', workspace: row.id, error: cause instanceof Error ? cause.message : String(cause) }));
+        }
+      }
+    }
     await scoutPublishedSites(env);
     await regenerateDriftedSites(env);
     await env.CONTROL.prepare('DELETE FROM previews WHERE expires<=?').bind(Date.now()).run();

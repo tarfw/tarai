@@ -14,6 +14,7 @@ import { ActionSheet, type FieldConfig } from '@/components/ActionSheet';
 import { confirmRequest, pendingCount, resolveConfirm, subscribe } from '@/lib/queue';
 import { actionCatalogs, setDeck, slice, type CardView, type InboxRow } from '@/lib/tar';
 import { saveSlice } from '@/lib/slicecache';
+import { registerPush } from '@/lib/push';
 import { Onboarding } from '@/components/Onboarding';
 
 const FALLBACK_FIELDS: Record<string, FieldConfig[]> = {
@@ -59,6 +60,9 @@ export default function Canvas() {
     void update();
     return subscribe(() => void update());
   }, []);
+
+  // the bell: register the device for push (idempotent, best-effort)
+  useEffect(() => { void registerPush(); }, []);
 
   useEffect(() => {
     const check = async () => {

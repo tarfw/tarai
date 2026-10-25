@@ -49,7 +49,7 @@ export async function signOutSession(): Promise<void> {
   await SecureStore.deleteItemAsync(SESSION_KEY);
 }
 
-async function request(method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, body?: unknown, authorization?: string, extraHeaders: Record<string, string> = {}): Promise<Record<string, unknown>> {
+export async function request(method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, body?: unknown, authorization?: string, extraHeaders: Record<string, string> = {}): Promise<Record<string, unknown>> {
   const token = authorization ?? await ensureSession();
   const response = await fetch(`${HARNESS}${path}`, {
     method,
