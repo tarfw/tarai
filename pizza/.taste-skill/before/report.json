@@ -1,0 +1,1617 @@
+{
+ "url": "dist/index.html",
+ "at": "2026-10-25T19:39:04.729Z",
+ "allow": [],
+ "viewports": [
+  {
+   "width": 1440,
+   "height": 900,
+   "load": "load",
+   "screens": 3,
+   "filled": [
+    0.12,
+    0.11,
+    0.19
+   ],
+   "motion": {
+    "elements": 0,
+    "css": 0,
+    "transitions": 0,
+    "scripted": 0,
+    "videos": 0,
+    "playingVideos": 0
+   },
+   "metrics": {
+    "viewport": {
+     "w": 1440,
+     "h": 900
+    },
+    "page": {
+     "height": 2056,
+     "screens": 2.3,
+     "words": 408,
+     "img": 0,
+     "video": 0,
+     "canvas": 0,
+     "svg": 0,
+     "sections": 5,
+     "horizontalOverflow": 0,
+     "overflowCulprits": [],
+     "uiFragments": 0,
+     "uiAbuse": false,
+     "realPictures": 0,
+     "videoCount": 0,
+     "uiPictures": 0,
+     "pictureSamples": [],
+     "blendText": 0,
+     "sideScrollers": 0,
+     "brokenImages": [],
+     "emoji": [
+      "🍕",
+      "💬",
+      "🔥",
+      "🛵",
+      "🥬",
+      "🍗",
+      "🌶",
+      "★",
+      "✦",
+      "🥖"
+     ],
+     "videosNoPoster": 0
+    },
+    "hero": {
+     "text": "Hot. Cheesy. At your door in 30.",
+     "words": 7,
+     "chars": 32,
+     "lines": 2,
+     "size": 32,
+     "vw": 2.2,
+     "font": "Times New Roman",
+     "weight": 700,
+     "tracking": 0,
+     "leading": 1.2,
+     "upper": false,
+     "italic": false,
+     "mono": false,
+     "align": "left",
+     "position": "center",
+     "widthRatio": 0.99,
+     "top": 118,
+     "mixedFonts": [
+      "Times New Roman",
+      "Times New Roman italic"
+     ],
+     "tag": "h1",
+     "kind": "heading"
+    },
+    "h1": {
+     "text": "Hot. Cheesy. At your door in 30.",
+     "words": 7,
+     "lines": 2,
+     "size": 32,
+     "font": "Times New Roman"
+    },
+    "headings": [
+     {
+      "text": "Hot. Cheesy. At your door in 30.",
+      "words": 7,
+      "chars": 32,
+      "lines": 2,
+      "size": 32,
+      "vw": 2.2,
+      "font": "Times New Roman",
+      "weight": 700,
+      "tracking": 0,
+      "leading": 1.2,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 0.99,
+      "top": 118,
+      "mixedFonts": [
+       "Times New Roman",
+       "Times New Roman italic"
+      ],
+      "tag": "h1",
+      "kind": "heading"
+     }
+    ],
+    "headingSummary": {
+     "count": 1,
+     "maxLines": 2,
+     "over2Lines": 0,
+     "statements": 0,
+     "centered": 0,
+     "medianWords": null,
+     "mixedFontHeadings": 1
+    },
+    "type": {
+     "families": [
+      {
+       "family": "Times New Roman",
+       "share": 1,
+       "mono": false
+      }
+     ],
+     "familyCount": 1,
+     "sizes": [
+      16,
+      19,
+      24,
+      32
+     ],
+     "sizeCount": 4,
+     "notLoaded": [],
+     "body": {
+      "font": "Times New Roman",
+      "size": 16,
+      "leading": 1.2,
+      "weight": 400,
+      "tracking": 0,
+      "contrast": 21
+     },
+     "measureChars": 178,
+     "max": {
+      "size": 32,
+      "vw": 2.2,
+      "font": "Times New Roman",
+      "text": "Hot. Cheesy. At your door in ."
+     },
+     "monoShare": 0,
+     "monoProseShare": 0,
+     "monoFamilies": [],
+     "monoSamples": [],
+     "microLabels": 0,
+     "microLabelShare": 0,
+     "microSamples": [],
+     "upperShare": 0,
+     "centerShare": 0,
+     "smallText": 0
+    },
+    "eyebrows": [
+     {
+      "text": "Wood-fired · Bazaar Street · since 2019",
+      "above": "Hot. Cheesy. At your door in 30.",
+      "upper": false,
+      "tracked": false,
+      "mono": false,
+      "pill": false,
+      "size": 16,
+      "top": 79
+     }
+    ],
+    "numbered": [],
+    "color": {
+     "bodyBg": "#ffffff",
+     "bodyBgHsl": {
+      "h": 0,
+      "s": 0,
+      "l": 1
+     },
+     "dark": false,
+     "sectionBgs": [],
+     "textColors": [
+      {
+       "color": "#000000",
+       "share": 0.64
+      },
+      {
+       "color": "#0000ee",
+       "share": 0.36
+      }
+     ],
+     "button": null,
+     "lowContrast": []
+    },
+    "buttons": {
+     "count": 0,
+     "inHero": 0,
+     "withShadow": 0,
+     "withGradient": 0,
+     "mono": 0,
+     "upper": 0,
+     "heroLabels": []
+    },
+    "surfaces": {
+     "shadowStatic": 0,
+     "shadowOverlay": 0,
+     "shadowSamples": [],
+     "gradients": 0,
+     "scrims": 0,
+     "gradientSamples": [],
+     "gradientText": 0,
+     "hairlines": 0,
+     "hairlineSamples": [],
+     "outlinedBoxes": 0,
+     "dashed": 0,
+     "blurred": 0,
+     "roundedBoxes": 0,
+     "boxRadius": 0,
+     "squareMedia": 0,
+     "roundedMedia": 0,
+     "mediaRadius": 0,
+     "textShadow": 0,
+     "cardRows": []
+    },
+    "heroMedia": [],
+    "nav": {
+     "links": 5,
+     "fixed": false,
+     "height": 55,
+     "floatingPill": false,
+     "blur": false
+    },
+    "fontsLoaded": []
+   },
+   "layout": {
+    "viewport": {
+     "w": 1440,
+     "h": 900
+    },
+    "pageH": 2056,
+    "margins": {
+     "left": 8,
+     "right": 748
+    },
+    "sections": [
+     {
+      "sel": "section#top.hero",
+      "tag": "section",
+      "top": 79,
+      "height": 207,
+      "words": 58,
+      "media": 0,
+      "middle": 0,
+      "heading": {
+       "text": "Hot. Cheesy.",
+       "size": 32,
+       "tag": "h1"
+      },
+      "left": 8,
+      "right": 617,
+      "textLeft": 8,
+      "textRight": 617,
+      "fullBleed": false,
+      "footer": false,
+      "hero": true,
+      "continues": false,
+      "pinned": false
+     },
+     {
+      "sel": "section#offers.section",
+      "tag": "section",
+      "top": 302,
+      "height": 301,
+      "words": 27,
+      "media": 0,
+      "middle": 0,
+      "heading": {
+       "text": "Offers that need no coupon",
+       "size": 24,
+       "tag": "h2"
+      },
+      "left": 8,
+      "right": 1153,
+      "textLeft": 8,
+      "textRight": 1153,
+      "fullBleed": false,
+      "footer": false,
+      "hero": true,
+      "continues": false,
+      "pinned": false
+     },
+     {
+      "sel": "section#menu.section",
+      "tag": "section",
+      "top": 619,
+      "height": 565,
+      "words": 148,
+      "media": 0,
+      "middle": 0,
+      "heading": {
+       "text": "One tap orders it",
+       "size": 24,
+       "tag": "h2"
+      },
+      "left": 8,
+      "right": 748,
+      "textLeft": 8,
+      "textRight": 748,
+      "fullBleed": false,
+      "footer": false,
+      "hero": false,
+      "continues": false,
+      "pinned": false
+     },
+     {
+      "sel": "section#about.section",
+      "tag": "section",
+      "top": 1200,
+      "height": 406,
+      "words": 70,
+      "media": 0,
+      "middle": 0,
+      "heading": {
+       "text": "Three things we refuse to rush",
+       "size": 24,
+       "tag": "h2"
+      },
+      "left": 8,
+      "right": 808,
+      "textLeft": 8,
+      "textRight": 808,
+      "fullBleed": false,
+      "footer": false,
+      "hero": false,
+      "continues": false,
+      "pinned": false
+     },
+     {
+      "sel": "section#visit.section",
+      "tag": "section",
+      "top": 1623,
+      "height": 331,
+      "words": 47,
+      "media": 0,
+      "middle": 0,
+      "heading": {
+       "text": "The oven is warm",
+       "size": 24,
+       "tag": "h2"
+      },
+      "left": 8,
+      "right": 1162,
+      "textLeft": 8,
+      "textRight": 1162,
+      "fullBleed": false,
+      "footer": true,
+      "hero": false,
+      "continues": false,
+      "pinned": false
+     }
+    ],
+    "gaps": [],
+    "h1s": [
+     {
+      "text": "Hot. Cheesy. At your door in 30.",
+      "size": 32,
+      "top": 118,
+      "firstScreen": true
+     }
+    ],
+    "edgeText": [
+     {
+      "text": "Menu",
+      "side": "left",
+      "px": 8
+     },
+     {
+      "text": "Order",
+      "side": "left",
+      "px": 8
+     },
+     {
+      "text": "Wood-fired · Bazaar Street · since 2019",
+      "side": "left",
+      "px": 8
+     },
+     {
+      "text": "Hot. Cheesy.",
+      "side": "left",
+      "px": 8
+     },
+     {
+      "text": "At your door in",
+      "side": "left",
+      "px": 8
+     },
+     {
+      "text": "Pizzas made fresh every evening — dough stretched ",
+      "side": "left",
+      "px": 8
+     },
+     {
+      "text": "💬 Order on WhatsApp",
+      "side": "left",
+      "px": 8
+     },
+     {
+      "text": "🔥 400 °C wood oven",
+      "side": "left",
+      "px": 8
+     }
+    ],
+    "edges": [
+     {
+      "x": 8,
+      "n": 20
+     },
+     {
+      "x": 227,
+      "n": 1
+     }
+    ],
+    "leftBlocks": 21,
+    "bodySize": 16,
+    "stage": false,
+    "explains": false,
+    "slivers": [],
+    "voidShare": 0.37,
+    "voidBox": {
+     "x": 720,
+     "y": 240,
+     "w": 720,
+     "h": 660
+    }
+   },
+   "app": null,
+   "consoleErrors": []
+  },
+  {
+   "width": 768,
+   "height": 1024,
+   "load": "load",
+   "screens": 3,
+   "filled": [
+    0.18,
+    0.33,
+    0.24
+   ],
+   "motion": {
+    "elements": 0,
+    "css": 0,
+    "transitions": 0,
+    "scripted": 0,
+    "videos": 0,
+    "playingVideos": 0
+   },
+   "metrics": {
+    "viewport": {
+     "w": 768,
+     "h": 1024
+    },
+    "page": {
+     "height": 2092,
+     "screens": 2,
+     "words": 408,
+     "img": 0,
+     "video": 0,
+     "canvas": 0,
+     "svg": 0,
+     "sections": 5,
+     "horizontalOverflow": 0,
+     "overflowCulprits": [],
+     "uiFragments": 0,
+     "uiAbuse": false,
+     "realPictures": 0,
+     "videoCount": 0,
+     "uiPictures": 0,
+     "pictureSamples": [],
+     "blendText": 0,
+     "sideScrollers": 0,
+     "brokenImages": [],
+     "emoji": [
+      "🍕",
+      "💬",
+      "🔥",
+      "🛵",
+      "🥬",
+      "🍗",
+      "🌶",
+      "★",
+      "✦",
+      "🥖"
+     ],
+     "videosNoPoster": 0
+    },
+    "hero": {
+     "text": "Hot. Cheesy. At your door in 30.",
+     "words": 7,
+     "chars": 32,
+     "lines": 2,
+     "size": 32,
+     "vw": 4.2,
+     "font": "Times New Roman",
+     "weight": 700,
+     "tracking": 0,
+     "leading": 1.2,
+     "upper": false,
+     "italic": false,
+     "mono": false,
+     "align": "left",
+     "position": "center",
+     "widthRatio": 0.98,
+     "top": 118,
+     "mixedFonts": [
+      "Times New Roman",
+      "Times New Roman italic"
+     ],
+     "tag": "h1",
+     "kind": "heading"
+    },
+    "h1": {
+     "text": "Hot. Cheesy. At your door in 30.",
+     "words": 7,
+     "lines": 2,
+     "size": 32,
+     "font": "Times New Roman"
+    },
+    "headings": [
+     {
+      "text": "Hot. Cheesy. At your door in 30.",
+      "words": 7,
+      "chars": 32,
+      "lines": 2,
+      "size": 32,
+      "vw": 4.2,
+      "font": "Times New Roman",
+      "weight": 700,
+      "tracking": 0,
+      "leading": 1.2,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 0.98,
+      "top": 118,
+      "mixedFonts": [
+       "Times New Roman",
+       "Times New Roman italic"
+      ],
+      "tag": "h1",
+      "kind": "heading"
+     }
+    ],
+    "headingSummary": {
+     "count": 1,
+     "maxLines": 2,
+     "over2Lines": 0,
+     "statements": 0,
+     "centered": 0,
+     "medianWords": null,
+     "mixedFontHeadings": 1
+    },
+    "type": {
+     "families": [
+      {
+       "family": "Times New Roman",
+       "share": 1,
+       "mono": false
+      }
+     ],
+     "familyCount": 1,
+     "sizes": [
+      16,
+      19,
+      24,
+      32
+     ],
+     "sizeCount": 4,
+     "notLoaded": [],
+     "body": {
+      "font": "Times New Roman",
+      "size": 16,
+      "leading": 1.2,
+      "weight": 400,
+      "tracking": 0,
+      "contrast": 21
+     },
+     "measureChars": 94,
+     "max": {
+      "size": 32,
+      "vw": 4.2,
+      "font": "Times New Roman",
+      "text": "Hot. Cheesy. At your door in ."
+     },
+     "monoShare": 0,
+     "monoProseShare": 0,
+     "monoFamilies": [],
+     "monoSamples": [],
+     "microLabels": 0,
+     "microLabelShare": 0,
+     "microSamples": [],
+     "upperShare": 0,
+     "centerShare": 0,
+     "smallText": 0
+    },
+    "eyebrows": [
+     {
+      "text": "Wood-fired · Bazaar Street · since 2019",
+      "above": "Hot. Cheesy. At your door in 30.",
+      "upper": false,
+      "tracked": false,
+      "mono": false,
+      "pill": false,
+      "size": 16,
+      "top": 79
+     }
+    ],
+    "numbered": [],
+    "color": {
+     "bodyBg": "#ffffff",
+     "bodyBgHsl": {
+      "h": 0,
+      "s": 0,
+      "l": 1
+     },
+     "dark": false,
+     "sectionBgs": [],
+     "textColors": [
+      {
+       "color": "#000000",
+       "share": 0.64
+      },
+      {
+       "color": "#0000ee",
+       "share": 0.36
+      }
+     ],
+     "button": null,
+     "lowContrast": []
+    },
+    "buttons": {
+     "count": 0,
+     "inHero": 0,
+     "withShadow": 0,
+     "withGradient": 0,
+     "mono": 0,
+     "upper": 0,
+     "heroLabels": []
+    },
+    "surfaces": {
+     "shadowStatic": 0,
+     "shadowOverlay": 0,
+     "shadowSamples": [],
+     "gradients": 0,
+     "scrims": 0,
+     "gradientSamples": [],
+     "gradientText": 0,
+     "hairlines": 0,
+     "hairlineSamples": [],
+     "outlinedBoxes": 0,
+     "dashed": 0,
+     "blurred": 0,
+     "roundedBoxes": 0,
+     "boxRadius": 0,
+     "squareMedia": 0,
+     "roundedMedia": 0,
+     "mediaRadius": 0,
+     "textShadow": 0,
+     "cardRows": []
+    },
+    "heroMedia": [],
+    "nav": {
+     "links": 5,
+     "fixed": false,
+     "height": 55,
+     "floatingPill": false,
+     "blur": false
+    },
+    "fontsLoaded": []
+   },
+   "layout": {
+    "viewport": {
+     "w": 768,
+     "h": 1024
+    },
+    "pageH": 2092,
+    "margins": {
+     "left": 8,
+     "right": 136
+    },
+    "sections": [
+     {
+      "sel": "section#top.hero",
+      "tag": "section",
+      "top": 79,
+      "height": 225,
+      "words": 58,
+      "media": 0,
+      "middle": 4,
+      "heading": {
+       "text": "Hot. Cheesy.",
+       "size": 32,
+       "tag": "h1"
+      },
+      "left": 8,
+      "right": 330,
+      "textLeft": 8,
+      "textRight": 10,
+      "fullBleed": false,
+      "footer": false,
+      "hero": true,
+      "continues": false,
+      "pinned": false
+     },
+     {
+      "sel": "section#offers.section",
+      "tag": "section",
+      "top": 320,
+      "height": 301,
+      "words": 27,
+      "media": 0,
+      "middle": 0,
+      "heading": {
+       "text": "Offers that need no coupon",
+       "size": 24,
+       "tag": "h2"
+      },
+      "left": 8,
+      "right": 481,
+      "textLeft": 8,
+      "textRight": 481,
+      "fullBleed": false,
+      "footer": false,
+      "hero": true,
+      "continues": false,
+      "pinned": false
+     },
+     {
+      "sel": "section#menu.section",
+      "tag": "section",
+      "top": 637,
+      "height": 565,
+      "words": 148,
+      "media": 0,
+      "middle": 0,
+      "heading": {
+       "text": "One tap orders it",
+       "size": 24,
+       "tag": "h2"
+      },
+      "left": 8,
+      "right": 76,
+      "textLeft": 8,
+      "textRight": 76,
+      "fullBleed": false,
+      "footer": false,
+      "hero": false,
+      "continues": false,
+      "pinned": false
+     },
+     {
+      "sel": "section#about.section",
+      "tag": "section",
+      "top": 1218,
+      "height": 406,
+      "words": 70,
+      "media": 0,
+      "middle": 0,
+      "heading": {
+       "text": "Three things we refuse to rush",
+       "size": 24,
+       "tag": "h2"
+      },
+      "left": 8,
+      "right": 136,
+      "textLeft": 8,
+      "textRight": 136,
+      "fullBleed": false,
+      "footer": false,
+      "hero": false,
+      "continues": false,
+      "pinned": false
+     },
+     {
+      "sel": "section#visit.section",
+      "tag": "section",
+      "top": 1641,
+      "height": 331,
+      "words": 47,
+      "media": 0,
+      "middle": 0,
+      "heading": {
+       "text": "The oven is warm",
+       "size": 24,
+       "tag": "h2"
+      },
+      "left": 8,
+      "right": 490,
+      "textLeft": 8,
+      "textRight": 490,
+      "fullBleed": false,
+      "footer": true,
+      "hero": false,
+      "continues": false,
+      "pinned": false
+     }
+    ],
+    "gaps": [],
+    "h1s": [
+     {
+      "text": "Hot. Cheesy. At your door in 30.",
+      "size": 32,
+      "top": 118,
+      "firstScreen": true
+     }
+    ],
+    "edgeText": [
+     {
+      "text": "Menu",
+      "side": "left",
+      "px": 8
+     },
+     {
+      "text": "Order",
+      "side": "left",
+      "px": 8
+     },
+     {
+      "text": "Wood-fired · Bazaar Street · since 2019",
+      "side": "left",
+      "px": 8
+     },
+     {
+      "text": "Hot. Cheesy.",
+      "side": "left",
+      "px": 8
+     },
+     {
+      "text": "At your door in",
+      "side": "left",
+      "px": 8
+     },
+     {
+      "text": "Pizzas made fresh every evening — dough stretched ",
+      "side": "left",
+      "px": 8
+     },
+     {
+      "text": "💬 Order on WhatsApp",
+      "side": "left",
+      "px": 8
+     },
+     {
+      "text": "🔥 400 °C wood oven",
+      "side": "left",
+      "px": 8
+     }
+    ],
+    "edges": [
+     {
+      "x": 8,
+      "n": 20
+     },
+     {
+      "x": 227,
+      "n": 1
+     }
+    ],
+    "leftBlocks": 21,
+    "bodySize": 16,
+    "stage": false,
+    "explains": false,
+    "slivers": [],
+    "voidShare": 0,
+    "voidBox": null
+   },
+   "app": null,
+   "consoleErrors": []
+  },
+  {
+   "width": 390,
+   "height": 844,
+   "load": "load",
+   "screens": 3,
+   "filled": [
+    0.38,
+    0.41,
+    0.43
+   ],
+   "motion": {
+    "elements": 0,
+    "css": 0,
+    "transitions": 0,
+    "scripted": 0,
+    "videos": 0,
+    "playingVideos": 0
+   },
+   "metrics": {
+    "viewport": {
+     "w": 390,
+     "h": 844
+    },
+    "page": {
+     "height": 2423,
+     "screens": 2.9,
+     "words": 408,
+     "img": 0,
+     "video": 0,
+     "canvas": 0,
+     "svg": 0,
+     "sections": 5,
+     "horizontalOverflow": 0,
+     "overflowCulprits": [],
+     "uiFragments": 0,
+     "uiAbuse": false,
+     "realPictures": 0,
+     "videoCount": 0,
+     "uiPictures": 0,
+     "pictureSamples": [],
+     "blendText": 0,
+     "sideScrollers": 0,
+     "brokenImages": [],
+     "emoji": [
+      "🍕",
+      "💬",
+      "🔥",
+      "🛵",
+      "🥬",
+      "🍗",
+      "🌶",
+      "★",
+      "✦",
+      "🥖"
+     ],
+     "videosNoPoster": 0
+    },
+    "hero": {
+     "text": "Hot. Cheesy. At your door in 30.",
+     "words": 7,
+     "chars": 32,
+     "lines": 2,
+     "size": 32,
+     "vw": 8.2,
+     "font": "Times New Roman",
+     "weight": 700,
+     "tracking": 0,
+     "leading": 1.2,
+     "upper": false,
+     "italic": false,
+     "mono": false,
+     "align": "left",
+     "position": "center",
+     "widthRatio": 0.96,
+     "top": 118,
+     "mixedFonts": [
+      "Times New Roman",
+      "Times New Roman italic"
+     ],
+     "tag": "h1",
+     "kind": "heading"
+    },
+    "h1": {
+     "text": "Hot. Cheesy. At your door in 30.",
+     "words": 7,
+     "lines": 2,
+     "size": 32,
+     "font": "Times New Roman"
+    },
+    "headings": [
+     {
+      "text": "Hot. Cheesy. At your door in 30.",
+      "words": 7,
+      "chars": 32,
+      "lines": 2,
+      "size": 32,
+      "vw": 8.2,
+      "font": "Times New Roman",
+      "weight": 700,
+      "tracking": 0,
+      "leading": 1.2,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 0.96,
+      "top": 118,
+      "mixedFonts": [
+       "Times New Roman",
+       "Times New Roman italic"
+      ],
+      "tag": "h1",
+      "kind": "heading"
+     },
+     {
+      "text": "Offers that need no coupon",
+      "words": 5,
+      "chars": 26,
+      "lines": 1,
+      "size": 24,
+      "vw": 6.2,
+      "font": "Times New Roman",
+      "weight": 700,
+      "tracking": 0,
+      "leading": 1.2,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 0.96,
+      "top": 394,
+      "tag": "h2",
+      "kind": "heading"
+     },
+     {
+      "text": "One tap orders it",
+      "words": 4,
+      "chars": 17,
+      "lines": 1,
+      "size": 24,
+      "vw": 6.2,
+      "font": "Times New Roman",
+      "weight": 700,
+      "tracking": 0,
+      "leading": 1.2,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 0.96,
+      "top": 711,
+      "tag": "h2",
+      "kind": "heading"
+     },
+     {
+      "text": "Three things we refuse to rush",
+      "words": 6,
+      "chars": 30,
+      "lines": 1,
+      "size": 24,
+      "vw": 6.2,
+      "font": "Times New Roman",
+      "weight": 700,
+      "tracking": 0,
+      "leading": 1.2,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 0.96,
+      "top": 1497,
+      "tag": "h2",
+      "kind": "heading"
+     },
+     {
+      "text": "The oven is warm",
+      "words": 4,
+      "chars": 16,
+      "lines": 1,
+      "size": 24,
+      "vw": 6.2,
+      "font": "Times New Roman",
+      "weight": 700,
+      "tracking": 0,
+      "leading": 1.2,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 0.96,
+      "top": 1973,
+      "tag": "h2",
+      "kind": "heading"
+     }
+    ],
+    "headingSummary": {
+     "count": 5,
+     "maxLines": 2,
+     "over2Lines": 0,
+     "statements": 0,
+     "centered": 0,
+     "medianWords": 5,
+     "mixedFontHeadings": 1
+    },
+    "type": {
+     "families": [
+      {
+       "family": "Times New Roman",
+       "share": 1,
+       "mono": false
+      }
+     ],
+     "familyCount": 1,
+     "sizes": [
+      16,
+      19,
+      24,
+      32
+     ],
+     "sizeCount": 4,
+     "notLoaded": [],
+     "body": {
+      "font": "Times New Roman",
+      "size": 16,
+      "leading": 1.2,
+      "weight": 400,
+      "tracking": 0,
+      "contrast": 21
+     },
+     "measureChars": 47,
+     "max": {
+      "size": 32,
+      "vw": 8.2,
+      "font": "Times New Roman",
+      "text": "Hot. Cheesy. At your door in ."
+     },
+     "monoShare": 0,
+     "monoProseShare": 0,
+     "monoFamilies": [],
+     "monoSamples": [],
+     "microLabels": 0,
+     "microLabelShare": 0,
+     "microSamples": [],
+     "upperShare": 0,
+     "centerShare": 0,
+     "smallText": 0
+    },
+    "eyebrows": [
+     {
+      "text": "Wood-fired · Bazaar Street · since 2019",
+      "above": "Hot. Cheesy. At your door in 30.",
+      "upper": false,
+      "tracked": false,
+      "mono": false,
+      "pill": false,
+      "size": 16,
+      "top": 79
+     }
+    ],
+    "numbered": [],
+    "color": {
+     "bodyBg": "#ffffff",
+     "bodyBgHsl": {
+      "h": 0,
+      "s": 0,
+      "l": 1
+     },
+     "dark": false,
+     "sectionBgs": [],
+     "textColors": [
+      {
+       "color": "#000000",
+       "share": 0.64
+      },
+      {
+       "color": "#0000ee",
+       "share": 0.36
+      }
+     ],
+     "button": null,
+     "lowContrast": []
+    },
+    "buttons": {
+     "count": 0,
+     "inHero": 0,
+     "withShadow": 0,
+     "withGradient": 0,
+     "mono": 0,
+     "upper": 0,
+     "heroLabels": []
+    },
+    "surfaces": {
+     "shadowStatic": 0,
+     "shadowOverlay": 0,
+     "shadowSamples": [],
+     "gradients": 0,
+     "scrims": 0,
+     "gradientSamples": [],
+     "gradientText": 0,
+     "hairlines": 0,
+     "hairlineSamples": [],
+     "outlinedBoxes": 0,
+     "dashed": 0,
+     "blurred": 0,
+     "roundedBoxes": 0,
+     "boxRadius": 0,
+     "squareMedia": 0,
+     "roundedMedia": 0,
+     "mediaRadius": 0,
+     "textShadow": 0,
+     "cardRows": []
+    },
+    "heroMedia": [],
+    "nav": {
+     "links": 5,
+     "fixed": false,
+     "height": 55,
+     "floatingPill": false,
+     "blur": false
+    },
+    "fontsLoaded": []
+   },
+   "layout": {
+    "viewport": {
+     "w": 390,
+     "h": 844
+    },
+    "pageH": 2423,
+    "margins": {
+     "left": 8,
+     "right": 11
+    },
+    "sections": [
+     {
+      "sel": "section#top.hero",
+      "tag": "section",
+      "top": 79,
+      "height": 261,
+      "words": 58,
+      "media": 0,
+      "middle": 0,
+      "heading": {
+       "text": "Hot. Cheesy.",
+       "size": 32,
+       "tag": "h1"
+      },
+      "left": 8,
+      "right": 8,
+      "textLeft": 8,
+      "textRight": 8,
+      "fullBleed": false,
+      "footer": false,
+      "hero": true,
+      "continues": true,
+      "pinned": false
+     },
+     {
+      "sel": "section#offers.section",
+      "tag": "section",
+      "top": 356,
+      "height": 301,
+      "words": 27,
+      "media": 0,
+      "middle": 0,
+      "heading": {
+       "text": "Offers that need no coupon",
+       "size": 24,
+       "tag": "h2"
+      },
+      "left": 8,
+      "right": 103,
+      "textLeft": 8,
+      "textRight": 103,
+      "fullBleed": false,
+      "footer": false,
+      "hero": true,
+      "continues": true,
+      "pinned": false
+     },
+     {
+      "sel": "section#menu.section",
+      "tag": "section",
+      "top": 673,
+      "height": 770,
+      "words": 148,
+      "media": 0,
+      "middle": 0,
+      "heading": {
+       "text": "One tap orders it",
+       "size": 24,
+       "tag": "h2"
+      },
+      "left": 8,
+      "right": 11,
+      "textLeft": 8,
+      "textRight": 11,
+      "fullBleed": false,
+      "footer": false,
+      "hero": false,
+      "continues": true,
+      "pinned": false
+     },
+     {
+      "sel": "section#about.section",
+      "tag": "section",
+      "top": 1459,
+      "height": 460,
+      "words": 70,
+      "media": 0,
+      "middle": 0,
+      "heading": {
+       "text": "Three things we refuse to rush",
+       "size": 24,
+       "tag": "h2"
+      },
+      "left": 8,
+      "right": 21,
+      "textLeft": 8,
+      "textRight": 21,
+      "fullBleed": false,
+      "footer": false,
+      "hero": false,
+      "continues": true,
+      "pinned": false
+     },
+     {
+      "sel": "section#visit.section",
+      "tag": "section",
+      "top": 1936,
+      "height": 331,
+      "words": 47,
+      "media": 0,
+      "middle": 0,
+      "heading": {
+       "text": "The oven is warm",
+       "size": 24,
+       "tag": "h2"
+      },
+      "left": 8,
+      "right": 112,
+      "textLeft": 8,
+      "textRight": 112,
+      "fullBleed": false,
+      "footer": false,
+      "hero": false,
+      "continues": true,
+      "pinned": false
+     },
+     {
+      "sel": "footer",
+      "tag": "footer",
+      "top": 2266,
+      "height": 141,
+      "words": 51,
+      "media": 0,
+      "middle": 0,
+      "heading": null,
+      "left": 8,
+      "right": 11,
+      "textLeft": 8,
+      "textRight": 11,
+      "fullBleed": false,
+      "footer": true,
+      "hero": false,
+      "continues": false,
+      "pinned": false
+     }
+    ],
+    "gaps": [],
+    "h1s": [
+     {
+      "text": "Hot. Cheesy. At your door in 30.",
+      "size": 32,
+      "top": 118,
+      "firstScreen": true
+     }
+    ],
+    "edgeText": [
+     {
+      "text": "Menu",
+      "side": "left",
+      "px": 8
+     },
+     {
+      "text": "Order",
+      "side": "left",
+      "px": 8
+     },
+     {
+      "text": "Wood-fired · Bazaar Street · since 2019",
+      "side": "left",
+      "px": 8
+     },
+     {
+      "text": "Hot. Cheesy.",
+      "side": "left",
+      "px": 8
+     },
+     {
+      "text": "At your door in",
+      "side": "left",
+      "px": 8
+     },
+     {
+      "text": "Pizzas made fresh every evening — dough stretched ",
+      "side": "left",
+      "px": 8
+     },
+     {
+      "text": "💬 Order on WhatsApp",
+      "side": "left",
+      "px": 8
+     },
+     {
+      "text": "🔥 400 °C wood oven",
+      "side": "left",
+      "px": 8
+     }
+    ],
+    "edges": [
+     {
+      "x": 8,
+      "n": 20
+     },
+     {
+      "x": 227,
+      "n": 1
+     }
+    ],
+    "leftBlocks": 21,
+    "bodySize": 16,
+    "stage": false,
+    "explains": false,
+    "slivers": [],
+    "voidShare": 0,
+    "voidBox": null
+   },
+   "app": null,
+   "consoleErrors": []
+  }
+ ],
+ "findings": [
+  {
+   "level": "WARN",
+   "id": "mixed-font-headline",
+   "width": 1440,
+   "message": "1 headline(s) switch typeface or to italic mid-line (the \"one italic serif word\" move).",
+   "fix": "Set the whole headline in one face. Emphasis comes from the words.",
+   "alsoAt": [
+    768,
+    390
+   ]
+  },
+  {
+   "level": "FAIL",
+   "id": "eyebrow",
+   "width": 1440,
+   "message": "1 eyebrow/kicker label(s) above headings: \"Wood-fired · Bazaar Street · since 2019\" above \"Hot. Cheesy. At your door in 30.\"",
+   "fix": "Delete them. If the label carried real information, fold it into the headline or the supporting sentence.",
+   "alsoAt": [
+    768,
+    390
+   ]
+  },
+  {
+   "level": "FAIL",
+   "id": "emoji",
+   "width": 1440,
+   "message": "Emoji in the page: 🍕 💬 🔥 🛵 🥬 🍗 🌶 ★ ✦ 🥖",
+   "fix": "Remove. Use words or real imagery.",
+   "alsoAt": [
+    768,
+    390
+   ]
+  },
+  {
+   "level": "WARN",
+   "id": "default-link",
+   "width": 1440,
+   "message": "Browser-default blue/purple link colour is showing.",
+   "fix": "Style every link: inherit the text colour and mark it with weight, underline offset, or the accent.",
+   "alsoAt": [
+    768,
+    390
+   ]
+  },
+  {
+   "level": "WARN",
+   "id": "first-action",
+   "width": 1440,
+   "message": "No visible button in the first screen.",
+   "fix": "Give the one primary action a real button in the first screen (a filled or solid-bordered control, 44px or taller), not only a link in the navigation.",
+   "alsoAt": [
+    768,
+    390
+   ]
+  },
+  {
+   "level": "FAIL",
+   "id": "few-pictures",
+   "width": 1440,
+   "message": "Only 0 picture(s) on the page (0 photographs, footage or raster images, 0 interface fragments). Drawings in SVG do not count.",
+   "fix": "Find real pictures of the subject's world with scripts/assets.mjs (photographs, archival images, maps, engravings, footage), download them to assets/ and give them room: a hero picture, one per section that has a subject, a full-width band. At least four, usually six to twelve."
+  },
+  {
+   "level": "WARN",
+   "id": "no-footage",
+   "width": 1440,
+   "message": "No video anywhere on the page.",
+   "fix": "Look for one honest clip with scripts/assets.mjs --video (the place, the material, the process) and use it as a muted loop with a poster frame. Defend its absence only if no clip fits the subject."
+  },
+  {
+   "level": "WARN",
+   "id": "measure",
+   "width": 1440,
+   "message": "Longest paragraph runs about 178 characters per line.",
+   "fix": "Cap paragraphs at 45–75 characters (max-width: 60ch).",
+   "alsoAt": [
+    768
+   ]
+  },
+  {
+   "level": "FAIL",
+   "id": "focal-point",
+   "width": 1440,
+   "message": "The first screen has no dominant element: the largest type is 32px (2.2vw) and no single picture holds a third of the viewport.",
+   "fix": "Make one thing lead: the headline at display size, or one large picture. A grid of many small pictures is not one thing; in blind tests jurors marked a first screen without a headline down every time. On the strongest studied sites the largest type has a median of 8.4vw.",
+   "alsoAt": [
+    768
+   ]
+  },
+  {
+   "level": "WARN",
+   "id": "font-not-dealt",
+   "width": 1440,
+   "message": "The sheet dealt Libre Franklin and Source Serif 4, but the page renders Times New Roman.",
+   "fix": "Load the dealt face (the link on the sheet) and put it first in font-family. A build that falls back to a default face lands on the default look."
+  },
+  {
+   "level": "FAIL",
+   "id": "off-centre",
+   "width": 1440,
+   "message": "The page sits off-centre: its content comes to 8px from the left edge but only to 748px from the right, at 1440px.",
+   "fix": "Give the page one pair of equal margins. Check the wrapper for a max-width without margin-inline: auto, a grid with an empty last column, or padding on one side only. If one side is meant to hold air, it must still be closed by something that reaches the margin (a picture, the navigation's last item, a figure).",
+   "alsoAt": [
+    768
+   ]
+  },
+  {
+   "level": "FAIL",
+   "id": "lopsided",
+   "width": 1440,
+   "message": "2 sections keep all their content on one side and leave 56% of the width empty: \"One tap orders it\" (right 748px empty); \"Three things we refuse to rush\" (right 808px empty)",
+   "fix": "Use the whole width the page has set up: put the section's picture, its second column, its list or its figure in the empty half, or set the text larger across the grid. Empty space must be placed, with something on each side of it."
+  },
+  {
+   "level": "WARN",
+   "id": "hero-void",
+   "width": 1440,
+   "message": "37% of the first screen is one empty block (720×660px at 720,240).",
+   "fix": "Place the void on purpose or fill it: move the picture, the film or one fact into it, grow the headline to meet it, or shrink the screen to its content. A void reads as placed only when something closes it on the far side and it is the screen's one rest."
+  },
+  {
+   "level": "FAIL",
+   "id": "edge-text",
+   "width": 1440,
+   "message": "8 text block(s) sit within 16px of the screen edge: \"Menu\" (8px from the left); \"Order\" (8px from the left); \"Wood-fired · Bazaar Street · s\" (8px from the left); \"Hot. Cheesy.\" (8px from the left)",
+   "fix": "Keep text inside the page margin (16–32px or more). Only display type deliberately bled past the edge may touch it.",
+   "alsoAt": [
+    768,
+    390
+   ]
+  },
+  {
+   "level": "FAIL",
+   "id": "still-page",
+   "width": 1440,
+   "message": "Only 0 element(s) moved while the page loaded and scrolled.",
+   "fix": "Build the motion layer (SKILL.md step 9, references/motion.md): the signature move, an entrance for the parts of every section, feedback on every control, and one moving picture. Transform and opacity only, with a reduced-motion fallback."
+  },
+  {
+   "level": "FAIL",
+   "id": "empty-screens",
+   "width": 1440,
+   "message": "3 of 3 desktop screens are almost empty ground (under 20% of the screen holds text, a picture or a colour field): screens 1, 2, 3.",
+   "fix": "An empty screen is a rest only once per page. Elsewhere it means the section is underbuilt: set its content larger, give it the full information, put it on a colour field, or cut it."
+  }
+ ],
+ "images": [
+  {
+   "viewport": "desktop",
+   "width": 1440,
+   "fold": "/home/tarfw/tarai/pizza/.taste-skill/before/desktop-fold.jpg",
+   "pages": [
+    "/home/tarfw/tarai/pizza/.taste-skill/before/desktop-page-01.jpg"
+   ],
+   "film": []
+  },
+  {
+   "viewport": "tablet",
+   "width": 768,
+   "fold": "/home/tarfw/tarai/pizza/.taste-skill/before/tablet-fold.jpg",
+   "pages": [
+    "/home/tarfw/tarai/pizza/.taste-skill/before/tablet-page-01.jpg"
+   ],
+   "film": []
+  },
+  {
+   "viewport": "mobile",
+   "width": 390,
+   "fold": "/home/tarfw/tarai/pizza/.taste-skill/before/mobile-fold.jpg",
+   "pages": [
+    "/home/tarfw/tarai/pizza/.taste-skill/before/mobile-page-01.jpg"
+   ],
+   "film": []
+  }
+ ]
+}

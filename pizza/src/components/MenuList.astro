@@ -1,0 +1,369 @@
+---
+import { groups, rupees, singleOrderLink, WHATSAPP_NUMBER, type MenuItem } from "../data/menu";
+
+const genericLink = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(
+  "Hi Pizza Corner! I'd like to order."
+)}`;
+---
+
+<section class="menu" id="menu">
+  <div class="frame">
+    <h2 class="rise">The evening menu</h2>
+    <p class="note rise" style="--d: 70ms">
+      Everything wood-fired. GST 5% extra. 10-inch standard; make it 14 for
+      ₹120 more. Tap a row to fill your slip.
+    </p>
+
+    {
+      groups.map((g) => (
+        <section class="group">
+          <div class="group-head rise">
+            <h3>{g.name}</h3>
+            <span class="count">
+              {g.items.length} {g.items.length === 1 ? "item" : "items"}
+            </span>
+          </div>
+          <ul>
+            {g.items.map((item: MenuItem) => (
+              <li>
+                <a
+                  class="item rise"
+                  style={`--d: ${g.items.indexOf(item) * 40}ms`}
+                  href={singleOrderLink(item)}
+                  data-add={item.id}
+                  aria-label={`Add ${item.name} to the order, ${rupees(item.price)}`}
+                >
+                  <span class="bullet" aria-hidden="true" />
+                  <span class="body">
+                    <span class="line">
+                      <span class={`veg-mark ${item.veg ? "" : "nonveg"}`} aria-hidden="true" />
+                      <span class="name">{item.name}</span>
+                      <span class="price">{rupees(item.price)}</span>
+                    </span>
+                    <span class="desc">
+                      {item.star ? `${item.desc} · house favourite` : item.desc}
+                    </span>
+                  </span>
+                </a>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))
+    }
+  </div>
+
+  <div class="orderbar" data-empty="1">
+    <div class="orderbar-panel">
+      <div class="slip-body" aria-live="polite">
+        <p class="slip-empty">Tap the menu. The slip fills.</p>
+        <ul class="slip-lines"></ul>
+        <dl class="slip-totals">
+          <div>
+            <dt>Items</dt>
+            <dd data-sub>₹0</dd>
+          </div>
+          <div>
+            <dt>GST 5%</dt>
+            <dd data-gst>₹0</dd>
+          </div>
+          <div class="grand">
+            <dt>Total</dt>
+            <dd data-total>₹0</dd>
+          </div>
+        </dl>
+      </div>
+      <a class="arch-btn slip-send" data-send href={genericLink}>Send on WhatsApp</a>
+      <button class="orderbar-close" type="button" data-toggle-slip>Close</button>
+    </div>
+    <div class="orderbar-row">
+      <button class="orderbar-info" type="button" data-toggle-slip>
+        Your order <span data-total>₹0</span>
+      </button>
+      <a class="arch-btn" data-send href={genericLink}>Send</a>
+    </div>
+  </div>
+</section>
+
+<style>
+  .menu {
+    background: var(--sage);
+    padding-block: 120px 140px;
+  }
+  h2 {
+    font-size: clamp(36px, 4vw, 60px);
+  }
+  .note {
+    margin-top: 18px;
+    max-width: 52ch;
+    font-size: 1rem;
+    color: var(--muted);
+  }
+  .group {
+    margin-top: 96px;
+  }
+  .group-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 40px;
+  }
+  .group-head h3 {
+    font-size: clamp(32px, 3.4vw, 50px);
+  }
+  .count {
+    font-weight: 600;
+    font-size: 1rem;
+    color: var(--muted);
+  }
+  ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    column-gap: 64px;
+    row-gap: 36px;
+  }
+  .item {
+    display: flex;
+    gap: 20px;
+    text-decoration: none;
+  }
+  .item:hover .name,
+  .item:focus-visible .name {
+    color: var(--accent);
+  }
+  .bullet {
+    flex: 0 0 64px;
+    height: 64px;
+    background: var(--blush);
+    border-radius: var(--arch);
+  }
+  .item:hover .bullet {
+    background: var(--accent);
+  }
+  .body {
+    flex: 1;
+    min-width: 0;
+  }
+  .line {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+  }
+  .veg-mark {
+    align-self: center;
+  }
+  .name {
+    font-weight: 600;
+    font-size: 1.125rem;
+    letter-spacing: -0.02em;
+  }
+  .price {
+    margin-left: auto;
+    font-weight: 600;
+    font-size: 1.125rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .desc {
+    display: block;
+    margin-top: 5px;
+    font-size: 1rem;
+    color: var(--ink);
+    max-width: 38ch;
+  }
+
+  /* The phone's floating order bar. It truly floats, so it may
+     cast the page's one shadow. */
+  .orderbar {
+    display: none;
+  }
+  @media (max-width: 900px) {
+    .orderbar {
+      display: block;
+      position: fixed;
+      left: 12px;
+      right: 12px;
+      bottom: 12px;
+      z-index: 40;
+      border-radius: var(--arch);
+      overflow: hidden;
+    }
+    .orderbar[data-empty] {
+      display: none;
+    }
+    .orderbar-row {
+      display: flex;
+      gap: 8px;
+      background: var(--accent);
+      padding: 10px;
+      align-items: stretch;
+    }
+    .orderbar-info {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      background: none;
+      border: none;
+      color: var(--accent-ink);
+      font-family: inherit;
+      font-size: 1rem;
+      padding: 0 16px;
+      cursor: pointer;
+    }
+    .orderbar-info span {
+      font-variant-numeric: tabular-nums;
+      font-weight: 600;
+    }
+    .orderbar .arch-btn {
+      padding: 14px 22px 16px;
+      background: var(--blush);
+      color: var(--ink);
+    }
+    .orderbar-panel {
+      display: none;
+      color: var(--ink);
+      background: var(--blush);
+      padding: 24px 18px 14px;
+    }
+    .orderbar[data-open="1"] .orderbar-panel {
+      display: block;
+    }
+    .orderbar-panel .slip-totals {
+      margin-top: 10px;
+    }
+    .orderbar-panel .slip-send {
+      margin-top: 14px;
+      width: 100%;
+    }
+    .orderbar-close {
+      display: block;
+      margin: 10px auto 0;
+      background: none;
+      border: none;
+      font-family: inherit;
+      font-size: var(--step-small);
+      color: var(--muted);
+      text-decoration: underline;
+      text-underline-offset: 3px;
+      cursor: pointer;
+    }
+  }
+
+  @media (max-width: 700px) {
+    .menu {
+      padding-block: 80px 170px;
+    }
+    .group {
+      margin-top: 64px;
+    }
+    ul {
+      grid-template-columns: 1fr;
+      row-gap: 28px;
+    }
+  }
+</style>
+
+<script>
+  import {
+    allItems,
+    rupees,
+    slipOrderLink,
+    WHATSAPP_NUMBER,
+    GST_RATE,
+  } from "../data/menu";
+
+  type Line = { id: string; qty: number };
+  let order: Line[] = [];
+
+  const $ = <T extends Element>(sel: string) =>
+    Array.from(document.querySelectorAll<T>(sel));
+
+  const itemOf = (id: string) => allItems.find((i) => i.id === id)!;
+
+  function render() {
+    const lines = order
+      .map((l) => ({ item: itemOf(l.id), qty: l.qty }))
+      .filter((l) => l.qty > 0);
+    const subtotal = lines.reduce((s, l) => s + l.item.price * l.qty, 0);
+    const gst = Math.round(subtotal * GST_RATE);
+    const total = subtotal + gst;
+
+    const rowsHtml = lines
+      .map(
+        (l) => `<li>
+          <span class="qty">${l.qty} ×</span>
+          <span class="n">${l.item.name}</span>
+          <button type="button" data-dec="${l.item.id}" aria-label="One less ${l.item.name}">−</button>
+          <button type="button" data-inc="${l.item.id}" aria-label="One more ${l.item.name}">+</button>
+          <span class="p">${rupees(l.item.price * l.qty)}</span>
+        </li>`
+      )
+      .join("");
+
+    for (const s of $(".slip")) s.dataset.state = lines.length ? "filled" : "empty";
+
+    for (const body of $(".slip-body")) {
+      const empty = body.querySelector<HTMLElement>(".slip-empty")!;
+      const list = body.querySelector<HTMLElement>(".slip-lines")!;
+      const totals = body.querySelector<HTMLElement>(".slip-totals")!;
+      empty.style.display = lines.length ? "none" : "block";
+      list.innerHTML = rowsHtml;
+      totals.style.display = lines.length ? "grid" : "none";
+    }
+    for (const el of $<HTMLElement>("[data-sub]")) el.textContent = rupees(subtotal);
+    for (const el of $<HTMLElement>("[data-gst]")) el.textContent = rupees(gst);
+    for (const el of $<HTMLElement>("[data-total]")) el.textContent = rupees(total);
+
+    const href = lines.length
+      ? slipOrderLink(lines)
+      : `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(
+          "Hi Pizza Corner! I'd like to order."
+        )}`;
+    for (const a of $<HTMLAnchorElement>("[data-send]")) a.href = href;
+
+    const bar = document.querySelector<HTMLElement>(".orderbar");
+    if (bar) bar.dataset.empty = lines.length ? "" : "1";
+  }
+
+  function add(id: string, by: number) {
+    const line = order.find((l) => l.id === id);
+    if (line) line.qty = Math.max(0, line.qty + by);
+    else if (by > 0) order.push({ id, qty: 1 });
+    order = order.filter((l) => l.qty > 0);
+    render();
+  }
+
+  document.addEventListener("click", (e) => {
+    const t = e.target as HTMLElement;
+    const addEl = t.closest<HTMLElement>("[data-add]");
+    if (addEl) {
+      e.preventDefault();
+      add(addEl.dataset.add!, 1);
+      const bar = document.querySelector(".orderbar");
+      if (bar) delete bar.dataset.open;
+      return;
+    }
+    const inc = t.closest<HTMLElement>("[data-inc]");
+    if (inc) return add(inc.dataset.inc!, 1);
+    const dec = t.closest<HTMLElement>("[data-dec]");
+    if (dec) return add(dec.dataset.dec!, -1);
+    if (t.closest("[data-clear]")) {
+      order = [];
+      render();
+      const bar = document.querySelector(".orderbar");
+      if (bar) delete bar.dataset.open;
+    }
+    const toggle = t.closest<HTMLElement>("[data-toggle-slip]");
+    if (toggle) {
+      const bar = document.querySelector<HTMLElement>(".orderbar");
+      if (bar) bar.dataset.open = bar.dataset.open === "1" ? "" : "1";
+    }
+  });
+
+  render();
+</script>

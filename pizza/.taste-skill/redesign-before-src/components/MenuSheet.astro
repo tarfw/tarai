@@ -1,0 +1,574 @@
+---
+import {
+  groups,
+  rupees,
+  singleOrderLink,
+  slipOrderLink,
+  WHATSAPP_NUMBER,
+  GST_RATE,
+  type MenuItem,
+} from "../data/menu";
+
+// Shallow scallops for the sheet's cut edges, drawn as one path.
+const scallops = (() => {
+  const n = 20;
+  const w = 1000 / n;
+  let d = `M0,24`;
+  for (let i = 0; i < n; i++) d += ` A ${w / 2},24 0 0 1 ${w * (i + 1)},24`;
+  return d + " Z";
+})();
+
+const genericLink = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(
+  "Hi Pizza Corner! I'd like to order."
+)}`;
+---
+
+<section class="menu" id="menu">
+  <div class="frame cols">
+    <aside class="slipwrap" aria-label="Your order slip">
+      <div class="slip">
+        <h2 class="slip-title">Your order</h2>
+        <div class="slip-body" aria-live="polite">
+          <p class="slip-empty">Tap the menu. The slip fills.</p>
+          <ul class="slip-lines"></ul>
+          <dl class="slip-totals">
+            <div>
+              <dt>Items</dt>
+              <dd data-sub>₹0</dd>
+            </div>
+            <div>
+              <dt>GST 5%</dt>
+              <dd data-gst>₹0</dd>
+            </div>
+            <div class="grand">
+              <dt>Total</dt>
+              <dd data-total>₹0</dd>
+            </div>
+          </dl>
+        </div>
+        <a class="btn slip-send" data-send href={genericLink}>Send on WhatsApp</a>
+        <button class="slip-clear" type="button" data-clear>Clear the slip</button>
+      </div>
+    </aside>
+
+    <div class="sheetwrap">
+      <svg class="scallops scallops-top" viewBox="0 0 1000 24" preserveAspectRatio="none" aria-hidden="true">
+        <path d={scallops} fill="var(--surface)" />
+      </svg>
+      <div class="sheet">
+        <h2 class="sheet-title rise">The evening menu</h2>
+        <p class="sheet-note rise" style="--d: 70ms">
+          Everything wood-fired. GST 5% extra. 10-inch standard; make it 14
+          for ₹120 more.
+        </p>
+        {groups.map((g) => (
+          <section class="group">
+            <h3 class="group-name rise">{g.name}</h3>
+            <ul>
+              {g.items.map((item: MenuItem) => (
+                <li>
+                  <a
+                    class="item rise"
+                    href={singleOrderLink(item)}
+                    data-add={item.id}
+                    aria-label={`Add ${item.name} to the order, ${rupees(item.price)}`}
+                  >
+                    <span class="item-head">
+                      <span class={`veg-mark ${item.veg ? "" : "nonveg"}`} aria-hidden="true" />
+                      <span class="item-name">{item.name}</span>
+                      <span class="item-price">{rupees(item.price)}</span>
+                    </span>
+                    <span class="item-desc">
+                      {item.star ? `${item.desc} · house favourite` : item.desc}
+                    </span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))}
+        <p class="hours rise">
+          Open Tuesday to Sunday, 11 am to 10:30 pm.
+          <br />
+          Monday, the dough rests.
+        </p>
+      </div>
+      <svg class="scallops scallops-bottom" viewBox="0 0 1000 24" preserveAspectRatio="none" aria-hidden="true">
+        <path d={scallops} fill="var(--surface)" />
+      </svg>
+    </div>
+  </div>
+
+  <div class="orderbar" data-empty="1">
+    <div class="orderbar-panel">
+      <div class="slip-body" aria-live="polite">
+        <p class="slip-empty">Tap the menu. The slip fills.</p>
+        <ul class="slip-lines"></ul>
+        <dl class="slip-totals">
+          <div>
+            <dt>Items</dt>
+            <dd data-sub>₹0</dd>
+          </div>
+          <div>
+            <dt>GST 5%</dt>
+            <dd data-gst>₹0</dd>
+          </div>
+          <div class="grand">
+            <dt>Total</dt>
+            <dd data-total>₹0</dd>
+          </div>
+        </dl>
+      </div>
+      <a class="btn slip-send" data-send href={genericLink}>Send on WhatsApp</a>
+      <button class="orderbar-close" type="button" data-toggle-slip>Close</button>
+    </div>
+    <div class="orderbar-row">
+      <button class="orderbar-info" type="button" data-toggle-slip>
+        Your order <span data-total>₹0</span>
+      </button>
+      <a class="btn" data-send href={genericLink}>Send</a>
+    </div>
+  </div>
+</section>
+
+<style>
+  .menu {
+    background: var(--field-1);
+    padding: 110px 0 130px;
+  }
+  .cols {
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    column-gap: 24px;
+    align-items: start;
+  }
+
+  /* The slip: the shop's other piece of stationery. */
+  .slipwrap {
+    grid-column: 1 / 6;
+    position: sticky;
+    top: 24px;
+  }
+  .slip {
+    color: var(--paper-ink);
+    background: var(--surface);
+    border-radius: var(--radius);
+    padding: 28px;
+  }
+  .slip-title {
+    font-size: 1.25rem;
+  }
+  .slip-body {
+    margin-top: 18px;
+    min-height: 96px;
+  }
+  .slip-empty {
+    color: var(--paper-muted);
+    font-style: italic;
+    font-size: 1.25rem;
+    padding: 36px 12px;
+    text-align: center;
+  }
+  .slip[data-state="empty"] .slip-send,
+  .slip[data-state="empty"] .slip-clear,
+  .slip[data-state="empty"] .slip-totals {
+    display: none;
+  }
+  .slip[data-state="empty"] .slip-body {
+    min-height: 0;
+  }
+  .slip-lines {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .slip-lines li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 0;
+    font-size: 1.0625rem;
+  }
+  .slip-lines .qty {
+    font-variant-numeric: tabular-nums;
+    min-width: 2.2em;
+  }
+  .slip-lines .n {
+    flex: 1;
+  }
+  .slip-lines .p {
+    font-variant-numeric: tabular-nums;
+  }
+  .slip-lines button {
+    width: 26px;
+    height: 26px;
+    border: none;
+    border-radius: 6px;
+    background: #e7e2d8;
+    color: var(--ink);
+    font-family: inherit;
+    font-size: 1rem;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .slip-lines button:hover {
+    background: #dcd5c8;
+  }
+  .slip-totals {
+    margin: 14px 0 0;
+    display: grid;
+    gap: 6px;
+  }
+  .slip-totals div {
+    display: flex;
+    justify-content: space-between;
+    font-size: 1rem;
+  }
+  .slip-totals dt {
+    color: var(--paper-muted);
+  }
+  .slip-totals dd {
+    margin: 0;
+    font-variant-numeric: tabular-nums;
+  }
+  .slip-totals .grand {
+    font-weight: 600;
+    font-size: 1.05rem;
+  }
+  .slip-totals .grand dt {
+    color: var(--paper-ink);
+  }
+  .slip-send {
+    width: 100%;
+    margin-top: 18px;
+  }
+  .slip-clear {
+    display: block;
+    margin: 12px auto 0;
+    background: none;
+    border: none;
+    padding: 4px;
+    font-family: inherit;
+    font-size: var(--step-small);
+    color: var(--muted);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    cursor: pointer;
+  }
+  .slip-clear:hover {
+    color: var(--paper-ink);
+  }
+
+  /* The printed menu sheet. */
+  .sheetwrap {
+    grid-column: 6 / 13;
+    justify-self: end;
+    width: min(640px, 100%);
+  }
+  .scallops {
+    display: block;
+    width: 100%;
+    height: 22px;
+  }
+  .scallops-bottom {
+    transform: scaleY(-1);
+  }
+  .sheet {
+    color: var(--paper-ink);
+    background: var(--surface);
+    padding: 64px 56px 56px;
+    text-align: center;
+  }
+  .sheet-title {
+    font-size: clamp(32px, 3vw, 44px);
+  }
+  .sheet-note {
+    margin: 14px auto 0;
+    max-width: 40ch;
+    font-size: 1rem;
+    color: var(--paper-muted);
+  }
+  .group {
+    margin-top: 56px;
+  }
+  .group-name {
+    font-family: "Source Serif 4", Georgia, serif;
+    font-weight: 600;
+    font-size: 1.25rem;
+    letter-spacing: 0;
+  }
+  .group ul {
+    list-style: none;
+    margin: 8px 0 0;
+    padding: 0;
+    max-width: 440px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .item {
+    display: block;
+    padding: 18px 4px 16px;
+    text-decoration: none;
+    text-align: left;
+  }
+  .item:hover .item-name,
+  .item:focus-visible .item-name {
+    color: var(--accent);
+  }
+  .item-head {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    width: 100%;
+  }
+  .veg-mark {
+    align-self: center;
+  }
+  .item-name {
+    font-weight: 600;
+    font-size: 1.0625rem;
+  }
+  .star {
+    color: var(--accent);
+  }
+  .item-price {
+    margin-left: auto;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    font-size: 1.0625rem;
+  }
+  .item-desc {
+    display: block;
+    margin-left: 25px;
+    margin-top: 4px;
+    font-size: 1rem;
+    color: var(--paper-muted);
+  }
+  .hours {
+    margin-top: 56px;
+    font-size: 1rem;
+    color: var(--paper-muted);
+    line-height: 1.6;
+  }
+
+  @media (max-width: 900px) {
+    .slipwrap {
+      display: none;
+    }
+    .sheetwrap {
+      grid-column: 1 / 13;
+      justify-self: center;
+    }
+  }
+
+  /* The phone's floating order bar. It truly floats, so it may
+     cast the page's one shadow. */
+  .orderbar {
+    display: none;
+  }
+
+  @media (max-width: 900px) {
+    .orderbar {
+      display: block;
+      position: fixed;
+      left: 12px;
+      right: 12px;
+      bottom: 12px;
+      z-index: 40;
+      border-radius: var(--radius);
+      box-shadow: 0 12px 32px rgba(51, 50, 49, 0.28); /* taste-skill-ignore: the fixed floating order bar */
+      overflow: hidden;
+    }
+    .orderbar[data-empty] {
+      display: none;
+    }
+    .orderbar-row {
+      display: flex;
+      gap: 8px;
+      background: var(--accent);
+      padding: 10px;
+      align-items: stretch;
+    }
+    .orderbar-info {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      background: none;
+      border: none;
+      color: #ffffff;
+      font-family: inherit;
+      font-size: 1rem;
+      padding: 0 12px;
+      cursor: pointer;
+    }
+    .orderbar-info span {
+      font-variant-numeric: tabular-nums;
+      font-weight: 600;
+    }
+    .orderbar .btn {
+      padding: 12px 20px;
+      background: var(--paper-ink);
+    }
+    .orderbar-panel {
+      display: none;
+      color: var(--paper-ink);
+      background: var(--surface);
+      padding: 20px 18px 14px;
+    }
+    .orderbar[data-open="1"] .orderbar-panel {
+      display: block;
+    }
+    .orderbar-panel .slip-body {
+      min-height: 0;
+    }
+    .orderbar-panel .slip-totals {
+      margin-top: 10px;
+    }
+    .orderbar-panel .slip-send {
+      margin-top: 14px;
+    }
+    .orderbar-close {
+      display: block;
+      margin: 10px auto 0;
+      background: none;
+      border: none;
+      font-family: inherit;
+      font-size: var(--step-small);
+      color: var(--muted);
+      text-decoration: underline;
+      text-underline-offset: 3px;
+      cursor: pointer;
+    }
+  }
+
+  @media (max-width: 700px) {
+    .menu {
+      padding: 72px 0 150px;
+    }
+    .sheetwrap {
+      width: 100%;
+    }
+    .sheet {
+      padding: 40px 24px 36px;
+    }
+    .group {
+      margin-top: 40px;
+    }
+    .group ul {
+      max-width: none;
+    }
+  }
+</style>
+
+<script>
+  import {
+    allItems,
+    rupees,
+    slipOrderLink,
+    WHATSAPP_NUMBER,
+    GST_RATE,
+  } from "../data/menu";
+
+  type Line = { id: string; qty: number };
+  let order: Line[] = [];
+
+  const $ = <T extends Element>(sel: string) =>
+    Array.from(document.querySelectorAll<T>(sel));
+
+  const itemOf = (id: string) => allItems.find((i) => i.id === id)!;
+
+  function render() {
+    const lines = order
+      .map((l) => ({ item: itemOf(l.id), qty: l.qty }))
+      .filter((l) => l.qty > 0);
+    const subtotal = lines.reduce((s, l) => s + l.item.price * l.qty, 0);
+    const gst = Math.round(subtotal * GST_RATE);
+    const total = subtotal + gst;
+
+    const rowsHtml = lines
+      .map(
+        (l) => `<li>
+          <span class="qty">${l.qty} ×</span>
+          <span class="n">${l.item.name}</span>
+          <button type="button" data-dec="${l.item.id}" aria-label="One less ${l.item.name}">−</button>
+          <button type="button" data-inc="${l.item.id}" aria-label="One more ${l.item.name}">+</button>
+          <span class="p">${rupees(l.item.price * l.qty)}</span>
+        </li>`
+      )
+      .join("");
+
+    for (const s of $(".slip")) s.dataset.state = lines.length ? "filled" : "empty";
+
+    for (const body of $(".slip-body")) {
+      const empty = body.querySelector<HTMLElement>(".slip-empty")!;
+      const list = body.querySelector<HTMLElement>(".slip-lines")!;
+      const totals = body.querySelector<HTMLElement>(".slip-totals")!;
+      empty.style.display = lines.length ? "none" : "block";
+      list.innerHTML = rowsHtml;
+      totals.style.display = lines.length ? "grid" : "none";
+    }
+    for (const el of $<HTMLElement>("[data-sub]")) el.textContent = rupees(subtotal);
+    for (const el of $<HTMLElement>("[data-gst]")) el.textContent = rupees(gst);
+    for (const el of $<HTMLElement>("[data-total]")) el.textContent = rupees(total);
+
+    const href = lines.length
+      ? slipOrderLink(lines)
+      : `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(
+          "Hi Pizza Corner! I'd like to order."
+        )}`;
+    for (const a of $<HTMLAnchorElement>("[data-send]")) a.href = href;
+
+    const bar = document.querySelector<HTMLElement>(".orderbar");
+    if (bar) bar.dataset.empty = lines.length ? "" : "1";
+  }
+
+  function add(id: string, by: number) {
+    const line = order.find((l) => l.id === id);
+    if (line) line.qty = Math.max(0, line.qty + by);
+    else if (by > 0) order.push({ id, qty: 1 });
+    order = order.filter((l) => l.qty > 0);
+    render();
+  }
+
+  document.addEventListener("click", (e) => {
+    const t = e.target as HTMLElement;
+    const addEl = t.closest<HTMLElement>("[data-add]");
+    if (addEl) {
+      e.preventDefault();
+      add(addEl.dataset.add!, 1);
+      const item = itemOf(addEl.dataset.add!);
+      const bar = document.querySelector(".orderbar");
+      if (bar) {
+        delete bar.dataset.open;
+        document.body.classList.remove("slip-open");
+      }
+      return;
+    }
+    const inc = t.closest<HTMLElement>("[data-inc]");
+    if (inc) return add(inc.dataset.inc!, 1);
+    const dec = t.closest<HTMLElement>("[data-dec]");
+    if (dec) return add(dec.dataset.dec!, -1);
+    if (t.closest("[data-clear]")) {
+      order = [];
+      render();
+      const bar = document.querySelector(".orderbar");
+      if (bar) {
+        delete bar.dataset.open;
+        document.body.classList.remove("slip-open");
+      }
+    }
+    const toggle = t.closest<HTMLElement>("[data-toggle-slip]");
+    if (toggle) {
+      const bar = document.querySelector(".orderbar");
+      if (bar) {
+        const open = bar.dataset.open === "1";
+        bar.dataset.open = open ? "" : "1";
+        document.body.classList.toggle("slip-open", !open);
+      }
+    }
+  });
+
+  render();
+</script>

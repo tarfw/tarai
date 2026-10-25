@@ -1,0 +1,63 @@
+---
+import "../styles/global.css";
+
+interface Props {
+  title: string;
+  description: string;
+}
+
+const { title, description } = Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content={description} />
+    <meta name="theme-color" content="#14161a" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>{title}</title>
+    <script is:inline>
+      document.documentElement.classList.add("js");
+    </script>
+  </head>
+  <body>
+    <slot />
+    <script>
+      // Entrances: every section's parts rise in, once, staggered.
+      const observer = new IntersectionObserver(
+        (entries) => {
+          for (const e of entries) {
+            if (e.isIntersecting) {
+              e.target.classList.add("in");
+              observer.unobserve(e.target);
+            }
+          }
+        },
+        { threshold: 0.15 }
+      );
+      document.querySelectorAll(".rise").forEach((el) => observer.observe(el));
+
+      // The signature move: the room's light shifts. Three framings
+      // of the same oven crossfade slowly; drift on the held frame.
+      const stack = document.querySelector<HTMLElement>(".xfade");
+      if (stack && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        const frames = Array.from(stack.querySelectorAll("img"));
+        let i = 0;
+        const hold = () => {
+          i = (i + 1) % frames.length;
+          frames.forEach((f, k) => f.classList.toggle("on", k === i));
+        };
+        let timer = window.setInterval(hold, 6200);
+        document.addEventListener("visibilitychange", () => {
+          if (document.hidden) {
+            window.clearInterval(timer);
+          } else {
+            timer = window.setInterval(hold, 6200);
+          }
+        });
+      }
+    </script>
+  </body>
+</html>

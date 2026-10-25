@@ -120,6 +120,21 @@ Cost guard
               current = close + bounded move.
               writes and models share the monthly ceiling.
 
+Kernel        the commerce floor, inherited from the harness:
+              posting   every money move writes a balanced pair,
+                        checked before commit. unbalanced writes
+                        nothing.
+              stock     available = onhand - reserved, never
+                        negative. a write that would cross zero
+                        is refused.
+              undo      every owner money tap has one-tap undo.
+                        undo writes the opposite move.
+              gate      auto when inputs are known and reach is
+                        none or data. ask when an input is
+                        missing. approve for money and customer.
+                        auto + money becomes approve. the floor
+                        is code, never a model.
+
 Device       a window, never a copy. one door: the TAR API.
               the phone never touches a database. no sync, no
               mirror, no local-first, no database token.

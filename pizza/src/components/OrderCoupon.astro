@@ -1,0 +1,251 @@
+---
+import { WHATSAPP_NUMBER } from "../data/menu";
+
+const genericLink = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(
+  "Hi Pizza Corner! I'd like to order."
+)}`;
+---
+
+<section class="order frame" id="order">
+  <img
+    class="ground"
+    src="/assets/diwali-urban-shopping-thiyagaraja-nagar-chennai.jpg"
+    alt="A busy Chennai shopping street under the midday sun, storefronts and crowds"
+    width="1920"
+    height="1080"
+    loading="lazy"
+  />
+  <svg width="0" height="0" aria-hidden="true">
+    <defs>
+      <clipPath id="coupon-clip" clipPathUnits="objectBoundingBox">
+        <path d="M0,0 H0.446 a0.028,0.028 0 0 0 0.056,0 H1 V1 H0.502 a0.028,0.028 0 0 0 -0.056,0 H0 Z" />
+      </clipPath>
+    </defs>
+  </svg>
+  <div class="coupon rise">
+    <div class="left">
+      <h2>Clip. Tap.<br />Eat.</h2>
+      <p class="pitch">
+        Your order slip fills as you tap the menu, GST shows itself, and
+        Send hands the whole thing to WhatsApp. Pay by UPI or cash at the
+        door.
+      </p>
+      <p class="addr">Bazaar Street, Chennai</p>
+      <figure class="dish arch-mask">
+        <img
+          src="/assets/margherita-originale.jpg"
+          alt="A margherita fresh from the oven, blistered crust and basil"
+          width="960"
+          height="600"
+          loading="lazy"
+        />
+      </figure>
+    </div>
+    <div class="right">
+      <div class="slip" data-state="empty">
+        <h3 class="slip-title">Your order</h3>
+        <div class="slip-body" aria-live="polite">
+          <p class="slip-empty">Tap the menu. The slip fills.</p>
+          <ul class="slip-lines"></ul>
+          <dl class="slip-totals">
+            <div>
+              <dt>Items</dt>
+              <dd data-sub>₹0</dd>
+            </div>
+            <div>
+              <dt>GST 5%</dt>
+              <dd data-gst>₹0</dd>
+            </div>
+            <div class="grand">
+              <dt>Total</dt>
+              <dd data-total>₹0</dd>
+            </div>
+          </dl>
+        </div>
+        <a class="arch-btn slip-send" data-send href={genericLink}>Send on WhatsApp</a>
+        <button class="slip-clear" type="button" data-clear>Clear the slip</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<style>
+  .order {
+    position: relative;
+    padding-block: 120px;
+  }
+  .ground {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .coupon {
+    position: relative;
+    background: var(--blush);
+    border-radius: 14px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    clip-path: url(#coupon-clip);
+  }
+  .left {
+    padding: 48px;
+    padding-right: 40px;
+    margin-right: 34px;
+    border-right: 5px dotted #c9b4a4;
+  }
+  h2 {
+    font-size: clamp(28px, 3vw, 44px);
+    letter-spacing: -0.04em;
+    line-height: 0.95;
+    text-transform: uppercase;
+  }
+  .pitch {
+    margin-top: 26px;
+    font-size: 1rem;
+    line-height: 1.5;
+    max-width: 34ch;
+  }
+  .addr {
+    margin-top: 30px;
+    font-weight: 600;
+    font-size: 1rem;
+  }
+  .dish {
+    margin-top: 18px;
+    height: 200px;
+  }
+  .right {
+    padding: 48px 48px 48px 8px;
+  }
+  .slip {
+    color: var(--ink);
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+  .slip-title {
+    font-size: 1.5rem;
+  }
+  .slip-body {
+    margin-top: 18px;
+    flex: 1;
+  }
+  .slip-empty {
+    color: var(--muted);
+    font-weight: 600;
+    font-size: 1.25rem;
+    padding: 40px 12px;
+    text-align: center;
+  }
+  .slip[data-state="empty"] .slip-send,
+  .slip[data-state="empty"] .slip-clear,
+  .slip[data-state="empty"] .slip-totals {
+    display: none;
+  }
+  .slip-lines {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .slip-lines li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 0;
+    font-size: 1.0625rem;
+  }
+  .slip-lines .qty {
+    font-variant-numeric: tabular-nums;
+    min-width: 2.2em;
+  }
+  .slip-lines .n {
+    flex: 1;
+  }
+  .slip-lines .p {
+    font-variant-numeric: tabular-nums;
+  }
+  .slip-lines button {
+    width: 28px;
+    height: 28px;
+    border: none;
+    border-radius: 8px;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: inherit;
+    font-size: 1rem;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .slip-lines button:hover {
+    background: var(--surface);
+  }
+  .slip-totals {
+    margin: 14px 0 0;
+    display: grid;
+    gap: 6px;
+  }
+  .slip-totals div {
+    display: flex;
+    justify-content: space-between;
+    font-size: 1rem;
+  }
+  .slip-totals dt {
+    color: var(--muted);
+  }
+  .slip-totals dd {
+    margin: 0;
+    font-variant-numeric: tabular-nums;
+  }
+  .slip-totals .grand {
+    font-weight: 600;
+    font-size: 1.125rem;
+  }
+  .slip-totals .grand dt {
+    color: var(--ink);
+  }
+  .slip-send {
+    width: 100%;
+    margin-top: 20px;
+  }
+  .slip-clear {
+    display: block;
+    margin: 12px auto 0;
+    background: none;
+    border: none;
+    padding: 4px;
+    font-family: inherit;
+    font-size: var(--step-small);
+    color: var(--muted);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    cursor: pointer;
+  }
+  .slip-clear:hover {
+    color: var(--ink);
+  }
+
+  @media (max-width: 800px) {
+    .order {
+      padding-block: 84px;
+    }
+    .coupon {
+      display: block;
+      clip-path: none;
+      border-radius: 14px;
+    }
+    .left {
+      padding: 32px 24px;
+      margin-right: 0;
+      border-right: none;
+      border-bottom: 5px dotted #c9b4a4;
+    }
+    .right {
+      padding: 32px 24px;
+    }
+    .dish {
+      height: 160px;
+    }
+  }
+</style>
