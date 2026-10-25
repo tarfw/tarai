@@ -14,13 +14,18 @@ Workspace    = owner + admin + cashier + ...   -> one business boundary
 Merchant     = the owner. the first member.
 Customer     = storefront only. never a member.
 
+Many         = one user, many workspaces. each life keeps
+               its own boundary. the switch is the list:
+               a badge per row, one tap. no auto-switch,
+               no merged inbox, no join.
+
 Tool         = one merchant verb = a cluster of registered actions + reads
 Action       = the only thing that writes. belongs to exactly one tool.
 Card         = Tool x Role x Usefulness        -> what a member sees and taps
 Flow         = Step + Step + ...               -> max 12
                composes existing actions only. a card shape, never a tool.
                its library lives behind the card.
-Step         = CRUD + Action + Gate + Modifier
+Step         = Read + Action + Gate
 
 Catalog      = Product + Service + Commodity   -> one tool, a `nature` field.
                                                rules differ, the tool does not.
@@ -96,11 +101,11 @@ Control (D1, platform-wide)
 
 Truth (one Turso DB per workspace)
   record      every fact. versioned, archived.
-  move        every change ever. append-only.
+  move        every change ever. append-only. the event
+              feed is a view over it: inbox + every canvas.
   current     the number now. derived, not duplicate. rebuildable.
   skill       memory of flow.
-  run         one execution. resume from step.
-  event       what happened. feeds inbox + every canvas.
+  run         one execution. a log, never a resume.
   inbox       each member's rows, typed by their tool.
   columns live in the Schema table below.
 
@@ -110,27 +115,39 @@ Bytes (R2)
               never only in R2: price, stock, totals, payment state.
 
 Cost guard
-              one write = record + move + current + event. one transaction.
+              one write = record + move + current + inbox. one transaction.
               hot window 90 days -> monthly close, hash-sealed to R2 -> archive.
               current = close + bounded move.
               writes and models share the monthly ceiling.
 
-Device       a window, never a copy.
-              read    = granted projections. a card's slice = metrics + its inbox rows.
-              write   = tap -> queue (idempotency key) -> registry -> gate.
-                        one road. every role.
-              mirror  = personal DB only: small, own data, local-first.
-              offline = cached cards + queued taps. a syncing badge tells the truth.
-              package = @tursodatabase/sync-react-native, pinned. pull only.
-                        push() is never a road: it skips gates and postings.
-              roles   = owner, admin -> projections, more of them
-                        member -> projections, their slice
-                        personal -> the mirror
-                        customer -> R2 site pages
-              the size of the window is trust. the road for writes is one.
+Device       a window, never a copy. one door: the TAR API.
+              the phone never touches a database. no sync, no
+              mirror, no local-first, no database token.
+              login   = one TAR session. the only credential
+                        a phone ever holds.
+              read    = GET /me: my workspaces + badge counts.
+                        GET slice: my inbox rows + my cards'
+                        numbers. kilobytes. a detail screen is
+                        one more read, on tap.
+              cache   = the last slice on disk. stale offline
+                        is fine. the slice is disposable.
+              write   = tap -> queue (idempotency key) ->
+                        action -> gate. the phone sends
+                        intent, never data.
+              offline = reads: the cached slice. writes: taps
+                        wait in the local queue, replay in
+                        order. a badge tells the truth.
+              grant   = the server grants the slice. the
+                        phone never picks its own.
+                        the size of the slice is trust.
+                        the road for writes is one.
+
+Plug         the DB is a plug behind the API. today Turso.
+              if bills ever grow: our servers + SQLite
+              files. laws unchanged. files copy.
 ```
 
-## Schema (11 tables, the floor)
+## Schema (10 tables, the floor)
 
 | DB | Table | Columns | Holds |
 | :--- | :--- | :--- | :--- |
@@ -139,14 +156,13 @@ Device       a window, never a copy.
 | D1 | member | workspace, user, role, state | who belongs where |
 | D1 | invite | workspace, email, role, state | pending members |
 | Turso | record | id, type, data, version, owner, created, archived | every fact. data under 2KB |
-| Turso | move | id, kind, key, amount, why, source, created | every change. append-only |
+| Turso | move | id, kind, record, key, amount, why, source, created | every change. append-only. events are a view over it |
 | Turso | current | kind, key, data | the number now. key = kind + key |
 | Turso | skill | id, shape, trigger, steps, score, confirmed | memory of flow. embedding later |
 | Turso | run | id, skill, step, status, key, input | one execution. same key never twice |
-| Turso | event | id, record, type, created | what happened. feeds inbox + canvas |
-| Turso | inbox | id, member, event, tool, reach, due, assigned, status | each member's rows, typed by tool |
+| Turso | inbox | id, member, move, tool, reach, due, assigned, status | each member's rows, typed by tool |
 
-One schema, two modes: `workspace.mode = personal | work`. Personal graduates to work in place. Eleven tables is the floor; each has exactly one job.
+One schema, two modes: `workspace.mode = personal | work`. Personal is a workspace of one; its slice is the whole DB. It graduates to work in place. Ten tables is the floor; each has exactly one job.
 
 ## Tool list (14)
 
@@ -325,11 +341,6 @@ The laws live in Concept: Card rule, NEXT, Surface, Ask.
    rows     noul      one per row: price sane? code valid?
    risk     noul      test? abuse? the create gate.
 
-   code deals the cards: nature -> recipe ->
-   stack. unpicked cards stay deferred, not
-   missing. duplicate is code too: one lookup
-   in D1.
-
    Jev speaks three times: at birth (nature +
    risk), at import (rows), at hire (role).
    nowhere else.
@@ -350,7 +361,7 @@ The laws live in Concept: Card rule, NEXT, Surface, Ask.
  |    +------+ +------+ +------+    |
  |                                  |
  |    D1      workspace + owner     |
- |    TURSO   11 tables, nothing    |
+ |    TURSO   10 tables, nothing    |
  |            else                  |
  |    R2      an empty layout       |
  |                                  |
@@ -429,12 +440,7 @@ The laws live in Concept: Card rule, NEXT, Surface, Ask.
  |  card to toggle it.              |
  +----------------------------------+
 
- 4  BORN - one action. all three stores.
- TAR
- done in one. Canvas is waiting.
-       [ Open Canvas ]
-
- 5  FIRST CANVAS - what one sentence bought.
+ 4  FIRST CANVAS - what one sentence bought.
  +----------------------------------+
  | (1) Aambal Tea Stall            o|
  | Owner                            |
@@ -459,7 +465,7 @@ The laws live in Concept: Card rule, NEXT, Surface, Ask.
  |                              (+) |
  +----------------------------------+
 
- 6  IMPORT - a photo becomes rows.
+ 5  IMPORT - a photo becomes rows.
  You
  (photo of a hand written price list)
  TAR
@@ -471,7 +477,7 @@ The laws live in Concept: Card rule, NEXT, Surface, Ask.
  row 3 is doubt, not data. fix it or post the 13 sane.
        [ Fix row 3 ]   [ Post 13 ]
 
- 7  INVITED - the invite card.
+ 6  INVITED - the invite card.
  +----------------------------------+
  |  TAR                             |
  |                                  |
@@ -482,7 +488,7 @@ The laws live in Concept: Card rule, NEXT, Surface, Ask.
  |                     [ Join ]     |
  +----------------------------------+
 
- 8  MANY - one member, several boundaries.
+ 7  MANY - one user, many boundaries.
  +----------------------------------+
  |  TAR                             |
  |                                  |
@@ -492,7 +498,7 @@ The laws live in Concept: Card rule, NEXT, Surface, Ask.
  |                                  |
  +----------------------------------+
 
- 9  GROW - a hire is a fact. a promotion is a proposal.
+ 8  GROW - a hire is a fact. a promotion is a proposal.
  You (owner)
  hire Ravi for the morning counter
  TAR
@@ -501,28 +507,8 @@ The laws live in Concept: Card rule, NEXT, Surface, Ask.
  more    a second member promotes your
          workspace to work mode
        [ Confirm ]   [ Change ]
-
-10  MANAGE - rename is a talk, not a form.
- You (owner)
- rename us to Aambal Sweets
- TAR
- PLAN    Change workspace
- name    Aambal Sweets
- url     aambal-tea.tar.site . never moves
-       [ Confirm ]   [ Change ]
-
-11  DANGER - typing it is the second ask.
- You (owner)
- archive this workspace
- TAR
- everything stays. the site goes
- dark. type ARCHIVE to confirm.
- You
- ARCHIVE
- TAR
- archived. undo is one repoint.
 ```
 
-Five maps hold the laws, eleven screens walk them.
+Five maps hold the laws, eight screens walk them.
 one surface the whole way: no workspace to first sale.
 
