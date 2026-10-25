@@ -21,8 +21,7 @@ async function fixture() {
   const directory = mkdtempSync(join(tmpdir(), 'tar-commerce-test-'));
   const client = createClient({ url: pathToFileURL(join(directory, 'workspace.db')).href }); clients.push(client);
   for (const sql of WORKSPACE_SCHEMA) await client.execute(sql);
-  const run = (actionId: string, input: Record<string, unknown>, key: string = crypto.randomUUID()) => Effect.runPromise(executeGateway(client, access, { actionId, input, idempotencyKey: key }));
-  await run('capability.save', { module: 'commerce', enabled: true, baseVersion: 0 });
+  const run = (actionId: any, input: Record<string, unknown>, key: string = crypto.randomUUID()) => Effect.runPromise(executeGateway(client, access, { actionId, input, idempotencyKey: key }));
   const supplier = (await run('organization.create', { name: 'Supplier' })).record as { id: string };
   const item = (await run('catalog.item.save', { name: 'Tea', sku: 'TEA' })).item as { id: string };
   const variant = (await run('catalog.variant.save', { item: item.id, name: 'Tea 250g', sku: 'TEA-250' })).variant as { id: string };
@@ -102,7 +101,7 @@ describe('commerce core', { timeout: 60000 }, () => {
     await expect(run('payment.record', { invoice: invoice.id, amount: 1, method: 'cash' })).rejects.toThrow('open invoice balance');
   });
 
-  it('creates product bundle with variants, price, stock, and pos.product sync atomically', async () => {
+  it('creates product bundle with variants, price and stock atomically', async () => {
     const { client, run } = await fixture();
     const result = await run('catalog.item.save', {
       name: 'Semparuthi Pattu Selai',
@@ -127,12 +126,5 @@ describe('commerce core', { timeout: 60000 }, () => {
     const variants = await client.execute({ sql: "SELECT * FROM records WHERE type='variant' AND json_extract(data,'$.item')=?", args: [item.id] });
     expect(variants.rows).toHaveLength(2);
 
-    // Verify pos.product sync
-    const pos = await client.execute({ sql: "SELECT * FROM records WHERE type='pos.product' AND (json_extract(data,'$.item')=? OR json_extract(data,'$.sku')=?)", args: [item.id, 'SEMP-PATTU'] });
-    expect(pos.rows).toHaveLength(1);
-    const posData = JSON.parse(String(pos.rows[0].data));
-    expect(posData.title).toBe('Semparuthi Pattu Selai');
-    expect(posData.price).toBe(820000);
-    expect(posData.stock).toBe(12);
   });
 });

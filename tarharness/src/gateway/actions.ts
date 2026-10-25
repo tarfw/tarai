@@ -4,8 +4,6 @@ import { badRequest, conflict, forbidden, notFound, unavailable } from '../error
 import { query } from '../db/turso.ts';
 import type { AccessContext, FlowDefinition, FlowRun, RecordItem } from '../types.ts';
 import { findAction, type ActionId } from '../registry/catalog.ts';
-import { executePos } from '../pos/store.ts';
-import { saveProductContent } from '../pos/content.ts';
 import { canExecute, canReadRecord, canRunFlowStep } from '../access.ts';
 import { executeSiteGenerate, executeSiteDesigns, executeSiteScout, executeSiteCompile, executeSitePublish, executeSitePublishLatest, executeSiteRollback, executeSiteRefresh, executeSiteUnpublish, executeSiteChecks, executeSiteReleases, executeSiteBriefAdd, executeSiteBriefRemove, executeSiteNoticeSet, executeSiteSectionsSet } from '../site/store.ts';
 import { executeSiteAsk, executeSiteDesignImport, executeSiteEdit, executeSiteUndo } from '../site/edit.ts';
@@ -13,7 +11,7 @@ import { executeSiteAssetGenerate, executeSiteAssetUpload, executeSiteAssets } f
 import { appendEvent, eventStatement, findReplay, fingerprint, runStatement, stamp, stepStatement } from './commit.ts';
 import { commerceActionIds } from '../commerce/catalog.ts';
 import { executeCommerce } from '../commerce/store.ts';
-import { isModule, moduleForAction, readCapabilities } from '../registry/tools.ts';
+import { refreshCards, seedInbox, toolsTouchedBy } from '../truth/cards.ts';
 
 type GatewayError = ReturnType<typeof badRequest> | ReturnType<typeof conflict> | ReturnType<typeof forbidden> | ReturnType<typeof notFound> | ReturnType<typeof unavailable>;
 export interface GatewayRequest { readonly idempotencyKey: string; readonly actionId: ActionId; readonly input: Record<string, unknown>; }
@@ -51,7 +49,7 @@ function validateContactDetails(values: Record<string, unknown>): void {
 }
 
 export function executeGateway(client: Client, context: AccessContext, request: GatewayRequest, services: GatewayServices = {}): Effect.Effect<Record<string, unknown>, GatewayError> {
-  return Effect.tryPromise({
+  return Effect.flatMap(Effect.tryPromise({
     try: async () => {
       if (!request.idempotencyKey || request.idempotencyKey.length > 200) throw badRequest('Idempotency-Key is required.');
       const registeredAction = findAction(request.actionId);
@@ -75,8 +73,6 @@ export function executeGateway(client: Client, context: AccessContext, request: 
         } catch { /* ignore */ }
       }
       if (!registeredAction || !canExecute(memberToCheck, request.actionId)) throw forbidden();
-      const module = moduleForAction(request.actionId);
-      if (module && !(await readCapabilities(client)).enabled[module]) throw forbidden();
       for (const field of registeredAction.fields) {
         const value = request.input[field.key];
         if (field.required && (value === undefined || value === null || (typeof value === 'string' && !value.trim()))) throw badRequest(`${field.label} is required.`);
@@ -87,27 +83,6 @@ export function executeGateway(client: Client, context: AccessContext, request: 
       const replay = await findReplay(client, request.idempotencyKey, hash);
       if (replay) return object(replay.result);
       const at = stamp();
-      if (request.actionId === 'capability.save') {
-        const module = request.input.module;
-        const enabled = request.input.enabled;
-        const baseVersion = Number(request.input.baseVersion);
-        if (!isModule(module) || typeof enabled !== 'boolean' || !Number.isSafeInteger(baseVersion) || baseVersion < 0) throw badRequest('Choose a capability and current version.');
-        const current = await readCapabilities(client);
-        if (current.version !== baseVersion) throw conflict('Tools changed. Refresh and try again.');
-        const targetModule = module === 'pos' ? 'commerce' : module;
-        const next = { ...current.enabled, [targetModule]: enabled, pos: targetModule === 'commerce' ? enabled : current.enabled.pos };
-        const result = { enabled: next, version: baseVersion + 1 };
-        const committed = await client.batch([
-          baseVersion === 0
-            ? { sql: "INSERT OR IGNORE INTO records (id,type,title,state,data,owner,assignee,due,version,created,updated) VALUES ('capability','capability','Capabilities','active',?,?,NULL,NULL,1,?,?)", args: [json(next), context.identity.id, at, at] }
-            : { sql: "UPDATE records SET data=?,version=version+1,updated=? WHERE id='capability' AND type='capability' AND version=? AND archived IS NULL", args: [json(next), at, baseVersion] },
-          { sql: `INSERT INTO move (id,kind,run_id,record_id,action_id,state,actor_id,input_hash,idempotency_key,data,created_at,updated_at)
-            SELECT ?, 'action', NULL, 'capability', ?, 'accepted', ?, ?, ?, ?, ?, ? WHERE changes()=1`,
-            args: [`evt_${crypto.randomUUID()}`, request.actionId, context.identity.id, hash, request.idempotencyKey, json({ result }), at, at] },
-        ], 'write');
-        if (committed[0]?.rowsAffected !== 1 || committed[1]?.rowsAffected !== 1) throw conflict('Tools changed. Refresh and try again.');
-        return result;
-      }
       if (request.actionId === 'brief.save') {
         const rawBrief = request.input.brief;
         const briefList = Array.isArray(rawBrief) ? rawBrief.map(String) : typeof rawBrief === 'string' ? rawBrief.split(/\r?\n/).map((s) => s.trim()).filter(Boolean) : [];
@@ -129,8 +104,6 @@ export function executeGateway(client: Client, context: AccessContext, request: 
         ], 'write');
         return result;
       }
-      if (request.actionId === 'pos.product.content.save') return saveProductContent(client, services.productContent, context, request.input, { key: request.idempotencyKey, hash });
-      if (request.actionId.startsWith('pos.')) return executePos(client, context, request.actionId, request.input, request.idempotencyKey, hash);
       if (commerceActionIds.has(request.actionId)) return executeCommerce(client, context, request.actionId, request.input, request.idempotencyKey, hash, services.typesafe);
       if (request.actionId === 'site.generate') return executeSiteGenerate(client, context, request.input, request.idempotencyKey, hash, services.typesafe, services.ai, services.publication, services.siteModel, services.groqApiKey, services.productContent, services.pexelsApiKey);
       if (request.actionId === 'site.edit') return executeSiteEdit(client, context, request.input, request.idempotencyKey, hash, services.siteReleases);
@@ -146,7 +119,7 @@ export function executeGateway(client: Client, context: AccessContext, request: 
       if (request.actionId === 'site.designs') return executeSiteDesigns(client, context, request.input);
       if (request.actionId === 'site.compile') return executeSiteCompile(client, services.siteReleases, context, request.input, request.idempotencyKey, hash, services.publication, services.siteDomain, services.productContent);
       if (request.actionId === 'site.publish') return executeSitePublish(client, services.siteReleases, context, request.input, request.idempotencyKey, hash, services.publication, services.siteDomain, services.productContent);
-      if (request.actionId === 'site.publishLatest' || request.actionId === 'site.publishlatest') return executeSitePublishLatest(client, context, request.input, request.idempotencyKey, hash, {
+      if (request.actionId === 'site.publishLatest') return executeSitePublishLatest(client, context, request.input, request.idempotencyKey, hash, {
         control: services.publication, domain: services.siteDomain, releases: services.siteReleases, content: services.productContent,
         ai: services.ai, typesafe: services.typesafe, model: services.siteModel, groqApiKey: services.groqApiKey, pexelsApiKey: services.pexelsApiKey,
       });
@@ -329,8 +302,6 @@ export function executeGateway(client: Client, context: AccessContext, request: 
       const first = actions[0]; if (!first || !text(first.id)) throw badRequest('Flow needs at least one Action.');
       const source = text(data.source, 40);
       if (actions.length > 20 || actions.some((item) => !findAction(text(item.id, 160)) || (source === 'book' && !bookActions.has(text(item.id, 160))) || (Number(item.version || 0) > 0 && findAction(text(item.id, 160))?.version !== Number(item.version)))) throw badRequest('Flow Book has an invalid, changed or unavailable Action.');
-      const enabled = (await readCapabilities(client)).enabled;
-      if (actions.some((item) => { const module = moduleForAction(text(item.id, 160)); return module !== null && !enabled[module]; })) throw forbidden();
       if (source === 'book' && !canRunFlowStep(context.member, first, context.identity.id)) throw forbidden();
       const recordId = text(request.input.recordId, 160) || null;
       const usesRegister = actions.some((item) => ['pos.register.count', 'pos.register.close'].includes(text(item.id, 160)));
@@ -350,7 +321,17 @@ export function executeGateway(client: Client, context: AccessContext, request: 
       return { run };
     },
     catch: (cause) => cause instanceof Error && '_tag' in cause ? cause as GatewayError : unavailable('Action execution failed.', cause),
-  });
+  }), (result) => Effect.promise(async () => {
+    // Derived, best-effort, never fails the write: card numbers and inbox rows.
+    try {
+      const tools = toolsTouchedBy(request.actionId);
+      if (tools.length) await refreshCards(client, tools);
+      await seedInbox(client, context, request.actionId, result);
+    } catch (cause) {
+      console.error(JSON.stringify({ event: 'derived.refresh.failed', action: request.actionId, error: cause instanceof Error ? cause.message : String(cause) }));
+    }
+    return result;
+  }));
 }
 
 export async function executeAutomaticFlowStep(client: Client, context: AccessContext, runId: string, expectedStep: number, services: GatewayServices = {}): Promise<{ state: string; step: number; advanced: boolean }> {

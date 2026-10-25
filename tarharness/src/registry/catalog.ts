@@ -1,4 +1,3 @@
-import { posActions } from '../pos/catalog.ts';
 import { commerceActions } from '../commerce/catalog.ts';
 export type ActionType = 'app' | 'agent' | 'human';
 export type InterfacePresentation = 'sheet' | 'screen' | 'flow';
@@ -44,18 +43,7 @@ export const interfaceCatalog = [
 ] as const satisfies readonly InterfaceContract[];
 
 export const actionCatalog = [
-  ...posActions,
   ...commerceActions,
-  {
-    id: 'capability.save', version: 1, type: 'app', title: 'Manage tools',
-    description: 'Enable or disable workspace capabilities.', interfaceKey: 'form',
-    fields: [
-      { key: 'module', label: 'Capability', kind: 'text', required: true },
-      { key: 'enabled', label: 'Enabled', kind: 'text', required: true },
-      { key: 'baseVersion', label: 'Version', kind: 'number', required: true },
-    ],
-    output: ['enabled', 'version'], roles: ['owner', 'admin'], effects: ['record_update'],
-  },
   {
     id: 'brief.save', version: 1, type: 'app', title: 'Save brief',
     description: 'Save the workspace brief and classified trade.', interfaceKey: 'form',

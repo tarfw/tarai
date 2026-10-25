@@ -90,6 +90,46 @@ export const commerceActions = [
     ],
     output: ['expense', 'posting'], roles: managers, effects: ['ledger_post', 'record_update'],
   },
+  {
+    id: 'sale.write', version: 1, type: 'app', title: 'New sale',
+    description: 'One tap counter sale: order, invoice, payment, stock and posting in one commit.',
+    interfaceKey: 'pos',
+    fields: [
+      { key: 'lines', label: 'Cart lines as JSON', kind: 'textarea', required: true },
+      { key: 'method', label: 'Payment method (cash, upi, card)', kind: 'text', required: true },
+      { key: 'reference', label: 'Provider reference for noncash', kind: 'text' },
+      { key: 'tendered', label: 'Cash tendered (minor units)', kind: 'number' },
+      { key: 'customer', label: 'Customer record ID', kind: 'record' },
+    ],
+    output: ['sale', 'order', 'invoice', 'payment', 'posting'], roles: ['owner', 'admin', 'member'], effects: ['money_commit', 'stock_commit', 'ledger_post'],
+  },
+  {
+    id: 'register.open', version: 1, type: 'app', title: 'Open register',
+    description: 'Open the cash drawer with its float.',
+    interfaceKey: 'form',
+    fields: [{ key: 'opening', label: 'Opening float (minor units)', kind: 'number', required: true }],
+    output: ['register'], roles: ['owner', 'admin', 'member'], effects: ['record_create'],
+  },
+  {
+    id: 'register.count', version: 1, type: 'app', title: 'Count cash',
+    description: 'Save the counted drawer cash and its variance against expected.',
+    interfaceKey: 'form',
+    fields: [
+      { key: 'register', label: 'Register', kind: 'record', required: true },
+      { key: 'counted', label: 'Cash counted (minor units)', kind: 'number', required: true },
+    ],
+    output: ['register'], roles: ['owner', 'admin', 'member'], effects: ['record_update'],
+  },
+  {
+    id: 'register.close', version: 1, type: 'app', title: 'Close register',
+    description: 'Close the drawer, settle variance against expected cash.',
+    interfaceKey: 'form',
+    fields: [
+      { key: 'register', label: 'Register', kind: 'record', required: true },
+      { key: 'counted', label: 'Cash counted (minor units)', kind: 'number' },
+    ],
+    output: ['register'], roles: ['owner', 'admin', 'member'], effects: ['money_commit', 'ledger_post'],
+  },
 ] as const satisfies readonly ActionDefinition[];
 
 export const commerceActionIds = new Set<string>(commerceActions.map((action) => action.id));

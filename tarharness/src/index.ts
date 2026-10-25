@@ -8,9 +8,6 @@ import { executeGateway, type GatewayRequest } from './gateway/actions.ts';
 import { HarnessError, badRequest, forbidden, notFound, unavailable } from './errors.ts';
 import type { AccessContext, RecordItem } from './types.ts';
 import { actionCatalog, findAction, interfaceCatalog } from './registry/catalog.ts';
-import { moduleForAction, readCapabilities, readWorkspaceTools } from './registry/tools.ts';
-import { readPos } from './pos/store.ts';
-import { readProductContent } from './pos/content.ts';
 import { serveSitePreview } from './site/preview.ts';
 import { placeOrder, resolvePublicSite } from './site/checkout.ts';
 import { readDocument } from './site/adapt.ts';
@@ -19,7 +16,7 @@ import { defaultBlueprint } from './site/blueprint.ts';
 import { exportDesign } from './site/design.ts';
 import { compileDocument } from './site/compile.ts';
 import { siteRegenerate } from './site/store.ts';
-import { canExecute, canReadRecord, canRunFlowStep, isCook, managesMembers } from './access.ts';
+import { canExecute, canReadRecord, canRunFlowStep, managesMembers } from './access.ts';
 import { inviteMember, listMembers, updateMember } from './team.ts';
 import { searchContacts } from './contacts/search.ts';
 import { acceptFlowRequest, sweepFlowDispatches } from './flows/dispatch.ts';
@@ -536,19 +533,6 @@ async function handle(request: Request, env: RuntimeEnv, ctx: ExecutionContext):
     return response(result, 201);
   }
   return withWorkspace(env, current, async (client) => {
-    if (request.method === 'GET' && nested === 'tools') return response(await readWorkspaceTools(client, current));
-    const productContentMatch = /^pos\/products\/([^/]+)\/content$/.exec(nested);
-    if (request.method === 'GET' && productContentMatch) {
-      if (isCook(current.member)) throw forbidden();
-      if (current.member.role === 'guest') throw forbidden();
-      return response({ content: await readProductContent(client, env.PRODUCT_CONTENT, current, decodeURIComponent(productContentMatch[1])) });
-    }
-    if (request.method === 'GET' && /^pos\/(overview|products|orders|customers)$/.test(nested)) {
-      const offset = Number(url.searchParams.get('offset') || 0);
-      if (!Number.isSafeInteger(offset) || offset < 0) throw badRequest('Invalid page.');
-      if (current.member.role === 'guest') throw forbidden();
-      return response(await readPos(client, current, nested.slice(4), url.searchParams.get('q') || '', offset));
-    }
     if (request.method === 'DELETE' && nested === 'site') {
       if (current.member.role === 'guest') throw forbidden();
       await client.batch([
@@ -687,7 +671,7 @@ async function handle(request: Request, env: RuntimeEnv, ctx: ExecutionContext):
     }
     const consentMatch = /^records\/([A-Za-z0-9_-]+)\/consents$/.exec(nested);
     if (request.method === 'GET' && consentMatch) {
-      if (current.member.role === 'guest' || isCook(current.member)) throw forbidden();
+      if (current.member.role === 'guest') throw forbidden();
       const id = consentMatch[1];
       const found = await Effect.runPromise(query<Record<string, unknown>>(client, { sql: "SELECT * FROM records WHERE id=? AND type IN ('person','organization') AND archived IS NULL", args: [id] }));
       if (!found[0]) throw notFound('Contact not found.');
@@ -698,12 +682,7 @@ async function handle(request: Request, env: RuntimeEnv, ctx: ExecutionContext):
     if (request.method === 'GET' && nested === 'flows') {
       const definitions = await Effect.runPromise(query<Record<string, unknown>>(client, { sql: "SELECT id,name,version,state,data FROM definitions WHERE kind='flow' AND state='published' ORDER BY name COLLATE NOCASE" }));
       const runs = await Effect.runPromise(query<Record<string, unknown>>(client, { sql: "SELECT * FROM runs WHERE state IN ('ready','blocked') ORDER BY updated_at DESC LIMIT 100" }));
-      const enabled = (await readCapabilities(client)).enabled;
-      const allBooks = definitions.map((item) => ({ id: String(item.id), name: String(item.name), version: Number(item.version), data: object(JSON.parse(String(item.data))) }))
-        .filter((book) => {
-          const actions = Array.isArray(book.data.actions) ? book.data.actions.map(object) : [];
-          return actions.every((action) => { const module = moduleForAction(String(action.id || '')); return module === null || enabled[module]; });
-        });
+      const allBooks = definitions.map((item) => ({ id: String(item.id), name: String(item.name), version: Number(item.version), data: object(JSON.parse(String(item.data))) }));
       const startable = allBooks.filter((book) => {
         const actions = Array.isArray(book.data.actions) ? book.data.actions.map(object) : [];
         return Boolean(actions[0] && canRunFlowStep(current.member, actions[0], current.identity.id));

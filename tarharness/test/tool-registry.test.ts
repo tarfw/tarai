@@ -40,8 +40,9 @@ describe('tool registry', () => {
         owners.set(action, tool.id);
       }
     }
-    expect(toolForAction('pos.checkout')).toBe('pos');
+    expect(toolForAction('sale.write')).toBe('pos');
     expect(toolForAction('catalog.item.save')).toBe('catalog');
+    expect(toolForAction('register.count')).toBe('register');
     expect(toolForAction('invoice.issue')).toBe('invoice');
     expect(toolForAction('nope.nope')).toBeNull();
   });

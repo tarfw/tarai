@@ -2,7 +2,6 @@ import type { Client, Transaction } from '@libsql/client/web';
 import { badRequest, conflict, notFound } from '../errors.ts';
 import { eventStatement, findReplay } from '../gateway/commit.ts';
 import type { AccessContext } from '../types.ts';
-import { detectProductVariants } from './variants.ts';
 
 type Data = Record<string, unknown>;
 type Row = { id: string; type: string; title: string; state: string; data: Data; version: number };
@@ -95,6 +94,17 @@ async function posting(db: Transaction, reference: string, lines: Data[], actor:
   const credit = lines.reduce((sum, line) => sum + Number(line.credit || 0), 0);
   if (!Number.isSafeInteger(debit) || debit !== credit) throw new Error('Unbalanced posting.');
   return insert(db, 'posting', `Posting ${reference}`, 'posted', { reference, lines, debit, credit }, actor, at);
+}
+
+
+/** Cash the register should hold: opening float + cash in - cash out since it opened. */
+async function expectedRegisterCash(db: Pick<Transaction, 'execute'>, register: Row, at: number): Promise<number> {
+  const opened = Number(register.data.opened || 0);
+  const [ins, outs] = await Promise.all([
+    db.execute({ sql: "SELECT COALESCE(SUM(json_extract(data,'$.amount')),0) FROM records WHERE type='payment' AND json_extract(data,'$.method')='cash' AND json_extract(data,'$.invoice') IS NOT NULL AND created>=? AND archived IS NULL", args: [opened] }),
+    db.execute({ sql: "SELECT COALESCE(SUM(json_extract(data,'$.amount')),0) FROM records WHERE ((type='refund' AND json_extract(data,'$.method')='cash') OR (type='expense' AND state='recorded')) AND created>=? AND archived IS NULL", args: [opened] }),
+  ]);
+  return Number(register.data.opening || 0) + Number(ins.rows[0][0]) - Number(outs.rows[0][0]);
 }
 
 export async function executeCommerce(client: Client, context: AccessContext, action: string, input: Data, key: string, hash: string, typesafeKey?: string): Promise<Data> {
@@ -214,51 +224,12 @@ export async function executeCommerce(client: Client, context: AccessContext, ac
         }
       }
 
-      // 3. Sync atomically with pos.product so counter POS immediately indexes it
-      if (price !== undefined || stockQty !== undefined || category || photoUrl) {
-        const posPrice = price !== undefined ? price : 0;
-        const posMrp = mrp !== undefined ? mrp : posPrice;
-        const posStock = stockQty !== undefined ? stockQty : 0;
-        const posCategory = category || 'General';
-        const existingPos = await db.execute({
-          sql: "SELECT id, version FROM records WHERE type='pos.product' AND (json_extract(data,'$.item')=? OR json_extract(data,'$.sku')=?) AND archived IS NULL LIMIT 1",
-          args: [savedItem.id, sku],
-        });
-        const posData = {
-          item: savedItem.id,
-          title: name,
-          price: posPrice,
-          mrp: posMrp,
-          stock: posStock,
-          category: posCategory,
-          sku,
-          barcode: sku,
-          imageUrl: photoUrl || '',
-          tax,
-          unit,
-        };
-        if (existingPos.rows[0]) {
-          await db.execute({
-            sql: "UPDATE records SET title=?, data=?, version=version+1, updated=? WHERE id=?",
-            args: [name, JSON.stringify(posData), at, String(existingPos.rows[0].id)],
-          });
-        } else {
-          await insert(db, 'pos.product', name, 'active', posData, actor, at);
-        }
-      }
-
       result = {
         item: savedItem,
         ...(createdVariants.length ? { variants: createdVariants } : {}),
         ...(createdPrices.length ? { prices: createdPrices } : {}),
         ...(createdStocks.length ? { stocks: createdStocks } : {}),
       };
-    } else if (action === 'catalog.item.detect') {
-      const product = text(input.product);
-      const rawInput = text(input.input);
-      const trade = text(input.trade) || 'retail';
-      const detected = await detectProductVariants(typesafeKey, { product, input: rawInput, trade });
-      result = detected as unknown as Data;
     } else if (action === 'catalog.variant.save') {
       const item = await get(db, text(input.item, 160), 'item'); const name = text(input.name); const sku = text(input.sku, 80); const id = text(input.id, 160);
       if (item.state !== 'active') throw conflict('The item is archived.');
@@ -456,400 +427,69 @@ export async function executeCommerce(client: Client, context: AccessContext, ac
       if (updated.rowsAffected !== 1) throw conflict('Expense changed.');
       const ledger = await posting(db, `rev_${expense.id}`, [{ account: 'cash', debit: amount }, { account: 'expense', credit: amount }], actor, at);
       result = { expense: { id: expense.id, state: 'reversed', version: expense.version + 1 }, posting: ledger };
-    } else if (action === 'bank.import') {
-      const account = text(input.account, 80); if (!account) throw badRequest('Bank account is required.');
-      const format = text(input.format, 20) || 'json';
-      let statementLines: unknown[] = [];
-      if (typeof input.statement === 'string') {
-        try { statementLines = JSON.parse(input.statement); }
-        catch { statementLines = input.statement.split('\n').filter((l) => l.trim()).map((l) => ({ line: l.trim() })); }
-      } else if (Array.isArray(input.statement)) statementLines = input.statement;
-      const count = Array.isArray(statementLines) ? statementLines.length : 0;
-      const statement = await insert(db, 'statement', `Statement ${account}`, 'imported', {
-        account, format, lines: statementLines, count, imported: at,
-      }, actor, at);
-      result = { statement, count };
-    } else if (action === 'bank.reconcile') {
-      const account = text(input.account, 80); const period = text(input.period, 40);
-      const balance = integer(input.balance, 'Closing balance');
-      if (!account || !period) throw badRequest('Account and reconciliation period are required.');
-      const reconciliation = await insert(db, 'reconciliation', `Reconciliation ${account} ${period}`, 'reconciled', {
-        account, period, balance, difference: 0, reconciled: at,
-      }, actor, at);
-      result = { reconciliation, difference: 0 };
-    } else if (action === 'period.close') {
-      const period = text(input.period, 40); if (!period) throw badRequest('Period is required.');
-      const note = text(input.note, 500);
-      const existing = await db.execute({ sql: "SELECT * FROM records WHERE type='period' AND json_extract(data,'$.period')=? AND archived IS NULL", args: [period] });
-      let rec: Row;
-      if (existing.rows[0]) {
-        const current = decode(existing.rows[0]);
-        if (current.state === 'closed') throw conflict('This accounting period is already closed.');
-        rec = await revise(db, current, `Period ${period}`, 'closed', { ...current.data, period, note: note || null, closed: at }, at, current.version);
-      } else {
-        rec = await insert(db, 'period', `Period ${period}`, 'closed', { period, note: note || null, closed: at }, actor, at);
+    } else if (action === 'sale.write') {
+      // The counter sale: one tap writes order + invoice + payment + stock +
+      // posting in one commit. Invoice is the sale in gst mode; stock is
+      // consumed, never reserved, because the goods just left the counter.
+      const requested = lines(input.lines); const method = text(input.method, 20).toLowerCase() || 'cash';
+      if (!['cash', 'upi', 'card'].includes(method)) throw badRequest('Payment method must be cash, upi or card.');
+      const reference = text(input.reference, 160);
+      if (method !== 'cash' && !reference) throw badRequest('A payment reference is required for a noncash method.');
+      const tendered = input.tendered === undefined || input.tendered === '' ? null : integer(Number(input.tendered), 'Tendered cash');
+      const place = location(input.location); const channel = text(input.channel, 40) || 'counter';
+      const priced: Data[] = []; let total = 0; let subtotal = 0; let taxes = 0; let code = '';
+      for (const line of requested) {
+        const variant = await get(db, line.variant, 'variant');
+        if (variant.state !== 'active') throw conflict('The variant is archived.');
+        const item = await get(db, String(variant.data.item), 'item');
+        if (item.state !== 'active') throw conflict('The item is archived.');
+        const priceRows = await db.execute({ sql: "SELECT * FROM records WHERE type='price' AND state='active' AND json_extract(data,'$.variant')=? AND json_extract(data,'$.channel') IN ('default',?) AND json_extract(data,'$.starts')<=? AND (json_extract(data,'$.ends') IS NULL OR json_extract(data,'$.ends')>?) AND archived IS NULL ORDER BY json_extract(data,'$.starts') DESC,updated DESC LIMIT 1", args: [variant.id, channel, at, at] });
+        if (!priceRows.rows[0]) throw conflict(`No active price exists for ${variant.title}.`);
+        const price = decode(priceRows.rows[0]); const current = await stock(db, variant.id, place, at, actor);
+        const onhand = Number(current.data.onhand); const reserved = Number(current.data.reserved);
+        if (onhand - reserved < line.quantity) throw conflict(`${variant.title} has insufficient available stock.`);
+        await setStock(db, current, onhand - line.quantity, reserved, at);
+        await insert(db, 'movement', 'Counter sale', 'posted', { variant: variant.id, location: place, quantity: -line.quantity, balance: onhand - line.quantity, channel }, actor, at);
+        const amount = Number(price.data.amount); const lineCurrency = String(price.data.currency);
+        if (code && code !== lineCurrency) throw conflict('A sale cannot mix currencies.');
+        code = lineCurrency;
+        const gross = money(amount * line.quantity, 'Sale line'); const tax = money(Math.round(gross * Number(item.data.tax || 0) / 10000), 'Sale tax');
+        subtotal = money(subtotal + gross, 'Sale subtotal'); taxes = money(taxes + tax, 'Sale tax'); total = money(total + gross + tax, 'Sale total');
+        priced.push({ variant: variant.id, item: item.id, title: variant.title, quantity: line.quantity, price: amount, tax, total: gross + tax, pricing: price.id });
       }
-      result = { period: rec, closed: true };
-    } else if (action === 'period.reopen') {
-      const period = text(input.period, 40); if (!period) throw badRequest('Period is required.');
-      const reason = text(input.reason, 500); if (!reason) throw badRequest('Reopening reason is required.');
-      const existing = await db.execute({ sql: "SELECT * FROM records WHERE type='period' AND json_extract(data,'$.period')=? AND archived IS NULL", args: [period] });
-      if (!existing.rows[0]) throw notFound('Accounting period not found.');
-      const current = decode(existing.rows[0]);
-      if (current.state !== 'closed') throw conflict('This accounting period is not closed.');
-      const rec = await revise(db, current, `Period ${period}`, 'open', { ...current.data, reason, reopened: at }, at, current.version);
-      result = { period: rec, reopened: true };
-    } else if (action === 'stock.transfer') {
-      const variant = await get(db, text(input.variant, 160), 'variant');
-      if (variant.state !== 'active') throw conflict('The variant is archived.');
-      const quantity = integer(input.quantity, 'Transfer quantity', 1);
-      const source = location(input.source); const target = location(input.target);
-      if (source === target) throw badRequest('Source and target locations must differ.');
-      const reason = text(input.reason, 200) || 'Stock transfer';
-      const srcStock = await stock(db, variant.id, source, at, actor);
-      const srcOnhand = Number(srcStock.data.onhand);
-      const srcReserved = Number(srcStock.data.reserved);
-      if (srcOnhand - srcReserved < quantity) throw conflict('Insufficient stock at source location.');
-      await setStock(db, srcStock, srcOnhand - quantity, srcReserved, at);
-      const tgtStock = await stock(db, variant.id, target, at, actor);
-      const tgtOnhand = Number(tgtStock.data.onhand);
-      const tgtReserved = Number(tgtStock.data.reserved);
-      await setStock(db, tgtStock, tgtOnhand + quantity, tgtReserved, at);
-      const movement = await insert(db, 'movement', reason, 'posted', {
-        variant: variant.id, source, target, quantity, balance: srcOnhand - quantity, reason,
-      }, actor, at);
-      const transfer = await insert(db, 'transfer', `Transfer ${variant.title}`, 'completed', {
-        variant: variant.id, quantity, source, target, reason,
-      }, actor, at);
-      result = { movement, transfer };
-    } else if (action === 'batch.save') {
-      const variant = await get(db, text(input.variant, 160), 'variant');
-      if (variant.state !== 'active') throw conflict('The variant is archived.');
-      const batchNum = text(input.batch, 80); if (!batchNum) throw badRequest('Batch code is required.');
-      const quantity = integer(input.quantity, 'Batch quantity', 1);
-      const expiry = timestamp(input.expiry, 'Expiry timestamp');
-      const batch = await insert(db, 'batch', `Batch ${batchNum}`, 'active', {
-        variant: variant.id, batch: batchNum, quantity, available: quantity, expiry,
-      }, actor, at);
-      result = { batch };
-    } else if (action === 'batch.dispose') {
-      const batch = await get(db, text(input.batch, 160), 'batch');
-      if (batch.state !== 'active') throw conflict('Batch is not active.');
-      const quantity = integer(input.quantity, 'Disposal quantity', 1);
-      const reason = text(input.reason, 500); if (!reason) throw badRequest('Disposal reason is required.');
-      const available = Number(batch.data.available ?? batch.data.quantity ?? 0);
-      if (quantity > available) throw conflict('Disposal quantity exceeds batch availability.');
-      const nextAvailable = available - quantity;
-      const nextState = nextAvailable === 0 ? 'disposed' : 'active';
-      const updated = await db.execute({ sql: 'UPDATE records SET state=?,data=?,version=version+1,updated=? WHERE id=? AND version=?', args: [nextState, json({ ...batch.data, available: nextAvailable }), at, batch.id, batch.version] });
-      if (updated.rowsAffected !== 1) throw conflict('Batch changed.');
-      const place = 'main';
-      const currentStock = await stock(db, String(batch.data.variant), place, at, actor);
-      const onhand = Math.max(0, Number(currentStock.data.onhand) - quantity);
-      await setStock(db, currentStock, onhand, Math.min(Number(currentStock.data.reserved), onhand), at);
-      const movement = await insert(db, 'movement', reason, 'posted', {
-        variant: batch.data.variant, location: place, quantity: -quantity, balance: onhand, batch: batch.id, reason,
-      }, actor, at);
-      result = { batch: { id: batch.id, state: nextState, version: batch.version + 1 }, movement };
-    } else if (action === 'recipe.save') {
-      const name = text(input.name, 120); if (!name) throw badRequest('Recipe name is required.');
-      const variant = await get(db, text(input.variant, 160), 'variant');
-      const yieldVal = integer(input.yield ?? 1, 'Yield', 1);
-      const recipeIngredients = lines(input.ingredients);
-      const recipe = await insert(db, 'recipe', name, 'active', {
-        name, variant: variant.id, yield: yieldVal, ingredients: recipeIngredients,
-      }, actor, at);
-      result = { recipe };
-    } else if (action === 'production.start') {
-      const recipe = await get(db, text(input.recipe, 160), 'recipe');
-      if (recipe.state !== 'active') throw conflict('Recipe is archived.');
-      const quantity = integer(input.quantity, 'Planned quantity', 1);
-      const place = location(input.location);
-      const recipeYield = Number(recipe.data.yield || 1);
-      const ingredientsList = (Array.isArray(recipe.data.ingredients) ? recipe.data.ingredients : []).map(object);
-      for (const ing of ingredientsList) {
-        const needed = Math.ceil(Number(ing.quantity || 1) * quantity / recipeYield);
-        const st = await stock(db, String(ing.variant), place, at, actor);
-        const onhand = Number(st.data.onhand);
-        const reserved = Number(st.data.reserved);
-        if (onhand - reserved < needed) throw conflict(`Insufficient stock for ingredient ${ing.variant}.`);
-        await setStock(db, st, onhand - needed, reserved, at);
-      }
-      const movement = await insert(db, 'movement', `Production run for ${recipe.title}`, 'posted', {
-        recipe: recipe.id, location: place, quantity: -quantity, reason: 'Production consumption',
-      }, actor, at);
-      const production = await insert(db, 'production', `Production ${recipe.title}`, 'started', {
-        recipe: recipe.id, variant: recipe.data.variant, quantity, location: place, ingredients: ingredientsList, started: at,
-      }, actor, at);
-      result = { production, movement };
-    } else if (action === 'production.complete') {
-      const production = await get(db, text(input.production, 160), 'production');
-      if (production.state !== 'started') throw conflict('Production is not in started state.');
-      const completedYield = integer(input.yield, 'Completed yield', 1);
-      const waste = integer(input.waste ?? 0, 'Waste');
-      const place = String(production.data.location || 'main');
-      const variant = String(production.data.variant);
-      const st = await stock(db, variant, place, at, actor);
-      const onhand = Number(st.data.onhand) + completedYield;
-      await setStock(db, st, onhand, Number(st.data.reserved), at);
-      const movement = await insert(db, 'movement', `Production yield ${production.id}`, 'posted', {
-        production: production.id, variant, location: place, quantity: completedYield, balance: onhand, reason: 'Production yield',
-      }, actor, at);
-      const updated = await db.execute({ sql: "UPDATE records SET state='completed',data=?,version=version+1,updated=? WHERE id=? AND version=?", args: [json({ ...production.data, yield: completedYield, waste, completed: at }), at, production.id, production.version] });
-      if (updated.rowsAffected !== 1) throw conflict('Production record changed.');
-      result = { production: { id: production.id, state: 'completed', version: production.version + 1 }, movement };
-    } else if (action === 'booking.create') {
-      const service = text(input.service, 120); if (!service) throw badRequest('Service is required.');
-      const start = timestamp(input.start, 'Start timestamp');
-      const end = timestamp(input.end, 'End timestamp');
-      if (end <= start) throw badRequest('Booking end must be after start.');
-      const customer = text(input.customer, 160) || null;
-      const resource = text(input.resource, 100) || null;
-      const booking = await insert(db, 'booking', `Booking ${service}`, 'confirmed', {
-        customer, service, start, end, resource,
-      }, actor, at);
-      result = { booking };
-    } else if (action === 'booking.cancel') {
-      const booking = await get(db, text(input.booking, 160), 'booking');
-      if (booking.state === 'cancelled') throw conflict('Booking is already cancelled.');
-      const reason = text(input.reason, 500);
-      const updated = await db.execute({ sql: "UPDATE records SET state='cancelled',data=?,version=version+1,updated=? WHERE id=? AND version=?", args: [json({ ...booking.data, reason: reason || null, cancelled: at }), at, booking.id, booking.version] });
-      if (updated.rowsAffected !== 1) throw conflict('Booking changed.');
-      result = { booking: { id: booking.id, state: 'cancelled', version: booking.version + 1 } };
-    } else if (action === 'time.record') {
-      const member = text(input.member, 160); if (!member) throw badRequest('Member is required.');
-      const hours = integer(input.hours, 'Hours', 1);
-      const task = text(input.task, 160) || null;
-      const note = text(input.note, 500);
-      const time = await insert(db, 'time', `Time log ${member}`, 'recorded', {
-        member, hours, task, note: note || null, logged: at,
-      }, actor, at);
-      result = { time };
-    } else if (action === 'trip.start') {
-      const passenger = text(input.passenger, 160); const pickup = text(input.pickup, 200); const destination = text(input.destination, 200);
-      if (!passenger || !pickup || !destination) throw badRequest('Passenger, pickup, and destination are required.');
-      const driver = text(input.driver, 160) || actor;
-      const trip = await insert(db, 'trip', `Trip for ${passenger}`, 'started', {
-        passenger, pickup, destination, driver, started: at,
-      }, actor, at);
-      result = { trip };
-    } else if (action === 'trip.complete') {
-      const trip = await get(db, text(input.trip, 160), 'trip');
-      if (trip.state !== 'started') throw conflict('Trip is not in started state.');
-      const fare = integer(input.fare, 'Fare in minor units');
-      const distance = Number(input.distance ?? 0);
-      const duration = Number(input.duration ?? 0);
-      const updated = await db.execute({ sql: "UPDATE records SET state='completed',data=?,version=version+1,updated=? WHERE id=? AND version=?", args: [json({ ...trip.data, fare, distance, duration, completed: at }), at, trip.id, trip.version] });
-      if (updated.rowsAffected !== 1) throw conflict('Trip changed.');
-      const ledger = await posting(db, trip.id, [{ account: 'receivable', debit: fare }, { account: 'revenue', credit: fare }], actor, at);
-      result = { trip: { id: trip.id, state: 'completed', version: trip.version + 1 }, posting: ledger };
-    } else if (action === 'fare.set') {
-      const base = integer(input.base, 'Base fare');
-      const rate = integer(input.rate, 'Per-km rate');
-      const code = currency(input.currency || 'INR');
-      const tier = text(input.tier, 40) || 'standard';
-      const fare = await insert(db, 'fare', `Fare ${tier}`, 'active', {
-        base, rate, currency: code, tier,
-      }, actor, at);
-      result = { fare };
-    } else if (action === 'shift.assign') {
-      const member = text(input.member, 160); const role = text(input.role, 80);
-      if (!member || !role) throw badRequest('Member and role are required.');
-      const start = timestamp(input.start, 'Shift start'); const end = timestamp(input.end, 'Shift end');
-      if (end <= start) throw badRequest('Shift end must be after start.');
-      const place = location(input.location);
-      const shift = await insert(db, 'shift', `Shift for ${member}`, 'scheduled', {
-        member, role, start, end, location: place,
-      }, actor, at);
-      result = { shift };
-    } else if (action === 'attendance.record') {
-      const member = text(input.member, 160); const statusVal = text(input.status, 40);
-      if (!member || !statusVal) throw badRequest('Member and attendance status are required.');
-      const ts = input.timestamp ? timestamp(input.timestamp, 'Timestamp') : at;
-      const note = text(input.note, 500);
-      const attendance = await insert(db, 'attendance', `Attendance ${member}`, 'recorded', {
-        member, status: statusVal, timestamp: ts, note: note || null,
-      }, actor, at);
-      result = { attendance };
-    } else if (action === 'payroll.run') {
-      const period = text(input.period, 40); if (!period) throw badRequest('Pay period is required.');
-      const code = currency(input.currency || 'INR');
-      const note = text(input.note, 500);
-      const summary = { employees: 1, gross: 0, net: 0, deductions: 0 };
-      const payroll = await insert(db, 'payroll', `Payroll ${period}`, 'calculated', {
-        period, currency: code, note: note || null, summary,
-      }, actor, at);
-      result = { payroll, summary };
-    } else if (action === 'payroll.pay') {
-      const payroll = await get(db, text(input.payroll, 160), 'payroll');
-      if (payroll.state !== 'calculated') throw conflict('Payroll must be in calculated state.');
-      const method = text(input.method, 40) || 'bank';
-      const summary = object(payroll.data.summary);
-      const amount = Number(summary.gross || 0);
-      const updated = await db.execute({ sql: "UPDATE records SET state='paid',data=?,version=version+1,updated=? WHERE id=? AND version=?", args: [json({ ...payroll.data, method, paid: at }), at, payroll.id, payroll.version] });
-      if (updated.rowsAffected !== 1) throw conflict('Payroll changed.');
-      const ledger = await posting(db, payroll.id, [{ account: 'wages', debit: amount }, { account: method === 'cash' ? 'cash' : 'bank', credit: amount }], actor, at);
-      result = { payroll: { id: payroll.id, state: 'paid', version: payroll.version + 1 }, posting: ledger };
-    } else if (action === 'supplier.qualify') {
-      const supplierId = text(input.supplier, 160); await get(db, supplierId);
-      const tier = text(input.tier, 40) || 'approved';
-      const terms = text(input.terms, 40) || 'net30';
-      const note = text(input.note, 500);
-      const existing = await db.execute({ sql: "SELECT * FROM records WHERE type='supplier' AND json_extract(data,'$.supplier')=? AND archived IS NULL", args: [supplierId] });
-      let supplierRec: Row;
-      if (existing.rows[0]) {
-        const current = decode(existing.rows[0]);
-        supplierRec = await revise(db, current, `Supplier ${supplierId}`, 'qualified', { ...current.data, supplier: supplierId, tier, terms, note: note || null }, at, current.version);
-      } else {
-        supplierRec = await insert(db, 'supplier', `Supplier ${supplierId}`, 'qualified', { supplier: supplierId, tier, terms, note: note || null }, actor, at);
-      }
-      result = { supplier: supplierRec };
-    } else if (action === 'quote.request') {
-      const supplierId = text(input.supplier, 160); await get(db, supplierId);
-      const requestedLines = lines(input.lines);
-      const deadline = input.deadline ? timestamp(input.deadline, 'Deadline') : null;
-      const quote = await insert(db, 'quote', `Quote request ${supplierId}`, 'requested', {
-        supplier: supplierId, lines: requestedLines, deadline, status: 'requested',
-      }, actor, at);
-      result = { quote };
-    } else if (action === 'quote.record') {
-      const supplierId = text(input.supplier, 160); await get(db, supplierId);
-      const quotedLines = lines(input.lines, true);
-      const code = currency(input.currency || 'INR');
-      const validity = input.validity ? timestamp(input.validity, 'Validity') : null;
-      const quote = await insert(db, 'quote', `Quote ${supplierId}`, 'received', {
-        supplier: supplierId, lines: quotedLines, currency: code, validity, status: 'received',
-      }, actor, at);
-      result = { quote };
-    } else if (action === 'purchase.submit') {
-      const purchase = await get(db, text(input.purchase, 160), 'purchase');
-      if (!['draft', 'ordered'].includes(purchase.state)) throw conflict('Purchase is not in a submittable state.');
-      const note = text(input.note, 500);
-      const updated = await db.execute({ sql: "UPDATE records SET state='submitted',data=?,version=version+1,updated=? WHERE id=? AND version=?", args: [json({ ...purchase.data, note: note || null, submitted: at }), at, purchase.id, purchase.version] });
-      if (updated.rowsAffected !== 1) throw conflict('Purchase order changed.');
-      result = { purchase: { id: purchase.id, state: 'submitted', version: purchase.version + 1 } };
-    } else if (action === 'purchase.approve') {
-      const purchase = await get(db, text(input.purchase, 160), 'purchase');
-      if (purchase.state !== 'submitted') throw conflict('Purchase is not waiting for approval.');
-      const comment = text(input.comment, 500);
-      const updated = await db.execute({ sql: "UPDATE records SET state='ordered',data=?,version=version+1,updated=? WHERE id=? AND version=?", args: [json({ ...purchase.data, comment: comment || null, approved: at }), at, purchase.id, purchase.version] });
-      if (updated.rowsAffected !== 1) throw conflict('Purchase order changed.');
-      result = { purchase: { id: purchase.id, state: 'ordered', version: purchase.version + 1 } };
-    } else if (action === 'purchase.reject') {
-      const purchase = await get(db, text(input.purchase, 160), 'purchase');
-      if (purchase.state !== 'submitted') throw conflict('Purchase is not waiting for approval.');
-      const reason = text(input.reason, 500); if (!reason) throw badRequest('Rejection reason is required.');
-      const updated = await db.execute({ sql: "UPDATE records SET state='rejected',data=?,version=version+1,updated=? WHERE id=? AND version=?", args: [json({ ...purchase.data, reason, rejected: at }), at, purchase.id, purchase.version] });
-      if (updated.rowsAffected !== 1) throw conflict('Purchase order changed.');
-      result = { purchase: { id: purchase.id, state: 'rejected', version: purchase.version + 1 } };
-    } else if (action === 'warehouse.pick') {
-      const order = await get(db, text(input.order, 160), 'order');
-      const pickLines = lines(input.lines);
-      const warehouse = text(input.warehouse, 80) || 'main';
-      const pick = await insert(db, 'pick', `Pick for order ${order.id}`, 'picked', {
-        order: order.id, lines: pickLines, warehouse, picked: at,
-      }, actor, at);
-      const updated = await db.execute({ sql: 'UPDATE records SET data=?,version=version+1,updated=? WHERE id=? AND version=?', args: [json({ ...order.data, pick: pick.id }), at, order.id, order.version] });
-      if (updated.rowsAffected !== 1) throw conflict('Order changed.');
-      result = { pick, order: { id: order.id, state: order.state, version: order.version + 1 } };
-    } else if (action === 'warehouse.pack') {
-      const order = await get(db, text(input.order, 160), 'order');
-      let packDetails: unknown = input.packages;
-      if (typeof packDetails === 'string') {
-        try { packDetails = JSON.parse(packDetails); } catch { packDetails = [{ description: packDetails }]; }
-      }
-      const weight = integer(input.weight ?? 0, 'Weight');
-      const pack = await insert(db, 'pack', `Pack for order ${order.id}`, 'packed', {
-        order: order.id, packages: packDetails, weight, packed: at,
-      }, actor, at);
-      const updated = await db.execute({ sql: 'UPDATE records SET data=?,version=version+1,updated=? WHERE id=? AND version=?', args: [json({ ...order.data, pack: pack.id }), at, order.id, order.version] });
-      if (updated.rowsAffected !== 1) throw conflict('Order changed.');
-      result = { pack, order: { id: order.id, state: order.state, version: order.version + 1 } };
-    } else if (action === 'shipment.dispatch') {
-      const order = await get(db, text(input.order, 160), 'order');
-      const carrier = text(input.carrier, 80); const tracking = text(input.tracking, 160);
-      if (!carrier || !tracking) throw badRequest('Carrier and tracking number are required.');
-      const shipment = await insert(db, 'shipment', `Shipment ${tracking}`, 'dispatched', {
-        order: order.id, carrier, tracking, status: 'dispatched', dispatched: at,
-      }, actor, at);
-      const updated = await db.execute({ sql: "UPDATE records SET state='dispatched',data=?,version=version+1,updated=? WHERE id=? AND version=?", args: [json({ ...order.data, shipment: tracking }), at, order.id, order.version] });
-      if (updated.rowsAffected !== 1) throw conflict('Order changed.');
-      result = { shipment, order: { id: order.id, state: 'dispatched', version: order.version + 1 } };
-    } else if (action === 'shipment.track') {
-      const shipment = await get(db, text(input.shipment, 160), 'shipment');
-      const statusVal = text(input.status, 40); if (!statusVal) throw badRequest('Tracking status is required.');
-      const place = text(input.location, 100) || null;
-      const note = text(input.note, 200) || null;
-      const updated = await db.execute({ sql: 'UPDATE records SET data=?,version=version+1,updated=? WHERE id=? AND version=?', args: [json({ ...shipment.data, tracking: statusVal, location: place, note, tracked: at }), at, shipment.id, shipment.version] });
-      if (updated.rowsAffected !== 1) throw conflict('Shipment changed.');
-      result = { shipment: { id: shipment.id, state: shipment.state, version: shipment.version + 1 } };
-    } else if (action === 'shipment.deliver') {
-      const shipment = await get(db, text(input.shipment, 160), 'shipment');
-      if (shipment.state === 'delivered') throw conflict('Shipment is already delivered.');
-      const signature = text(input.signature, 100) || null;
-      const updated = await db.execute({ sql: "UPDATE records SET state='delivered',data=?,version=version+1,updated=? WHERE id=? AND version=?", args: [json({ ...shipment.data, status: 'delivered', signature, delivered: at }), at, shipment.id, shipment.version] });
-      if (updated.rowsAffected !== 1) throw conflict('Shipment changed.');
-      let orderRes: { id: string; state: string; version: number } = { id: String(shipment.data.order || ''), state: 'delivered', version: 1 };
-      if (shipment.data.order) {
-        try {
-          const order = await get(db, String(shipment.data.order), 'order');
-          const orderUp = await db.execute({ sql: "UPDATE records SET state='delivered',data=?,version=version+1,updated=? WHERE id=? AND version=?", args: [json({ ...order.data, delivered: at }), at, order.id, order.version] });
-          if (orderUp.rowsAffected === 1) orderRes = { id: order.id, state: 'delivered', version: order.version + 1 };
-        } catch { /* order record update optional */ }
-      }
-      result = { shipment: { id: shipment.id, state: 'delivered', version: shipment.version + 1 }, order: orderRes };
-    } else if (action === 'purchase.return') {
-      const purchase = await get(db, text(input.purchase, 160), 'purchase');
-      const returnLines = lines(input.lines);
-      const reason = text(input.reason, 500); if (!reason) throw badRequest('Return reason is required.');
-      const place = String(purchase.data.location || 'main');
-      for (const line of returnLines) {
-        const current = await stock(db, line.variant, place, at, actor);
-        const onhand = Number(current.data.onhand) - line.quantity;
-        if (onhand < 0) throw conflict(`Insufficient stock to return variant ${line.variant}.`);
-        await setStock(db, current, onhand, Math.min(Number(current.data.reserved), onhand), at);
-        await insert(db, 'movement', reason, 'posted', {
-          variant: line.variant, location: place, quantity: -line.quantity, balance: onhand, purchase: purchase.id, reason,
-        }, actor, at);
-      }
-      const ret = await insert(db, 'return', `Return ${purchase.id}`, 'returned', {
-        purchase: purchase.id, lines: returnLines, reason, returned: at,
-      }, actor, at);
-      result = { return: ret, purchase: { id: purchase.id, state: purchase.state, version: purchase.version }, movement: { variant: returnLines[0].variant, quantity: -returnLines[0].quantity } };
-    } else if (action === 'quality.inspect') {
-      const target = text(input.target, 160); const resultVal = text(input.result, 80);
-      if (!target || !resultVal) throw badRequest('Target and inspection result are required.');
-      let metrics: unknown = input.metrics;
-      if (typeof metrics === 'string') { try { metrics = JSON.parse(metrics); } catch { metrics = { note: metrics }; } }
-      const notes = text(input.notes, 500);
-      const inspection = await insert(db, 'inspection', `Inspection ${target}`, 'inspected', {
-        target, result: resultVal, metrics: metrics || null, notes: notes || null, inspected: at,
-      }, actor, at);
-      result = { inspection };
-    } else if (action === 'quality.release') {
-      const batch = await get(db, text(input.batch, 160), 'batch');
-      const disposition = text(input.disposition, 40) || 'released';
-      const updated = await db.execute({ sql: 'UPDATE records SET data=?,version=version+1,updated=? WHERE id=? AND version=?', args: [json({ ...batch.data, quality: disposition, released: at }), at, batch.id, batch.version] });
-      if (updated.rowsAffected !== 1) throw conflict('Batch changed.');
-      const quality = await insert(db, 'quality', `Quality release ${batch.id}`, 'released', {
-        batch: batch.id, disposition, released: at,
-      }, actor, at);
-      result = { batch: { id: batch.id, state: batch.state, version: batch.version + 1 }, quality };
-    } else if (action === 'forecast.generate') {
-      const horizon = integer(input.horizon ?? 30, 'Horizon', 1);
-      const channel = text(input.channel, 40) || 'default';
-      const notes = text(input.notes, 500);
-      const forecast = await insert(db, 'forecast', `Forecast ${horizon}d`, 'generated', {
-        horizon, channel, notes: notes || null, generated: at,
-      }, actor, at);
-      result = { forecast };
-    } else if (action === 'replenishment.plan') {
-      const place = location(input.location);
-      const horizon = integer(input.horizon ?? 14, 'Horizon', 1);
-      const plan = await insert(db, 'plan', `Replenishment plan ${place}`, 'active', {
-        location: place, horizon, planned: at,
-      }, actor, at);
-      result = { plan, recommendations: [] };
+      if (tendered !== null && method === 'cash' && tendered < total) throw badRequest('Tendered cash is less than the total.');
+      const customer = text(input.customer, 160) || null; if (customer) await get(db, customer);
+      const order = await insert(db, 'order', `Sale ${new Date(at).toISOString()}`, 'fulfilled', { customer, lines: priced, subtotal, tax: taxes, total, currency: code, channel, location: place }, actor, at);
+      const invoice = await insert(db, 'invoice', `Invoice ${order.id}`, 'paid', { order: order.id, customer, lines: priced, subtotal, tax: taxes, total, net: total, paid: total, refunded: 0, currency: code, due: null }, actor, at);
+      const payment = await insert(db, 'payment', `Payment ${invoice.id}`, 'recorded', { invoice: invoice.id, amount: total, method, provider: method, reference: reference || null, currency: code, sale: order.id }, actor, at);
+      const ledger = await posting(db, payment.id, [{ account: method === 'cash' ? 'cash' : 'bank', debit: total }, { account: 'revenue', credit: subtotal }, { account: 'tax', credit: taxes }], actor, at);
+      result = { sale: { orderId: order.id, invoiceId: invoice.id, paymentId: payment.id, subtotal, tax: taxes, total, currency: code, change: tendered !== null && method === 'cash' ? tendered - total : 0 }, order, invoice, payment, posting: ledger };
+    } else if (action === 'register.open') {
+      const opening = integer(Number(input.opening ?? 0), 'Opening float');
+      const open = await db.execute({ sql: "SELECT id FROM records WHERE type='register' AND state='open' AND archived IS NULL LIMIT 1" });
+      if (open.rows.length) throw conflict('A register is already open. Count and close it first.');
+      const register = await insert(db, 'register', `Register ${new Date(at).toISOString()}`, 'open', { opening, opened: at, counted: null, variance: null, currency: 'INR' }, actor, at);
+      result = { register };
+    } else if (action === 'register.count') {
+      const register = await get(db, text(input.register, 160), 'register');
+      if (register.state !== 'open') throw conflict('The register is not open.');
+      const counted = integer(Number(input.counted), 'Cash counted');
+      const expected = await expectedRegisterCash(db, register, at);
+      const variance = counted - expected;
+      const updated = await db.execute({ sql: 'UPDATE records SET data=?,version=version+1,updated=? WHERE id=? AND version=?', args: [json({ ...register.data, counted, expected, variance }), at, register.id, register.version] });
+      if (updated.rowsAffected !== 1) throw conflict('Register changed. Reload and try again.');
+      result = { register: { id: register.id, state: 'open', counted, expected, variance, version: register.version + 1 } };
+    } else if (action === 'register.close') {
+      const register = await get(db, text(input.register, 160), 'register');
+      if (register.state !== 'open') throw conflict('The register is not open.');
+      const counted = input.counted === undefined || input.counted === '' ? Number(register.data.counted ?? 0) : integer(Number(input.counted), 'Cash counted');
+      const expected = await expectedRegisterCash(db, register, at);
+      const variance = counted - expected;
+      const updated = await db.execute({ sql: 'UPDATE records SET state=?,data=?,version=version+1,updated=? WHERE id=? AND version=?', args: ['closed', json({ ...register.data, counted, expected, variance, closed: at }), at, register.id, register.version] });
+      if (updated.rowsAffected !== 1) throw conflict('Register changed. Reload and try again.');
+      let ledger = null;
+      if (variance !== 0) ledger = await posting(db, `reg_${register.id}`, [{ account: 'cash', debit: Math.max(variance, 0) }, { account: 'overshort', debit: Math.max(-variance, 0) }, { account: 'cash', credit: Math.max(-variance, 0) }, { account: 'overshort', credit: Math.max(variance, 0) }].filter((line) => Number(line.debit || 0) + Number(line.credit || 0) > 0), actor, at);
+      result = { register: { id: register.id, state: 'closed', counted, expected, variance, version: register.version + 1 }, ...(ledger ? { posting: ledger } : {}) };
     } else throw badRequest('Unsupported commerce action.');
 
     await db.execute(eventStatement({ action, actor, key, hash, result }));

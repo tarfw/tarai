@@ -1,6 +1,6 @@
 import type { Client } from '@libsql/client/web';
 import { badRequest, forbidden } from '../errors.ts';
-import { canReadRecord, isCook } from '../access.ts';
+import { canReadRecord } from '../access.ts';
 import type { Member, RecordItem } from '../types.ts';
 
 export interface ContactPage {
@@ -9,7 +9,7 @@ export interface ContactPage {
 }
 
 export async function searchContacts(client: Client, member: Member, search: string, offset: number): Promise<ContactPage> {
-  if (member.role === 'guest' || isCook(member)) throw forbidden();
+  if (member.role === 'guest') throw forbidden();
   if (!Number.isSafeInteger(offset) || offset < 0 || offset > 10000) throw badRequest('Invalid contact page.');
   const term = search.trim();
   if (term.length > 120) throw badRequest('Contact search is too long.');
