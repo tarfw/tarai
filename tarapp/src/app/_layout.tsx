@@ -13,7 +13,7 @@ function Navigation() {
   return <Stack screenOptions={{ headerShown: false, animation: 'fade', animationDuration: 0, contentStyle: { backgroundColor: Colors[resolvedScheme].background } }}>
     <Stack.Screen name="index" />
     <Stack.Screen name="auth" />
-    <Stack.Screen name="(home)" />
+    <Stack.Screen name="home" />
     <Stack.Screen name="settings" />
   </Stack>;
 }

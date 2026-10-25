@@ -9,8 +9,8 @@ export default function Index() {
   useEffect(() => {
     let active = true;
     void getValidIdToken()
-      .then(async (token) => { if (active) setTarget(token || await getCurrentUser() ? '/(home)/now' : '/auth'); })
-      .catch(async () => { if (active) setTarget(await getCurrentUser() ? '/(home)/now' : '/auth'); });
+      .then(async (token) => { if (active) setTarget(token || await getCurrentUser() ? '/home' : '/auth'); })
+      .catch(async () => { if (active) setTarget(await getCurrentUser() ? '/home' : '/auth'); });
     return () => { active = false; };
   }, []);
 

@@ -58,20 +58,11 @@
       "expo-asset",
       "expo-font",
       "expo-status-bar",
-      "expo-web-browser",
       [
         "expo-image-picker",
         {
           "photosPermission": "Allow TAR to access your photos to select product and brand images.",
           "cameraPermission": "Allow TAR to access your camera to capture product photos."
-        }
-      ],
-      [
-        "expo-camera",
-        {
-          "cameraPermission": "Allow TAR to access your camera to scan product barcodes and QR codes.",
-          "microphonePermission": false,
-          "recordAudioAndroid": false
         }
       ]
     ],
