@@ -26,6 +26,9 @@ export class TarError extends Error {
   constructor(readonly status: number, message: string, readonly body: Record<string, unknown> = {}) { super(message); }
 }
 
+/** The TAR session token, minted when needed. */
+export async function sessionToken(): Promise<string> { return ensureSession(); }
+
 async function ensureSession(): Promise<string> {
   const raw = await SecureStore.getItemAsync(SESSION_KEY);
   if (raw) {
@@ -64,6 +67,10 @@ function safeJson(text: string): Record<string, unknown> {
 }
 
 // --- reads ---
+
+export async function createWorkspace(name: string, words: string) {
+  return request('POST', '/v1/workspaces', { name, words });
+}
 
 export async function me(): Promise<{ user: { id: string; email: string; name: string | null }; workspaces: TarWorkspace[] }> {
   return request('GET', '/v1/me') as Promise<{ user: { id: string; email: string; name: string | null }; workspaces: TarWorkspace[] }>;
@@ -128,8 +135,13 @@ export async function importRows(ws: string, rows: { name: string; price?: unkno
   return request('POST', `/v1/workspaces/${ws}/import`, { rows });
 }
 
-export async function hire(ws: string, words: string) {
-  return request('POST', `/v1/workspaces/${ws}/hire`, { words });
+/** A photo becomes rows: the harness vision model reads it, Jev judges each row. */
+export async function importImage(ws: string, imageBase64: string) {
+  return request('POST', `/v1/workspaces/${ws}/import`, { image: imageBase64 }) as Promise<{ rows?: { name: string; price: string | null; doubt: boolean }[] }>;
+}
+
+export async function hire(ws: string, words: string): Promise<{ role: string; confidence: number; tools: string[]; model: string | null }> {
+  return request('POST', `/v1/workspaces/${ws}/hire`, { words }) as Promise<{ role: string; confidence: number; tools: string[]; model: string | null }>;
 }
 
 export async function actionCatalogs(ws: string) {

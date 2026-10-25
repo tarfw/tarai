@@ -14,6 +14,7 @@ import { ActionSheet, type FieldConfig } from '@/components/ActionSheet';
 import { confirmRequest, pendingCount, resolveConfirm, subscribe } from '@/lib/queue';
 import { actionCatalogs, setDeck, slice, type CardView, type InboxRow } from '@/lib/tar';
 import { saveSlice } from '@/lib/slicecache';
+import { Onboarding } from '@/components/Onboarding';
 
 const FALLBACK_FIELDS: Record<string, FieldConfig[]> = {
   'catalog.item.save': [{ key: 'name', label: 'Item name', kind: 'text', required: true }, { key: 'price', label: 'Price (paise)', kind: 'number' }, { key: 'stock', label: 'Initial stock', kind: 'number' }],
@@ -107,13 +108,7 @@ export default function Canvas() {
   const dealt = useMemo(() => new Set(cards.map((card) => card.tool)), [cards]);
   const roleLabel = current?.role ? current.role.charAt(0).toUpperCase() + current.role.slice(1) : '';
 
-  if (!current) {
-    return (
-      <View style={[styles.page, { backgroundColor: theme.background, alignItems: 'center', justifyContent: 'center', paddingTop: insets.top }]}>
-        <Text style={{ color: theme.textSecondary }}>No workspace yet. Ask TAR to create one.</Text>
-      </View>
-    );
-  }
+  if (!current) return <Onboarding />;
 
   return (
     <View style={[styles.page, { backgroundColor: theme.background }]}>

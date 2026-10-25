@@ -41,9 +41,9 @@ function errorResponse(error: unknown): Response {
   console.error(JSON.stringify({ event: 'tarharness.error', error: error instanceof Error ? error.message : String(error) }));
   return response({ error: 'Internal server error.' }, 500);
 }
-function parseJson(request: Request): Effect.Effect<Record<string, unknown>, HarnessError> {
+function parseJson(request: Request, maxBytes = 100_000): Effect.Effect<Record<string, unknown>, HarnessError> {
   const length = Number(request.headers.get('Content-Length') || '0');
-  if (length > 100_000) return Effect.fail(badRequest('Request is too large.'));
+  if (length > maxBytes) return Effect.fail(badRequest('Request is too large.'));
   return Effect.tryPromise({ try: async () => object(await request.json()), catch: () => badRequest('Request body must be JSON.') });
 }
 function tursoEnv(env: RuntimeEnv) {
