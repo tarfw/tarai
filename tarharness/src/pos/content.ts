@@ -40,7 +40,7 @@ export async function saveProductContent(client: Client, bucket: R2Bucket | unde
     const latest = await tx.execute({ sql: "SELECT version FROM records WHERE id=? AND type='pos.product' AND archived IS NULL", args: [productId] });
     if (Number(latest.rows[0]?.version) !== version) throw conflict('Product changed. Reload before saving content.');
     await tx.execute({ sql: 'UPDATE records SET data=?,version=version+1,updated=? WHERE id=? AND version=?', args: [JSON.stringify({ ...current, contentKey: key, contentBytes: result.contentBytes, contentSummary: summary }), at, productId, version] });
-    await tx.execute({ sql: `INSERT INTO events(id,kind,record_id,action_id,state,actor_id,input_hash,idempotency_key,data,created_at,updated_at) VALUES(?,'action',?,'pos.product.content.save','accepted',?,?,?,?,?,?)`, args: ['evt_' + crypto.randomUUID(), productId, context.identity.id, event.hash, event.key, JSON.stringify({ result }), at, at] });
+    await tx.execute({ sql: `INSERT INTO move(id,kind,record_id,action_id,state,actor_id,input_hash,idempotency_key,data,created_at,updated_at) VALUES(?,'action',?,'pos.product.content.save','accepted',?,?,?,?,?,?)`, args: ['evt_' + crypto.randomUUID(), productId, context.identity.id, event.hash, event.key, JSON.stringify({ result }), at, at] });
     await tx.commit();
   } catch (cause) { await tx.rollback().catch(() => undefined); throw cause; }
   finally { tx.close(); }

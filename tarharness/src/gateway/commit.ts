@@ -33,7 +33,7 @@ export interface EventInput {
 export function eventStatement(input: EventInput): InStatement {
   const at = stamp();
   return {
-    sql: `INSERT INTO events (id,kind,run_id,record_id,action_id,state,actor_id,input_hash,idempotency_key,data,created_at,updated_at)
+    sql: `INSERT INTO move (id,kind,run_id,record_id,action_id,state,actor_id,input_hash,idempotency_key,data,created_at,updated_at)
       VALUES (?,?,?,?,?,'accepted',?,?,?,?,?,?)`,
     args: [`evt_${crypto.randomUUID()}`, 'action', input.runId ?? null, input.recordId ?? null, input.action, input.actor, input.hash, input.key, json({ result: input.result }), at, at],
   };

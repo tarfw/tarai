@@ -33,7 +33,7 @@ export async function blockFlowRun(env: FlowEnv, workspace: string, runId: strin
     const at = Date.now();
     await client.batch([
       { sql: "UPDATE runs SET state='blocked',context=?,version=version+1,updated_at=? WHERE id=? AND version=? AND state='ready'", args: [JSON.stringify(context), at, runId, Number(row.version)] },
-      { sql: `INSERT INTO events(id,kind,run_id,record_id,action_id,state,actor_id,input_hash,idempotency_key,data,created_at,updated_at)
+      { sql: `INSERT INTO move(id,kind,run_id,record_id,action_id,state,actor_id,input_hash,idempotency_key,data,created_at,updated_at)
         SELECT ?, 'run', ?, NULL, NULL, 'blocked', NULL, ?, ?, ?, ?, ? WHERE changes()=1`,
         args: [`evt_${crypto.randomUUID()}`, runId, await fingerprint({ runId, reason }), `block:${runId}:${row.version}`, JSON.stringify({ reason }), at, at] },
     ], 'write');

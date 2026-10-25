@@ -47,11 +47,29 @@ export const WORKSPACE_SCHEMA = [
     version INTEGER NOT NULL, started_at INTEGER, finished_at INTEGER,
     created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, UNIQUE(flow_id, occurrence)
   )`,
-  `CREATE TABLE IF NOT EXISTS events (
+  `CREATE TABLE IF NOT EXISTS move (
     id TEXT PRIMARY KEY, kind TEXT NOT NULL, run_id TEXT, record_id TEXT, action_id TEXT,
     state TEXT NOT NULL, actor_id TEXT, input_hash TEXT NOT NULL, idempotency_key TEXT NOT NULL,
+    amount INTEGER, why TEXT, source TEXT,
     data TEXT NOT NULL CHECK(json_valid(data)), created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
     UNIQUE(idempotency_key)
+  )`,
+  // The event feed is a view over move: every change ever, append-only.
+  'DROP VIEW IF EXISTS events',
+  'CREATE VIEW events AS SELECT * FROM move',
+  `CREATE TABLE IF NOT EXISTS current (
+    kind TEXT NOT NULL, key TEXT NOT NULL, data TEXT NOT NULL CHECK(json_valid(data)),
+    PRIMARY KEY (kind, key)
+  )`,
+  `CREATE TABLE IF NOT EXISTS skill (
+    id TEXT PRIMARY KEY, shape TEXT NOT NULL, trigger TEXT NOT NULL,
+    steps TEXT NOT NULL CHECK(json_valid(steps)), score REAL NOT NULL DEFAULT 0,
+    confirmed INTEGER, created INTEGER NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS inbox (
+    id TEXT PRIMARY KEY, member TEXT NOT NULL, move TEXT, tool TEXT NOT NULL,
+    reach TEXT NOT NULL, due INTEGER, assigned TEXT, status TEXT NOT NULL,
+    data TEXT NOT NULL CHECK(json_valid(data)), created INTEGER NOT NULL
   )`,
   `CREATE TABLE IF NOT EXISTS links (
     id TEXT PRIMARY KEY, source TEXT NOT NULL, target TEXT NOT NULL, role TEXT NOT NULL,
@@ -95,9 +113,13 @@ export const WORKSPACE_SCHEMA = [
   'CREATE UNIQUE INDEX IF NOT EXISTS active ON links(source, target, role) WHERE until IS NULL',
   'CREATE INDEX IF NOT EXISTS recordtype ON records(type, state, updated DESC) WHERE archived IS NULL',
   'CREATE INDEX IF NOT EXISTS contacts ON records(type, title COLLATE NOCASE, id) WHERE archived IS NULL',
+  'CREATE INDEX IF NOT EXISTS movekind ON move(kind, created_at DESC)',
+  'CREATE INDEX IF NOT EXISTS moverecord ON move(record_id, created_at DESC)',
+  'CREATE INDEX IF NOT EXISTS inboxmember ON inbox(member, status, due)',
+  'CREATE INDEX IF NOT EXISTS skillshape ON skill(shape)',
   'CREATE INDEX IF NOT EXISTS consent ON consents(contact, created DESC)',
   "CREATE INDEX IF NOT EXISTS taskowner ON records(assignee, state, updated DESC) WHERE type='task' AND archived IS NULL",
-  'CREATE INDEX IF NOT EXISTS runevents ON events(run_id, created_at DESC)',
+  'CREATE INDEX IF NOT EXISTS runevents ON move(run_id, created_at DESC)',
   'CREATE INDEX IF NOT EXISTS effectstate ON effects(state, due, updated)',
   'CREATE INDEX IF NOT EXISTS assessmentkind ON assessments(kind, evidence, expires)',
   ...COMMERCE_INDEXES,

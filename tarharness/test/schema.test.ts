@@ -9,10 +9,19 @@ describe('workspace schema', () => {
       for (const sql of WORKSPACE_SCHEMA) await db.execute(sql);
       for (const sql of WORKSPACE_SCHEMA) await db.execute(sql);
       const tables = await db.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name");
-      expect(tables.rows.map((row) => row.name)).toEqual(expect.arrayContaining([
-        'approvals', 'assessments', 'consents', 'definitions', 'editions', 'effects', 'events', 'links', 'records', 'runs', 'steps', 'turns',
-      ]));
-      expect(tables.rows.map((row) => row.name)).not.toContain('patches');
+      const names = tables.rows.map((row) => String(row.name));
+      // The tarfw floor: record, move, current, skill, run, inbox (+ legacy
+      // tables still serving the un-migrated writers until Tile 3 drops them).
+      for (const floor of ['records', 'move', 'current', 'skill', 'inbox', 'runs']) {
+        expect(names).toContain(floor);
+      }
+      expect(names).not.toContain('events');
+      expect(names).not.toContain('patches');
+      // The event feed is a view over move, not a table.
+      const views = await db.execute("SELECT name FROM sqlite_master WHERE type='view'");
+      expect(views.rows.map((row) => String(row.name))).toContain('events');
+      const through = await db.execute('SELECT kind, actor_id, idempotency_key FROM events LIMIT 0');
+      expect(through.columns).toEqual(['kind', 'actor_id', 'idempotency_key']);
     } finally { db.close(); }
   });
 });

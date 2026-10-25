@@ -293,7 +293,7 @@ async function handle(request: Request, env: RuntimeEnv, ctx: ExecutionContext):
       try {
         await client.batch([
           { sql: 'DELETE FROM records' },
-          { sql: 'DELETE FROM events' },
+          { sql: 'DELETE FROM move' },
           { sql: 'DELETE FROM definitions' },
           { sql: 'DELETE FROM runs' },
         ], 'write');

@@ -479,7 +479,7 @@ async function runGenerate(
   if (existing) {
     const saved = await client.batch([
       { sql: 'UPDATE records SET title=?,data=?,version=?,updated=? WHERE id=? AND version=?', args: [title, JSON.stringify(site), version, at, siteId, existing.version] },
-      { sql: `INSERT INTO events(id,kind,record_id,action_id,state,actor_id,input_hash,idempotency_key,data,created_at,updated_at)
+      { sql: `INSERT INTO move(id,kind,record_id,action_id,state,actor_id,input_hash,idempotency_key,data,created_at,updated_at)
         SELECT ?, 'action', ?, ?, 'accepted', ?, ?, ?, ?, ?, ? WHERE changes()=1`, args: [`evt_${crypto.randomUUID()}`, siteId, event.action, context.identity.id, event.hash, event.key, JSON.stringify({ result }), at, at] },
     ], 'write');
     if (saved[0].rowsAffected !== 1 || saved[1].rowsAffected !== 1) throw conflict('Site was modified concurrently. Refresh and try again.');
@@ -487,7 +487,7 @@ async function runGenerate(
   }
   const created = await client.batch([
     { sql: "INSERT INTO records(id,type,title,state,data,owner,version,created,updated) SELECT ?,'site',?,'draft',?,?,1,?,? WHERE NOT EXISTS(SELECT 1 FROM records WHERE type='site' AND archived IS NULL)", args: [siteId, title, JSON.stringify(site), context.identity.id, at, at] },
-    { sql: `INSERT INTO events(id,kind,record_id,action_id,state,actor_id,input_hash,idempotency_key,data,created_at,updated_at)
+    { sql: `INSERT INTO move(id,kind,record_id,action_id,state,actor_id,input_hash,idempotency_key,data,created_at,updated_at)
       SELECT ?, 'action', ?, ?, 'accepted', ?, ?, ?, ?, ?, ? WHERE changes()=1`, args: [`evt_${crypto.randomUUID()}`, siteId, event.action, context.identity.id, event.hash, event.key, JSON.stringify({ result }), at, at] },
   ], 'write');
   if (created[0].rowsAffected !== 1 || created[1].rowsAffected !== 1) throw conflict('A site was created concurrently. Refresh and edit that site.');
@@ -608,7 +608,7 @@ export async function executeSiteNoticeSet(
   const result = { siteId: current.id, version, state: current.state, site: doc, preview, notice };
   const saved = await client.batch([
     { sql: 'UPDATE records SET data=?,version=?,updated=? WHERE id=? AND version=?', args: [JSON.stringify(doc), version, at, current.id, current.version] },
-    { sql: `INSERT INTO events(id,kind,record_id,action_id,state,actor_id,input_hash,idempotency_key,data,created_at,updated_at)
+    { sql: `INSERT INTO move(id,kind,record_id,action_id,state,actor_id,input_hash,idempotency_key,data,created_at,updated_at)
       SELECT ?, 'action', ?, 'site.notice.set', 'accepted', ?, ?, ?, ?, ?, ? WHERE changes()=1`, args: [`evt_${crypto.randomUUID()}`, current.id, context.identity.id, inputHash, key, JSON.stringify({ result }), at, at] },
   ], 'write');
   if (saved[0].rowsAffected !== 1 || saved[1].rowsAffected !== 1) throw conflict('Site was modified concurrently. Refresh and try again.');
@@ -744,7 +744,7 @@ async function publishCurrent(client: Client, env: SiteEnv, context: AccessConte
   if (publicUrl) { result.publicUrl = publicUrl; result.liveUrl = publicUrl; }
   const saved = await client.batch([
     { sql: "UPDATE records SET state='live',data=?,version=?,updated=? WHERE id=? AND version=?", args: [JSON.stringify(site), version, at, current.id, current.version] },
-    { sql: `INSERT INTO events(id,kind,record_id,action_id,state,actor_id,input_hash,idempotency_key,data,created_at,updated_at)
+    { sql: `INSERT INTO move(id,kind,record_id,action_id,state,actor_id,input_hash,idempotency_key,data,created_at,updated_at)
       SELECT ?, 'action', ?, ?, 'accepted', ?, ?, ?, ?, ?, ? WHERE changes()=1`, args: [`evt_${crypto.randomUUID()}`, current.id, event.action, context.identity.id, event.hash, event.key, JSON.stringify({ result }), at, at] },
     { sql: "UPDATE records SET state='replaced',version=version+1,updated=? WHERE type='site' AND state='live' AND id<>? AND EXISTS(SELECT 1 FROM events WHERE action_id=? AND idempotency_key=? AND record_id=?)", args: [at, current.id, event.action, event.key, current.id] },
   ], 'write');
@@ -888,7 +888,7 @@ export async function executeSiteRollback(client: Client, context: AccessContext
   if (publicUrl) result.publicUrl = publicUrl;
   const saved = await client.batch([
     { sql: "UPDATE records SET state='live',data=?,version=version+1,updated=? WHERE id=? AND version=?", args: [JSON.stringify(site), at, current.id, current.version] },
-    { sql: `INSERT INTO events(id,kind,record_id,action_id,state,actor_id,input_hash,idempotency_key,data,created_at,updated_at)
+    { sql: `INSERT INTO move(id,kind,record_id,action_id,state,actor_id,input_hash,idempotency_key,data,created_at,updated_at)
       SELECT ?, 'action', ?, 'site.rollback', 'accepted', ?, ?, ?, ?, ?, ? WHERE changes()=1`, args: [`evt_${crypto.randomUUID()}`, current.id, context.identity.id, inputHash, key, JSON.stringify({ result }), at, at] },
   ], 'write');
   if (saved[0].rowsAffected !== 1 || saved[1].rowsAffected !== 1) throw conflict('The restored release may be live, but the workspace projection changed. Reload the site before retrying.');
@@ -915,7 +915,7 @@ export async function executeSiteUnpublish(client: Client, context: AccessContex
   const result = { siteId: current.id, unpublished: true };
   const saved = await client.batch([
     { sql: "UPDATE records SET state='draft',data=?,version=version+1,updated=? WHERE id=? AND version=?", args: [JSON.stringify(site), at, current.id, current.version] },
-    { sql: `INSERT INTO events(id,kind,record_id,action_id,state,actor_id,input_hash,idempotency_key,data,created_at,updated_at)
+    { sql: `INSERT INTO move(id,kind,record_id,action_id,state,actor_id,input_hash,idempotency_key,data,created_at,updated_at)
       SELECT ?, 'action', ?, 'site.unpublish', 'accepted', ?, ?, ?, ?, ?, ? WHERE changes()=1`, args: [`evt_${crypto.randomUUID()}`, current.id, context.identity.id, inputHash, key, JSON.stringify({ result }), at, at] },
   ], 'write');
   if (saved[0].rowsAffected !== 1 || saved[1].rowsAffected !== 1) throw conflict('Site changed while unpublishing. Public serving is blocked; refresh to reconcile the draft.');
@@ -1166,7 +1166,7 @@ export async function executeSiteScout(client: Client, context: AccessContext, i
       context.identity.id, context.identity.id, at, at],
   });
   statements.push(repaired
-    ? { sql: `INSERT INTO events(id,kind,record_id,action_id,state,actor_id,input_hash,idempotency_key,data,created_at,updated_at)
+    ? { sql: `INSERT INTO move(id,kind,record_id,action_id,state,actor_id,input_hash,idempotency_key,data,created_at,updated_at)
       SELECT ?, 'action', ?, 'site.scout', 'accepted', ?, ?, ?, ?, ?, ? WHERE changes()=1`, args: [`evt_${crypto.randomUUID()}`, current.id, context.identity.id, inputHash, key, JSON.stringify({ result }), at, at] }
     : eventStatement({ action: 'site.scout', actor: context.identity.id, recordId: current.id, key, hash: inputHash, result }));
   const saved = await client.batch(statements, 'write');

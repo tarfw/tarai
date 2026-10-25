@@ -126,7 +126,7 @@ export async function attach(
   const result: Record<string, unknown> = { siteId, version, revision: next.revision, site: next, assets: next.assets };
   const saved = await client.batch([
     { sql: 'UPDATE records SET data=?,version=?,updated=? WHERE id=? AND version=?', args: [JSON.stringify(next), version, at, siteId, current.version] },
-    { sql: `INSERT INTO events(id,kind,record_id,action_id,state,actor_id,input_hash,idempotency_key,data,created_at,updated_at)
+    { sql: `INSERT INTO move(id,kind,record_id,action_id,state,actor_id,input_hash,idempotency_key,data,created_at,updated_at)
       SELECT ?, 'action', ?, ?, 'accepted', ?, ?, ?, ?, ?, ? WHERE changes()=1`, args: [`evt_${crypto.randomUUID()}`, siteId, action, context.identity.id, inputHash, key, JSON.stringify({ result }), at, at] },
   ], 'write');
   if (saved[0].rowsAffected !== 1 || saved[1].rowsAffected !== 1) throw conflict('Site changed while attaching the asset. Refresh and try again.');

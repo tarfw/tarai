@@ -101,7 +101,7 @@ export function executeGateway(client: Client, context: AccessContext, request: 
           baseVersion === 0
             ? { sql: "INSERT OR IGNORE INTO records (id,type,title,state,data,owner,assignee,due,version,created,updated) VALUES ('capability','capability','Capabilities','active',?,?,NULL,NULL,1,?,?)", args: [json(next), context.identity.id, at, at] }
             : { sql: "UPDATE records SET data=?,version=version+1,updated=? WHERE id='capability' AND type='capability' AND version=? AND archived IS NULL", args: [json(next), at, baseVersion] },
-          { sql: `INSERT INTO events (id,kind,run_id,record_id,action_id,state,actor_id,input_hash,idempotency_key,data,created_at,updated_at)
+          { sql: `INSERT INTO move (id,kind,run_id,record_id,action_id,state,actor_id,input_hash,idempotency_key,data,created_at,updated_at)
             SELECT ?, 'action', NULL, 'capability', ?, 'accepted', ?, ?, ?, ?, ?, ? WHERE changes()=1`,
             args: [`evt_${crypto.randomUUID()}`, request.actionId, context.identity.id, hash, request.idempotencyKey, json({ result }), at, at] },
         ], 'write');
@@ -122,7 +122,7 @@ export function executeGateway(client: Client, context: AccessContext, request: 
             args: [json(payload), context.identity.id, at, at],
           },
           {
-            sql: `INSERT INTO events (id,kind,run_id,record_id,action_id,state,actor_id,input_hash,idempotency_key,data,created_at,updated_at)
+            sql: `INSERT INTO move (id,kind,run_id,record_id,action_id,state,actor_id,input_hash,idempotency_key,data,created_at,updated_at)
                   SELECT ?, 'action', NULL, 'brief', ?, 'accepted', ?, ?, ?, ?, ?, ? WHERE changes()=1`,
             args: [`evt_${crypto.randomUUID()}`, request.actionId, context.identity.id, hash, request.idempotencyKey, json({ result }), at, at],
           },
@@ -207,7 +207,7 @@ export function executeGateway(client: Client, context: AccessContext, request: 
         if (linked.some((item) => !canReadRecord(context.member, rowToRecord(item)))) throw forbidden();
         const committed = await client.batch([
           { sql: 'UPDATE links SET until=?,actor=?,updated=? WHERE id=? AND until IS NULL', args: [until, context.identity.id, at, id] },
-          { sql: `INSERT INTO events (id,kind,run_id,record_id,action_id,state,actor_id,input_hash,idempotency_key,data,created_at,updated_at)
+          { sql: `INSERT INTO move (id,kind,run_id,record_id,action_id,state,actor_id,input_hash,idempotency_key,data,created_at,updated_at)
             SELECT ?, 'action', NULL, ?, ?, 'accepted', ?, ?, ?, ?, ?, ? WHERE changes()=1`,
             args: [`evt_${crypto.randomUUID()}`, String(link.source), request.actionId, context.identity.id, hash, request.idempotencyKey, json({ result: { id, until } }), at, at] },
         ], 'write');
@@ -251,7 +251,7 @@ export function executeGateway(client: Client, context: AccessContext, request: 
         if ((['person', 'organization', 'task'].includes(type)) && state !== String(current.state)) throw badRequest('Use the registered action to change this record state.');
         const committed = await client.batch([
           { sql: 'UPDATE records SET title=?,state=?,data=?,version=version+1,updated=? WHERE id=? AND version=?', args: [title, state, json(nextData), at, recordId, baseVersion] },
-          { sql: `INSERT INTO events (id,kind,run_id,record_id,action_id,state,actor_id,input_hash,idempotency_key,data,created_at,updated_at)
+          { sql: `INSERT INTO move (id,kind,run_id,record_id,action_id,state,actor_id,input_hash,idempotency_key,data,created_at,updated_at)
             SELECT ?, 'action', NULL, ?, ?, 'accepted', ?, ?, ?, ?, ?, ? WHERE changes()=1`,
             args: [`evt_${crypto.randomUUID()}`, recordId, request.actionId, context.identity.id, hash, request.idempotencyKey, json({ result: { recordId, version: baseVersion + 1 } }), at, at] },
         ], 'write');
@@ -314,7 +314,7 @@ export function executeGateway(client: Client, context: AccessContext, request: 
         const committed = await client.batch([
           { sql: 'UPDATE runs SET state=?,action_id=?,context=?,version=?,finished_at=?,updated_at=? WHERE id=? AND version=? AND state=\'ready\'', args: [nextState, nextAction, json(nextContext), nextVersion, finishedAt, at, runId, Number(current.version)] },
           stepStatement(runId, index, expected, input, result, at),
-          { sql: `INSERT INTO events (id,kind,run_id,record_id,action_id,state,actor_id,input_hash,idempotency_key,data,created_at,updated_at)
+          { sql: `INSERT INTO move (id,kind,run_id,record_id,action_id,state,actor_id,input_hash,idempotency_key,data,created_at,updated_at)
             SELECT ?, 'action', ?, ?, ?, 'accepted', ?, ?, ?, ?, ?, ? WHERE changes()=1`,
             args: [`evt_${crypto.randomUUID()}`, runId, typeof current.record_id === 'string' ? current.record_id : null, request.actionId, context.identity.id, hash, request.idempotencyKey, json({ result: eventResult }), at, at] },
         ], 'write');
@@ -384,7 +384,7 @@ export async function executeAutomaticFlowStep(client: Client, context: AccessCo
   const committed = await client.batch([
     { sql: "UPDATE runs SET state=?,action_id=?,context=?,version=version+1,finished_at=?,updated_at=? WHERE id=? AND version=? AND state='ready'", args: [nextState, nextAction, json(nextContext), nextAction ? null : at, at, runId, Number(current.version)] },
     stepStatement(runId, index, actionId, input, result, at),
-    { sql: `INSERT INTO events (id,kind,run_id,record_id,action_id,state,actor_id,input_hash,idempotency_key,data,created_at,updated_at)
+    { sql: `INSERT INTO move (id,kind,run_id,record_id,action_id,state,actor_id,input_hash,idempotency_key,data,created_at,updated_at)
       SELECT ?, 'action', ?, ?, 'flow.advance', 'accepted', ?, ?, ?, ?, ?, ? WHERE changes()=1`,
       args: [`evt_${crypto.randomUUID()}`, runId, typeof current.record_id === 'string' ? current.record_id : null, context.identity.id, hash, `auto:${runId}:${index}`, json({ result: progress }), at, at] },
   ], 'write');
