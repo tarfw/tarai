@@ -3,7 +3,7 @@ import { Effect } from 'effect';
 import { afterEach, describe, expect, it } from 'vitest';
 import { WORKSPACE_SCHEMA } from '../src/db/schema.ts';
 import { executeGateway } from '../src/gateway/actions.ts';
-import { TRADE_TAXONOMY } from '../src/brain/workspace-ai.ts';
+import { TRADE_TAXONOMY } from '../src/brain/trade.ts';
 import type { AccessContext } from '../src/types.ts';
 import type { SiteDocument } from '../src/site/document.ts';
 import { COMMERCE_MODELS, MODEL_CONFIDENCE, checkModelsGate, kindForModels } from '../src/site/blueprint.ts';

@@ -5,15 +5,12 @@ import { query } from '../db/turso.ts';
 import type { AccessContext, FlowDefinition, FlowRun, RecordItem } from '../types.ts';
 import { findAction, type ActionId } from '../registry/catalog.ts';
 import { executePos } from '../pos/store.ts';
-import { draftProduct, saveProductContent } from '../pos/content.ts';
+import { saveProductContent } from '../pos/content.ts';
 import { canExecute, canReadRecord, canRunFlowStep } from '../access.ts';
 import { executeSiteGenerate, executeSiteDesigns, executeSiteScout, executeSiteCompile, executeSitePublish, executeSitePublishLatest, executeSiteRollback, executeSiteRefresh, executeSiteUnpublish, executeSiteChecks, executeSiteReleases, executeSiteBriefAdd, executeSiteBriefRemove, executeSiteNoticeSet, executeSiteSectionsSet } from '../site/store.ts';
 import { executeSiteAsk, executeSiteDesignImport, executeSiteEdit, executeSiteUndo } from '../site/edit.ts';
 import { executeSiteAssetGenerate, executeSiteAssetUpload, executeSiteAssets } from '../site/asset.ts';
-import { searchWeb } from '../web/search.ts';
 import { appendEvent, eventStatement, findReplay, fingerprint, runStatement, stamp, stepStatement } from './commit.ts';
-import { suggest } from '../brain/jev.ts';
-import { claimTurn, completeTurn, failTurn } from './turns.ts';
 import { commerceActionIds } from '../commerce/catalog.ts';
 import { executeCommerce } from '../commerce/store.ts';
 import { isModule, moduleForAction, readCapabilities } from '../registry/tools.ts';
@@ -33,15 +30,12 @@ const rowToRecord = (row: Record<string, unknown>): RecordItem => ({
   createdAt: Number(row.created),
   updatedAt: Number(row.updated),
 });
-const bookActions = new Set(['record.create', 'contact.create', 'organization.create', 'task.create', 'site.generate', 'web.search', 'pos.register.count', 'pos.register.close']);
+const bookActions = new Set(['record.create', 'contact.create', 'organization.create', 'task.create', 'site.generate', 'pos.register.count', 'pos.register.close']);
 const unattendedActions = new Set(['record.create', 'contact.create', 'organization.create', 'task.create']);
 const managedCommerceTypes = new Set([
   'item', 'variant', 'price', 'stock', 'purchase', 'order', 'invoice', 'payment',
   'refund', 'posting', 'movement', 'receipt', 'capability',
-  'expense', 'statement', 'reconciliation', 'period', 'transfer', 'batch',
-  'recipe', 'production', 'booking', 'time', 'trip', 'fare', 'shift', 'attendance',
-  'payroll', 'supplier', 'quote', 'pick', 'pack', 'shipment', 'return', 'inspection',
-  'quality', 'forecast', 'plan',
+  'expense', 'transfer', 'supplier',
 ]);
 function validateContactDetails(values: Record<string, unknown>): void {
   for (const [key, value] of Object.entries(values)) {
@@ -136,11 +130,6 @@ export function executeGateway(client: Client, context: AccessContext, request: 
         return result;
       }
       if (request.actionId === 'pos.product.content.save') return saveProductContent(client, services.productContent, context, request.input, { key: request.idempotencyKey, hash });
-      if (request.actionId === 'pos.product.draft') {
-        const result = await draftProduct(services.ai, request.input);
-        await appendEvent(client, { action: request.actionId, actor: context.identity.id, key: request.idempotencyKey, hash, result });
-        return result;
-      }
       if (request.actionId.startsWith('pos.')) return executePos(client, context, request.actionId, request.input, request.idempotencyKey, hash);
       if (commerceActionIds.has(request.actionId)) return executeCommerce(client, context, request.actionId, request.input, request.idempotencyKey, hash, services.typesafe);
       if (request.actionId === 'site.generate') return executeSiteGenerate(client, context, request.input, request.idempotencyKey, hash, services.typesafe, services.ai, services.publication, services.siteModel, services.groqApiKey, services.productContent, services.pexelsApiKey);
@@ -168,136 +157,6 @@ export function executeGateway(client: Client, context: AccessContext, request: 
       if (request.actionId === 'site.brief.remove') return executeSiteBriefRemove(client, context, request.input, request.idempotencyKey, hash, services.typesafe, services.publication);
       if (request.actionId === 'site.notice.set') return executeSiteNoticeSet(client, context, request.input, request.idempotencyKey, hash);
       if (request.actionId === 'site.sections.set') return executeSiteSectionsSet(client, context, request.input, request.idempotencyKey, hash, services.typesafe, services.ai, services.publication, services.siteModel, services.groqApiKey, services.productContent, services.pexelsApiKey);
-      if (request.actionId === 'web.search') {
-        const claimed = await claimTurn(client, request.idempotencyKey, hash);
-        if (claimed.result) return claimed.result;
-        try {
-          const result = await searchWeb(services.tinyfish, request.input);
-          await completeTurn(client, { action: request.actionId, actor: context.identity.id, key: request.idempotencyKey, hash, result }, claimed.lease!);
-          return result;
-        } catch (cause) { await failTurn(client, request.idempotencyKey, hash, claimed.lease!); throw cause; }
-      }
-      if (request.actionId === 'flow.suggest') {
-        const claimed = await claimTurn(client, request.idempotencyKey, hash);
-        if (claimed.result) return claimed.result;
-        try {
-          const result = (await suggest(services.typesafe, text(request.input.prompt, 2000))) as unknown as Record<string, unknown>;
-          await completeTurn(client, { action: request.actionId, actor: context.identity.id, key: request.idempotencyKey, hash, result }, claimed.lease!);
-          return result;
-        } catch (cause) { await failTurn(client, request.idempotencyKey, hash, claimed.lease!); throw cause; }
-      }
-
-      if (request.actionId === 'flow.publish') {
-        const flowId = text(request.input.flowId, 160); const name = text(request.input.name, 100); const description = text(request.input.description, 400);
-        const actions = Array.isArray(request.input.actions) ? request.input.actions.map(object).map((item) => ({
-          id: text(item.id, 160), version: findAction(text(item.id, 160))?.version ?? 0,
-          auto: item.auto === true, role: item.auto === true ? '' : text(item.role, 80).toLowerCase(), input: object(item.input),
-        })) : [];
-        if (!/^book\.[a-z0-9]{1,80}$/.test(flowId) || !name || !actions.length || actions.length > 20 || actions.some((item) => !item.id)) throw badRequest('A Flow Book name and between 1 and 20 Actions are required.');
-        if (actions.some((item) => !findAction(item.id) || item.id === 'flow.start' || item.id === 'flow.advance' || item.id === 'flow.publish' || !bookActions.has(item.id))) throw badRequest('Flow Book contains an unavailable Action.');
-        if (actions.some((item) => item.auto && (!unattendedActions.has(item.id) || JSON.stringify(item.input).length > 8_000 || findAction(item.id)!.fields.some((field) => field.required && (item.input[field.key] === undefined || item.input[field.key] === null || item.input[field.key] === ''))))) throw badRequest('Automatic steps require a supported internal Action and complete reviewed input.');
-        const enabled = (await readCapabilities(client)).enabled;
-        if (actions.some((item) => { const module = moduleForAction(item.id); return module !== null && !enabled[module]; })) throw badRequest('Enable each step’s capability before publishing this Flow Book.');
-        const result = { flowId, published: true };
-        const statements: InStatement[] = [
-          { sql: `INSERT INTO definitions (id,kind,name,version,state,data,created_at,updated_at) VALUES (?, 'flow', ?, 1, 'published', ?, ?, ?)
-            ON CONFLICT(id) DO UPDATE SET name=excluded.name,version=definitions.version+1,state='published',data=excluded.data,updated_at=excluded.updated_at`, args: [flowId, name, json({ source: 'book', description, actions }), at, at] },
-          { sql: `INSERT INTO editions(id,definition,version,name,data,created)
-            SELECT id||':'||version,id,version,name,data,? FROM definitions WHERE id=?`, args: [at, flowId] },
-        ];
-        statements.push(eventStatement({ action: request.actionId, actor: context.identity.id, key: request.idempotencyKey, hash, result }));
-        await client.batch(statements, 'write');
-        return result;
-      }
-
-      if (request.actionId === 'routine.save') {
-        if (context.workspace.mode !== 'personal') throw badRequest('Space routines are saved in Personal.');
-        const id = text(request.input.id, 160);
-        const label = text(request.input.label, 80); const workspace = text(request.input.workspace, 160); const role = text(request.input.role, 80);
-        const start = text(request.input.start, 5); const end = text(request.input.end, 5);
-        const validTime = (value: string) => /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
-        if (!label || !workspace || !validTime(start) || !validTime(end) || start === end) throw badRequest('Choose a context, workspace and valid start and end times.');
-        const rawDays = text(request.input.days, 40) || '0,1,2,3,4,5,6';
-        const days = [...new Set(rawDays.split(',').map((value) => Number(value.trim())))];
-        if (!days.length || days.some((value) => !Number.isInteger(value) || value < 0 || value > 6)) throw badRequest('Days must use numbers 0 through 6.');
-        const priority = Number(request.input.priority ?? 0);
-        if (!Number.isSafeInteger(priority) || priority < 0 || priority > 100) throw badRequest('Priority must be an integer from 0 to 100.');
-        const existing = id ? (await query<Record<string, unknown>>(client, { sql: "SELECT * FROM records WHERE id=? AND type='routine' AND archived IS NULL", args: [id] }).pipe(Effect.runPromise))[0] : null;
-        if (id && (!existing || existing.owner !== context.identity.id)) throw notFound('Space routine not found.');
-        if (existing && Number(existing.version) !== Number(request.input.baseVersion)) throw conflict('Routine changed. Reload Space and try again.');
-        const record: RecordItem = {
-          id: existing ? String(existing.id) : `rec_${crypto.randomUUID()}`, type: 'routine', title: label, state: 'active',
-          data: { workspace, label, role, start, end, days, priority }, owner: context.identity.id, assignee: null,
-          version: existing ? Number(existing.version) + 1 : 1, createdAt: existing ? Number(existing.created) : at, updatedAt: at,
-        };
-        if (existing) {
-          const committed = await client.batch([
-            { sql: "UPDATE records SET title=?,state='active',data=?,version=version+1,updated=? WHERE id=? AND version=?", args: [label, json(record.data), at, record.id, Number(existing.version)] },
-            { sql: `INSERT INTO events (id,kind,run_id,record_id,action_id,state,actor_id,input_hash,idempotency_key,data,created_at,updated_at)
-              SELECT ?, 'action', NULL, ?, ?, 'accepted', ?, ?, ?, ?, ?, ? WHERE changes()=1`, args: [`evt_${crypto.randomUUID()}`, record.id, request.actionId, context.identity.id, hash, request.idempotencyKey, json({ result: { record } }), at, at] },
-          ], 'write');
-          if (committed[0]?.rowsAffected !== 1 || committed[1]?.rowsAffected !== 1) throw conflict('Routine changed. Reload Space and try again.');
-        } else {
-          await client.batch([
-            { sql: 'INSERT INTO records (id,type,title,state,data,owner,assignee,due,version,created,updated) VALUES (?,?,?,?,?,?,?,?,1,?,?)', args: [record.id, record.type, record.title, record.state, json(record.data), record.owner, null, null, at, at] },
-            eventStatement({ action: request.actionId, actor: context.identity.id, recordId: record.id, key: request.idempotencyKey, hash, result: { record } }),
-          ], 'write');
-        }
-        return { record };
-      }
-
-      if (request.actionId === 'routine.remove') {
-        if (context.workspace.mode !== 'personal') throw badRequest('Space routines are saved in Personal.');
-        const id = text(request.input.id, 160); const version = Number(request.input.baseVersion);
-        if (!id || !Number.isSafeInteger(version)) throw badRequest('Routine and version are required.');
-        const found = await query<Record<string, unknown>>(client, { sql: "SELECT owner,version FROM records WHERE id=? AND type='routine' AND archived IS NULL", args: [id] }).pipe(Effect.runPromise);
-        if (!found[0] || found[0].owner !== context.identity.id) throw notFound('Space routine not found.');
-        if (Number(found[0].version) !== version) throw conflict('Routine changed. Reload Space and try again.');
-        const result = { id };
-        const committed = await client.batch([
-          { sql: "UPDATE records SET state='archived',archived=?,version=version+1,updated=? WHERE id=? AND version=? AND archived IS NULL", args: [at, at, id, version] },
-          { sql: `INSERT INTO events (id,kind,run_id,record_id,action_id,state,actor_id,input_hash,idempotency_key,data,created_at,updated_at)
-            SELECT ?, 'action', NULL, ?, ?, 'accepted', ?, ?, ?, ?, ?, ? WHERE changes()=1`, args: [`evt_${crypto.randomUUID()}`, id, request.actionId, context.identity.id, hash, request.idempotencyKey, json({ result }), at, at] },
-        ], 'write');
-        if (committed[0]?.rowsAffected !== 1 || committed[1]?.rowsAffected !== 1) throw conflict('Routine changed. Reload Space and try again.');
-        return result;
-      }
-
-      if (request.actionId === 'agent.save') {
-        const name = text(request.input.name, 40).trim();
-        if (!name) throw badRequest('Agent name is required.');
-        const found = await query<Record<string, unknown>>(client, {
-          sql: "SELECT id, version FROM records WHERE type='agent' AND owner=? AND archived IS NULL LIMIT 1",
-          args: [context.identity.id],
-        }).pipe(Effect.runPromise);
-        const existing = found[0];
-        const record: RecordItem = {
-          id: existing ? String(existing.id) : `rec_${crypto.randomUUID()}`,
-          type: 'agent',
-          title: name,
-          state: 'active',
-          data: { name },
-          owner: context.identity.id,
-          assignee: null,
-          version: existing ? Number(existing.version) + 1 : 1,
-          createdAt: at,
-          updatedAt: at,
-        };
-        if (existing) {
-          const committed = await client.batch([
-            { sql: "UPDATE records SET title=?, data=?, version=version+1, updated=? WHERE id=?", args: [name, json(record.data), at, record.id] },
-            eventStatement({ action: request.actionId, actor: context.identity.id, recordId: record.id, key: request.idempotencyKey, hash, result: { name, record } }),
-          ], 'write');
-          if (committed[0]?.rowsAffected !== 1) throw conflict('Agent record could not be updated.');
-        } else {
-          await client.batch([
-            { sql: "INSERT INTO records (id,type,title,state,data,owner,assignee,due,version,created,updated) VALUES (?,?,?,?,?,?,?,?,1,?,?)", args: [record.id, record.type, record.title, record.state, json(record.data), record.owner, null, null, at, at] },
-            eventStatement({ action: request.actionId, actor: context.identity.id, recordId: record.id, key: request.idempotencyKey, hash, result: { name, record } }),
-          ], 'write');
-        }
-        return { name, record };
-      }
-
       if (request.actionId === 'record.create' || request.actionId === 'task.create' || request.actionId === 'contact.create' || request.actionId === 'organization.create') {
         const type = request.actionId === 'task.create' ? 'task' : request.actionId === 'contact.create' ? 'person' : request.actionId === 'organization.create' ? 'organization' : text(request.input.type, 80);
         const title = text(request.actionId === 'contact.create' || request.actionId === 'organization.create' ? request.input.name : request.input.title, 240);

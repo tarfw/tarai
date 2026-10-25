@@ -57,22 +57,3 @@ export async function readProductContent(client: Client, bucket: R2Bucket | unde
   const stored = await bucket.get(key);
   return stored ? object(await stored.json()) : {};
 }
-
-export async function draftProduct(ai: Ai | undefined, input: Data) {
-  if (!ai) throw unavailable('AI product drafting is not configured.');
-  const prompt = text(input.prompt, 6_000);
-  if (!prompt) throw badRequest('Enter a product name, notes or source details first.');
-  const answer = await ai.run('@cf/meta/llama-3.1-8b-instruct-fast', {
-    messages: [
-      { role: 'system', content: 'Draft concise retail catalog fields from user-provided facts only. Never invent price, tax, barcode, SKU or stock. Return JSON with title, category, brand, unit, variant, shortDescription, longDescription, specifications.' },
-      { role: 'user', content: prompt },
-    ],
-    response_format: { type: 'json_object' },
-    max_tokens: 800,
-  });
-  const raw = typeof answer === 'object' && answer !== null && 'response' in answer ? String(answer.response) : '';
-  try {
-    const value = object(JSON.parse(raw));
-    return { draft: Object.fromEntries(Object.entries(value).map(([key, item]) => [key, text(item, key === 'longDescription' || key === 'specifications' ? 20_000 : 500)])) };
-  } catch { throw unavailable('AI could not produce a usable product draft.'); }
-}

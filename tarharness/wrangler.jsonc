@@ -23,10 +23,6 @@
       "migrations_dir": "migrations"
     }
   ],
-  "queues": {
-    "producers": [{ "binding": "OUTBOX", "queue": "tarharness-outbox" }],
-    "consumers": [{ "queue": "tarharness-outbox", "max_batch_size": 10, "max_retries": 5 }]
-  },
   "workflows": [{ "binding": "FLOWS", "name": "tarharness-flows", "class_name": "FlowWorkflow" }],
   "triggers": { "crons": ["*/5 * * * *"] },
   "observability": { "enabled": true, "head_sampling_rate": 1 },

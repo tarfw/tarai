@@ -6,7 +6,7 @@
  * set is never allowed to be empty.
  */
 
-import { TRADE_TAXONOMY, fallbackCapabilities, fallbackTrade } from '../brain/workspace-ai.ts';
+import { TRADE_TAXONOMY, fallbackCapabilities, fallbackTrade } from '../brain/trade.ts';
 import { COMMERCE_MODELS, MODEL_CONFIDENCE, type CommerceModel, type ModelProfile } from './blueprint.ts';
 
 /** Plain verb phrases per model: used in Jev instructions and in merchant prompts. */

@@ -134,14 +134,5 @@ describe('commerce core', { timeout: 60000 }, () => {
     expect(posData.title).toBe('Semparuthi Pattu Selai');
     expect(posData.price).toBe(820000);
     expect(posData.stock).toBe(12);
-
-    // Verify variant detection
-    const detected = await run('catalog.item.detect', {
-      product: 'Semparuthi Pattu Selai',
-      input: '4-Muzham, 8-Muzham',
-      trade: 'textiles',
-    });
-    expect(detected.dimension).toBe('length');
-    expect(detected.variants).toHaveLength(2);
   });
 });

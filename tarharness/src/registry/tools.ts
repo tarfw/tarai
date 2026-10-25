@@ -51,17 +51,12 @@ export const canonicalTools: readonly ToolDefinition[] = [
   // 12. human (You do)
   { id: 'human', title: 'You do', description: 'Physical or manual work (pack, lock shop, call)', icon: 'hand-left-outline', kind: 'human', reach: 'none', module: 'core', category: 'work', action: 'task.create' },
   // 13. flow (Checklist)
-  { id: 'flow', title: 'Checklist', description: 'Run or create repeatable routines (Open, Close)', icon: 'git-branch-outline', kind: 'flow', reach: 'none', module: 'core', category: 'work', action: 'flow.start' },
   // 14. site (Online store)
   { id: 'site', title: 'Online store', description: 'Autopilot storefront, live catalog sync, edge CDN', icon: 'globe-outline', kind: 'site', reach: 'customer', module: 'site', category: 'manage', action: 'site.generate' },
   // 15. inbox (Team feed)
-  { id: 'inbox', title: 'Team feed', description: 'Native zero-cost task feed (Mine, Available, Wait)', icon: 'file-tray-full-outline', kind: 'channel', reach: 'none', module: 'core', category: 'work', action: 'task.complete' },
   // 16. chat (WhatsApp Chat - Manual free)
-  { id: 'chat', title: 'WhatsApp Chat', description: 'Manual 1-on-1 chat on phone, pre-filled text (wa.me)', icon: 'chatbubbles-outline', kind: 'tool', reach: 'customer', module: 'core', category: 'work', action: 'contact.create' },
   // 17. whatsapp (WhatsApp API - Official Meta Cloud API)
-  { id: 'whatsapp', title: 'WhatsApp API', description: 'Automated official Meta Cloud API bills & tracking', icon: 'logo-whatsapp', kind: 'channel', reach: 'customer', module: 'commerce', category: 'work', action: 'invoice.issue' },
   // 18. telegram (Team alerts)
-  { id: 'telegram', title: 'Team alerts', description: 'Free internal notifications, low-stock, closing', icon: 'paper-plane-outline', kind: 'channel', reach: 'none', module: 'core', category: 'work', action: 'task.create' },
 ];
 
 export const catalog: readonly ToolDefinition[] = canonicalTools;
@@ -90,7 +85,7 @@ export async function readCapabilities(client: Client): Promise<CapabilityState>
   }, version: Number(row.version) };
 }
 
-export async function readWorkspaceTools(client: Client, access: AccessContext, providers: { search: boolean }) {
+export async function readWorkspaceTools(client: Client, access: AccessContext) {
   const [state, briefRow] = await Promise.all([
     readCapabilities(client),
     client.execute("SELECT data FROM records WHERE id='brief' AND type='brief' AND archived IS NULL LIMIT 1").catch(() => ({ rows: [] })),
@@ -131,8 +126,7 @@ export async function readWorkspaceTools(client: Client, access: AccessContext, 
     const action = findAction(tool.action);
     if (tool.module !== 'core' && !state.enabled[tool.module]) return false;
     if (tool.personal && access.workspace.mode !== 'personal') return false;
-    if (access.workspace.mode === 'personal' && ['members', 'telegram', 'whatsapp', 'inbox', 'chat'].includes(tool.id)) return false;
-    if (tool.action === 'web.search' && !providers.search) return false;
+    if (access.workspace.mode === 'personal' && tool.id === 'members') return false;
     if (Boolean(action) && !interfaceCatalog.some((item) => item.key === action?.interfaceKey)) return false;
 
     if (access.member.role === 'owner' || access.member.role === 'admin') return true;

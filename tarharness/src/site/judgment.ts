@@ -8,7 +8,7 @@
  */
 
 import { askSystemOne, choiceOf, noulOf, JEV_MODEL, type SystemOneQuestion } from '../brain/systemone.ts';
-import { TRADE_TAXONOMY } from '../brain/workspace-ai.ts';
+import { TRADE_TAXONOMY } from '../brain/trade.ts';
 import { COMMERCE_MODELS, type CommerceModel, type LeadSection, type ModelProfile, type SectionKind } from './blueprint.ts';
 import { MODEL_MEANING, acceptedModels, buildProfile, confidenceIn, fallbackProfile, readIndustry } from './profile.ts';
 import { canonicalDesignId, libraryDefault, libraryIndex } from './designs/library.ts';

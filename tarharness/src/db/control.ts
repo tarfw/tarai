@@ -69,36 +69,6 @@ export class ControlStore {
       })));
   }
 
-  context(user: string): Effect.Effect<{ workspace: string; mode: 'auto' | 'hold'; expires: number | null; role: string | null } | null, ReturnType<typeof unavailable>> {
-    return Effect.tryPromise({
-      try: async () => {
-        const value = await this.database.prepare('SELECT workspace,mode,expires,role FROM contexts WHERE user=?').bind(user).first<{ workspace: string; mode: 'auto' | 'hold'; expires: number | null; role: string | null }>();
-        if (!value) return null;
-        if (value.expires !== null && value.expires <= now()) {
-          await this.database.prepare('DELETE FROM contexts WHERE user=?').bind(user).run();
-          return null;
-        }
-        return value;
-      },
-      catch: (cause) => unavailable('Could not read Space context.', cause),
-    });
-  }
-
-  saveContext(user: string, workspaceId: string, mode: 'auto' | 'hold', expires: number | null, role: string | null = null): Effect.Effect<void, ReturnType<typeof unavailable>> {
-    return Effect.tryPromise({
-      try: async () => {
-        if (mode === 'auto') {
-          await this.database.prepare('DELETE FROM contexts WHERE user=?').bind(user).run();
-          return;
-        }
-        await this.database.prepare(`INSERT INTO contexts(user,workspace,mode,expires,role,updated) VALUES(?,?,?,?,?,?)
-          ON CONFLICT(user) DO UPDATE SET workspace=excluded.workspace,mode=excluded.mode,expires=excluded.expires,role=excluded.role,updated=excluded.updated`)
-          .bind(user, workspaceId, mode, expires, role, now()).run();
-      },
-      catch: (cause) => unavailable('Could not save Space context.', cause),
-    });
-  }
-
   ensurePersonalWorkspace(input: WorkspaceInput): Effect.Effect<Workspace, ReturnType<typeof unavailable>> {
     const stamp = now();
     return Effect.tryPromise({

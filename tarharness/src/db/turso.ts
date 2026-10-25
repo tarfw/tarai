@@ -1,13 +1,12 @@
 import { createClient, type Client, type InStatement } from '@libsql/client/web';
 import { Effect } from 'effect';
 import { unavailable } from '../errors.ts';
-import { INBOX_SCHEMA, WORKSPACE_SCHEMA } from './schema.ts';
+import { WORKSPACE_SCHEMA } from './schema.ts';
 
 type TursoEnv = { readonly TURSO_ORG: string; readonly TURSO_PLATFORM_TOKEN: string; readonly TURSO_GROUP: string; };
 type Database = { readonly Name: string; readonly Hostname: string; };
 type Group = { readonly name: string; };
 const tokenCache = new Map<string, { expires: number; value: Promise<string> }>();
-const nowCache = new Map<string, Promise<Database>>();
 class TursoPlatformError extends Error {
   constructor(readonly status: number) { super(`Turso Platform API ${status}`); }
 }
@@ -37,45 +36,6 @@ async function token(env: TursoEnv, name: string): Promise<string> {
     if (tokenCache.get(key)?.value === value) tokenCache.delete(key);
     throw cause;
   }
-}
-
-export async function mintNowSyncToken(env: TursoEnv, name: string): Promise<string> {
-  const result = await platform<{ jwt: string }>(env,
-    `/databases/${encodeURIComponent(name)}/auth/tokens?expiration=10m&authorization=read-only`, { method: 'POST' });
-  if (!result.jwt) throw new Error('Turso did not return a read-only database token.');
-  return result.jwt;
-}
-
-export async function ensureNowDatabase(env: TursoEnv, user: string): Promise<Database> {
-  const name = `now-${user.replace(/[^a-z0-9]/gi, '').toLowerCase().slice(0, 32)}`;
-  if (name === 'now-') throw new Error('Now database identity is invalid.');
-  const cached = nowCache.get(name);
-  if (cached) return cached;
-  const pending = (async () => {
-    let database: Database;
-    try {
-      database = (await platform<{ database: Database }>(env, `/databases/${encodeURIComponent(name)}`)).database;
-    } catch (cause) {
-      if (!(cause instanceof TursoPlatformError) || cause.status !== 404) throw cause;
-      await ensureGroup(env);
-      try {
-        database = (await platform<{ database: Database }>(env, '/databases', {
-          method: 'POST', body: JSON.stringify({ name, group: env.TURSO_GROUP || 'default' }),
-        })).database;
-      } catch (createCause) {
-        if (!(createCause instanceof TursoPlatformError) || createCause.status !== 409) throw createCause;
-        database = (await platform<{ database: Database }>(env, `/databases/${encodeURIComponent(name)}`)).database;
-      }
-    }
-    const client = createClient({ url: `libsql://${database.Hostname}`, authToken: await token(env, name) });
-    try { for (const statement of INBOX_SCHEMA) await client.execute(statement); }
-    finally { client.close(); }
-    return database;
-  })();
-  nowCache.set(name, pending);
-  if (nowCache.size > 256) nowCache.delete(nowCache.keys().next().value!);
-  try { return await pending; }
-  catch (cause) { if (nowCache.get(name) === pending) nowCache.delete(name); throw cause; }
 }
 
 async function ensureGroup(env: TursoEnv): Promise<void> {

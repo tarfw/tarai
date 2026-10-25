@@ -41,7 +41,6 @@ export const interfaceCatalog = [
   { key: 'form', version: 1, title: 'Form', presentation: 'screen', submitLabel: 'Save' },
   { key: 'confirmation', version: 1, title: 'Confirmation', presentation: 'sheet', submitLabel: 'Confirm' },
   { key: 'flow', version: 1, title: 'Flow', presentation: 'flow', submitLabel: 'Start' },
-  { key: 'flow-builder', version: 1, title: 'Flow builder', presentation: 'screen', submitLabel: 'Create Flow' },
 ] as const satisfies readonly InterfaceContract[];
 
 export const actionCatalog = [
@@ -74,39 +73,6 @@ export const actionCatalog = [
       { key: 'title', label: 'Name or title', kind: 'text', required: true },
     ],
     output: ['record'], roles: ['owner', 'admin', 'member'], effects: ['record_create'],
-  },
-  {
-    id: 'routine.save', version: 1, type: 'app', title: 'Add Space routine',
-    description: 'Choose when a workspace and role should become your active Space.', interfaceKey: 'form',
-    fields: [
-      { key: 'id', label: 'Routine', kind: 'text', hidden: true },
-      { key: 'baseVersion', label: 'Version', kind: 'number', hidden: true },
-      { key: 'label', label: 'Context name', kind: 'text', required: true },
-      { key: 'workspace', label: 'Workspace', kind: 'text', required: true },
-      { key: 'role', label: 'Your role', kind: 'text' },
-      { key: 'start', label: 'Start time (HH:MM)', kind: 'text', required: true },
-      { key: 'end', label: 'End time (HH:MM)', kind: 'text', required: true },
-      { key: 'days', label: 'Days (0=Sun, comma separated)', kind: 'text', defaultValue: '0,1,2,3,4,5,6' },
-      { key: 'priority', label: 'Priority', kind: 'number', defaultValue: '0' },
-    ],
-    output: ['record'], roles: ['owner'], effects: ['routine_save'],
-  },
-  {
-    id: 'routine.remove', version: 1, type: 'app', title: 'Remove Space routine',
-    description: 'Stop this routine from selecting a Space.', interfaceKey: 'confirmation',
-    fields: [
-      { key: 'id', label: 'Routine', kind: 'text', required: true, hidden: true },
-      { key: 'baseVersion', label: 'Version', kind: 'number', required: true, hidden: true },
-    ],
-    output: ['id'], roles: ['owner'], effects: ['routine_remove'],
-  },
-  {
-    id: 'agent.save', version: 1, type: 'app', title: 'Name personal agent',
-    description: 'Set custom name for your personal agent.', interfaceKey: 'form',
-    fields: [
-      { key: 'name', label: 'Agent name', kind: 'text', required: true },
-    ],
-    output: ['name', 'record'], roles: ['owner', 'admin', 'member'], effects: ['record_update'],
   },
   {
     id: 'contact.create', version: 1, type: 'app', title: 'Add person',
@@ -198,17 +164,6 @@ export const actionCatalog = [
     output: ['run'], roles: ['owner', 'admin', 'member'], effects: ['run_create'],
   },
   {
-    id: 'flow.publish', version: 3, type: 'app', title: 'Create Flow Book',
-    description: 'Publish a reusable ordered process for this workspace.', interfaceKey: 'flow-builder',
-    fields: [
-      { key: 'flowId', label: 'Flow ID', kind: 'text', required: true, hidden: true },
-      { key: 'name', label: 'Flow name', kind: 'text', required: true },
-      { key: 'description', label: 'Description', kind: 'textarea' },
-      { key: 'actions', label: 'Actions', kind: 'action-list', required: true, hidden: true },
-    ],
-    output: ['flowId', 'published'], roles: ['owner', 'admin'], effects: ['definition_publish', 'canvas_update'],
-  },
-  {
     id: 'flow.advance', version: 1, type: 'app', title: 'Continue Flow Book',
     description: 'Complete the current registered step and save Flow Book progress.', interfaceKey: 'confirmation',
     fields: [
@@ -216,12 +171,6 @@ export const actionCatalog = [
       { key: 'actionId', label: 'Action', kind: 'text', required: true, hidden: true },
     ],
     output: ['run', 'result'], roles: ['owner', 'admin', 'member'], effects: ['run_advance'],
-  },
-  {
-    id: 'flow.suggest', version: 1, type: 'agent', title: 'Suggest a Flow Book step',
-    description: 'Suggest one first step from registered Actions for a user-reviewed Flow Book.', interfaceKey: 'form',
-    fields: [{ key: 'prompt', label: 'What outcome should this Flow Book produce?', kind: 'textarea', required: true }],
-    output: ['action', 'confidence', 'probabilities', 'review'], roles: ['owner', 'admin'], effects: ['model_inference'],
   },
   {
     id: 'site.generate', version: 1, type: 'agent', title: 'Generate site draft',
@@ -438,16 +387,6 @@ export const actionCatalog = [
     description: 'Stop serving the public site while keeping retained releases.', interfaceKey: 'confirmation',
     fields: [{ key: 'siteId', label: 'Site', kind: 'record', required: true }],
     output: ['siteId', 'unpublished'], roles: ['owner', 'admin'], effects: ['record_update'],
-  },
-  {
-    id: 'web.search', version: 1, type: 'app', title: 'Search the web',
-    description: 'Find current public sources for a focused research question.', interfaceKey: 'form',
-    fields: [
-      { key: 'query', label: 'Search query', kind: 'text', required: true },
-      { key: 'location', label: 'Country code', kind: 'text' },
-      { key: 'language', label: 'Language code', kind: 'text' },
-    ],
-    output: ['query', 'sources'], roles: ['owner', 'admin', 'member'], effects: ['web_search'],
   },
 ] as const satisfies readonly ActionDefinition[];
 

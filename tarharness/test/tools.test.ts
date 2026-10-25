@@ -23,9 +23,8 @@ const owner: AccessContext = {
 describe('workspace Tools eligibility', () => {
   it('keeps POS and commerce out of Personal until a capability is enabled', async () => {
     const client = await workspace();
-    const initial = await readWorkspaceTools(client, owner, { search: false });
+    const initial = await readWorkspaceTools(client, owner);
     expect(initial.tools.map((tool) => tool.id)).toContain('human');
-    expect(initial.tools.map((tool) => tool.id)).toContain('flow');
     expect(initial.tools.map((tool) => tool.id)).toContain('contact');
     expect(initial.tools.map((tool) => tool.id)).not.toContain('chat');
     expect(initial.tools.map((tool) => tool.id)).not.toContain('members');
@@ -36,17 +35,17 @@ describe('workspace Tools eligibility', () => {
     expect(initial.tools.map((tool) => tool.id)).not.toContain('site');
 
     await Effect.runPromise(executeGateway(client, owner, { actionId: 'capability.save', idempotencyKey: 'enable-pos', input: { module: 'pos', enabled: true, baseVersion: 0 } }));
-    const enabled = await readWorkspaceTools(client, owner, { search: false });
+    const enabled = await readWorkspaceTools(client, owner);
     expect(enabled.tools.map((tool) => tool.id)).toContain('pos');
     expect(enabled.tools.map((tool) => tool.id)).toContain('register');
     expect(enabled.version).toBe(1);
 
     await Effect.runPromise(executeGateway(client, owner, { actionId: 'capability.save', idempotencyKey: 'disable-pos', input: { module: 'pos', enabled: false, baseVersion: 1 } }));
-    expect((await readWorkspaceTools(client, owner, { search: false })).tools.map((tool) => tool.id)).not.toContain('pos');
-    expect((await readWorkspaceTools(client, owner, { search: false })).tools.map((tool) => tool.id)).not.toContain('register');
+    expect((await readWorkspaceTools(client, owner)).tools.map((tool) => tool.id)).not.toContain('pos');
+    expect((await readWorkspaceTools(client, owner)).tools.map((tool) => tool.id)).not.toContain('register');
   });
 
-  it('verifies 18 canonical tools catalog completeness and dual-track whatsapp model', async () => {
+  it('verifies the trimmed tool catalog', async () => {
     const client = await workspace();
     const workContext: AccessContext = {
       ...owner,
@@ -54,26 +53,15 @@ describe('workspace Tools eligibility', () => {
     };
     await Effect.runPromise(executeGateway(client, workContext, { actionId: 'capability.save', idempotencyKey: 'enable-pos', input: { module: 'pos', enabled: true, baseVersion: 0 } }));
     await Effect.runPromise(executeGateway(client, workContext, { actionId: 'capability.save', idempotencyKey: 'enable-site', input: { module: 'site', enabled: true, baseVersion: 1 } }));
-    const result = await readWorkspaceTools(client, workContext, { search: false });
+    const result = await readWorkspaceTools(client, workContext);
 
     const toolIds = result.tools.map((tool) => tool.id);
-    const expected = ['pos', 'register', 'item', 'inventory', 'order', 'invoice', 'payment', 'expense', 'purchase', 'members', 'contact', 'human', 'flow', 'site', 'inbox', 'chat', 'whatsapp', 'telegram'];
+    const expected = ['pos', 'register', 'item', 'inventory', 'order', 'invoice', 'payment', 'expense', 'purchase', 'members', 'contact', 'human', 'site'];
     for (const id of expected) {
       expect(toolIds).toContain(id);
     }
-    expect(result.tools.length).toBe(18);
+    expect(result.tools.length).toBe(13);
 
-    // chat: manual free tool
-    const chatTool = result.tools.find((t) => t.id === 'chat')!;
-    expect(chatTool.kind).toBe('tool');
-    expect(chatTool.reach).toBe('customer');
-    expect(chatTool.module).toBe('core');
-
-    // whatsapp: official automated channel
-    const waTool = result.tools.find((t) => t.id === 'whatsapp')!;
-    expect(waTool.kind).toBe('channel');
-    expect(waTool.reach).toBe('customer');
-    expect(waTool.module).toBe('commerce');
   });
 
   it('respects member explicit access whitelist and allows pos, register, chat', async () => {
@@ -87,15 +75,14 @@ describe('workspace Tools eligibility', () => {
         ...owner.member,
         role: 'member',
         workRole: 'cashier',
-        access: ['pos', 'register', 'chat'],
+        access: ['pos', 'register'],
       },
     };
 
-    const toolsResult = await readWorkspaceTools(client, memberWithAccess, { search: false });
+    const toolsResult = await readWorkspaceTools(client, memberWithAccess);
     const toolIds = toolsResult.tools.map((t) => t.id);
     expect(toolIds).toContain('pos');
     expect(toolIds).toContain('register');
-    expect(toolIds).toContain('chat');
     expect(toolIds).not.toContain('site');
     expect(toolIds).not.toContain('purchase');
     expect(toolIds).not.toContain('expense');
@@ -107,7 +94,7 @@ describe('workspace Tools eligibility', () => {
     await expect(Effect.runPromise(executeGateway(client, member, { actionId: 'capability.save', idempotencyKey: 'member-save', input: { module: 'pos', enabled: true, baseVersion: 0 } }))).rejects.toThrow();
     await Effect.runPromise(executeGateway(client, owner, { actionId: 'capability.save', idempotencyKey: 'owner-save', input: { module: 'pos', enabled: true, baseVersion: 0 } }));
     await expect(Effect.runPromise(executeGateway(client, owner, { actionId: 'capability.save', idempotencyKey: 'stale-save', input: { module: 'site', enabled: true, baseVersion: 0 } }))).rejects.toThrow('Tools changed');
-    const cashier = await readWorkspaceTools(client, member, { search: true });
+    const cashier = await readWorkspaceTools(client, member);
     expect(cashier.tools.map((tool) => tool.id)).toContain('pos');
     expect(cashier.tools.map((tool) => tool.id)).toContain('register');
     expect(cashier.tools.map((tool) => tool.id)).not.toContain('inventory');
@@ -151,7 +138,7 @@ describe('workspace Tools eligibility', () => {
     expect(canExecute(memberEmptyAccess.member, 'pos.open')).toBe(false);
     expect(canExecute(memberEmptyAccess.member, 'pos.customer.save')).toBe(false);
 
-    const toolsResult = await readWorkspaceTools(client, memberEmptyAccess, { search: false });
+    const toolsResult = await readWorkspaceTools(client, memberEmptyAccess);
     expect(toolsResult.tools.length).toBe(0);
   });
 

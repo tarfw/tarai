@@ -9,7 +9,7 @@
 
 import { luminance } from '../contrast.ts';
 import { COMMERCE_MODELS } from '../blueprint.ts';
-import { TRADE_TAXONOMY } from '../../brain/workspace-ai.ts';
+import { TRADE_TAXONOMY } from '../../brain/trade.ts';
 import { blocking, tagCheck, checkDesign, type CheckVocabulary } from './check.ts';
 import {
   TOKENS_VERSION,

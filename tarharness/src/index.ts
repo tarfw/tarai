@@ -2,14 +2,13 @@ import { Effect } from 'effect';
 import type { Client } from '@libsql/client/web';
 import { verifyGoogleIdentity } from './auth/google.ts';
 import { ControlStore } from './db/control.ts';
-import { ensureNowDatabase, mintNowSyncToken, openWorkspaceDatabase, provisionWorkspaceDatabase, query } from './db/turso.ts';
+import { openWorkspaceDatabase, provisionWorkspaceDatabase, query } from './db/turso.ts';
 import { executeGateway, type GatewayRequest } from './gateway/actions.ts';
 import { HarnessError, badRequest, forbidden, notFound, unavailable } from './errors.ts';
 import type { AccessContext, RecordItem } from './types.ts';
 import { actionCatalog, findAction, interfaceCatalog } from './registry/catalog.ts';
 import { moduleForAction, readCapabilities, readWorkspaceTools } from './registry/tools.ts';
-import { buildWorkspaceCanvas } from './registry/canvas.ts';
-import { posSummary, readPos } from './pos/store.ts';
+import { readPos } from './pos/store.ts';
 import { readProductContent } from './pos/content.ts';
 import { serveSitePreview } from './site/preview.ts';
 import { placeOrder, resolvePublicSite } from './site/checkout.ts';
@@ -19,23 +18,13 @@ import { defaultBlueprint } from './site/blueprint.ts';
 import { exportDesign } from './site/design.ts';
 import { compileDocument } from './site/compile.ts';
 import { siteRegenerate } from './site/store.ts';
-import { canExecute, canReadRecord, canRunFlowStep, canUseWorkRole, isCook, managesMembers, workRoleNames } from './access.ts';
+import { canExecute, canReadRecord, canRunFlowStep, isCook, managesMembers } from './access.ts';
 import { inviteMember, listMembers, updateMember } from './team.ts';
-import { providers, providerStatus, verifyEvent, chatResponse, type ChannelEnv, type Provider } from './channels/providers.ts';
-import { beginLink, channelState, confirmLink, disconnect, proveLink, resolveSender } from './channels/store.ts';
-import { enqueueCommand, processCommand } from './channels/jobs.ts';
 import { searchContacts } from './contacts/search.ts';
 import { acceptFlowRequest, sweepFlowDispatches } from './flows/dispatch.ts';
-import { resolveContext, routineFromRecord } from './space/context.ts';
-import { buildSpaceView, readInboxSource } from './space/view.ts';
-import { authorityKey, ensureNowSchema, projectNow, readNow, replaceSource, retractMissing, retractSource } from './inbox/now.ts';
-import { nextInTie } from './inbox/rank.ts';
-import { evaluateMemberAccess, suggestCapabilities, suggestMember, type MemberAccessResult, type ToolAccessEvaluation } from './brain/workspace-ai.ts';
-import { matchFlowSteps, type FlowMatchResult, type FlowStepMatch } from './brain/jev.ts';
-import { canonicalTools } from './registry/tools.ts';
 export { FlowWorkflow } from './flows/workflow.ts';
 
-type RuntimeEnv = Env & ChannelEnv & { readonly TURSO_PLATFORM_TOKEN?: string; readonly TINYFISH_API_KEY?: string; readonly TYPESAFE_API_KEY?: string; readonly GROQ_API_KEY?: string; readonly PEXELS_API_KEY?: string; readonly SITE_BASE_DOMAIN?: string; readonly SITE_WORKER_ORIGIN?: string; readonly SITE_MODEL?: string };
+type RuntimeEnv = Env & { readonly TURSO_PLATFORM_TOKEN?: string; readonly TYPESAFE_API_KEY?: string; readonly GROQ_API_KEY?: string; readonly PEXELS_API_KEY?: string; readonly SITE_BASE_DOMAIN?: string; readonly SITE_WORKER_ORIGIN?: string; readonly SITE_MODEL?: string };
 const jsonHeaders = { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' };
 const corsHeaders = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'Authorization, Content-Type, Idempotency-Key', 'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS' };
 const now = () => Date.now();
@@ -119,15 +108,10 @@ async function withWorkspace<A>(env: RuntimeEnv, current: AccessContext, work: (
   const client = await Effect.runPromise(openWorkspaceDatabase(tursoEnv(env), current.workspace.databaseName, current.workspace.databaseHost!));
   try { return await work(client); } finally { client.close(); }
 }
-async function withNowDatabase<A>(env: RuntimeEnv, user: string, work: (client: Client) => Promise<A>): Promise<A> {
-  const database = await ensureNowDatabase(tursoEnv(env), user);
-  const client = await Effect.runPromise(openWorkspaceDatabase(tursoEnv(env), database.Name, database.Hostname));
-  try { return await work(client); } finally { client.close(); }
-}
 
 // The scout audits a published site at most once a day. CONTROL holds the last
 // audit time so the background fan-out never opens a workspace database that is
-// not due; the run only drafts a revision and files a Space item, never publishes.
+// not due; the run only drafts a revision, never publishes.
 const SCOUT_INTERVAL = 24 * 60 * 60_000;
 async function scoutPublishedSites(env: RuntimeEnv): Promise<void> {
   if (!env.SITE_RELEASES) return;
@@ -157,9 +141,7 @@ async function scoutPublishedSites(env: RuntimeEnv): Promise<void> {
 
 // The sweep re-reads what the owner has since recorded and rebuilds the draft when that state
 // moved. It never publishes: a live store keeps serving its release until its owner taps
-// Publish, and a draft a hand edit owns is left alone. CONTROL holds the last reading so the
-// pass throttles without opening every workspace database, and a rebuild writes the state it
-// read into the blueprint, so the next tick finds nothing moved.
+// Publish, and a draft a hand edit owns is left alone.
 const REGEN_INTERVAL = 15 * 60_000;
 const REGEN_PER_TICK = 8;
 async function regenerateDriftedSites(env: RuntimeEnv): Promise<void> {
@@ -216,105 +198,6 @@ async function activeAccesses(request: Request, env: RuntimeEnv) {
   return { value, control, accesses: await Effect.runPromise(control.listAccess(value)) };
 }
 
-async function routines(env: RuntimeEnv, accesses: readonly AccessContext[]) {
-  const personal = accesses.find((item) => item.workspace.mode === 'personal');
-  if (!personal) return [];
-  return withWorkspace(env, personal, async (client) => {
-    const rows = await Effect.runPromise(query<Record<string, unknown>>(client, { sql: "SELECT id,data FROM records WHERE type='routine' AND state='active' AND archived IS NULL ORDER BY updated DESC" }));
-    return rows.map((row) => routineFromRecord({ id: String(row.id), data: object(JSON.parse(String(row.data))) })).filter((item): item is NonNullable<typeof item> => Boolean(item));
-  });
-}
-
-async function spaceResponse(request: Request, env: RuntimeEnv, url: URL) {
-  const { value, control, accesses } = await activeAccesses(request, env);
-  if (!accesses.length) throw notFound('No active workspace is available.');
-  const saved = await Effect.runPromise(control.context(value.id));
-  const requested = (url.searchParams.get('scope') || '').trim();
-  if (requested && !accesses.some((item) => item.workspace.id === requested || item.workspace.slug === requested)) throw forbidden();
-  const hold = saved?.mode === 'hold' && accesses.some((item) => item.workspace.id === saved.workspace) ? saved.workspace : undefined;
-  const override = hold || requested;
-  const zone = (url.searchParams.get('zone') || 'Asia/Kolkata').slice(0, 80);
-  const suppliedAt = Number(url.searchParams.get('at') || Date.now());
-  const at = Number.isSafeInteger(suppliedAt) && Math.abs(suppliedAt - Date.now()) < 86_400_000 ? suppliedAt : Date.now();
-  const decision = resolveContext(accesses, override ? [] : await routines(env, accesses), { at, zone, override, role: hold ? saved?.role || undefined : undefined, held: Boolean(hold) });
-  const selected = accesses.find((item) => item.workspace.id === decision.context.workspace.id);
-  if (!selected) throw notFound('Space context is no longer available.');
-  return withWorkspace(env, selected, (client) => buildSpaceView(client, selected, decision));
-}
-
-async function inboxResponse(request: Request, env: RuntimeEnv) {
-  const { value, control, accesses } = await activeAccesses(request, env);
-  const personal = accesses.find((current) => current.workspace.mode === 'personal');
-  if (!personal) throw notFound('Personal Inbox is unavailable.');
-  const saved = await Effect.runPromise(control.context(value.id));
-  const hold = saved?.mode === 'hold' && accesses.some((current) => current.workspace.id === saved.workspace) ? saved.workspace : undefined;
-  const parameters = new URL(request.url).searchParams;
-  const zone = (parameters.get('zone') || 'UTC').slice(0, 80);
-  const refresh = parameters.get('refresh');
-  const decision = resolveContext(accesses, hold ? [] : await routines(env, accesses), {
-    at: Date.now(), zone, override: hold, role: hold ? saved?.role || undefined : undefined, held: Boolean(hold),
-  });
-  const finish = async (projection: Awaited<ReturnType<typeof readNow>>, failed: string[]) => ({
-    ...projection, partial: failed.length > 0, failed,
-    grants: Object.fromEntries(accesses.map((current) => [current.workspace.id, authorityKey(current)])),
-    next: failed.length || decision.decision === 'confirm' ? null : await nextInTie(projection.rows, decision.context, env.TYPESAFE_API_KEY),
-    context: decision.context, decision: decision.decision, alternatives: decision.alternatives,
-    sources: accesses.map((current) => ({ id: current.workspace.id, name: current.workspace.mode === 'personal' ? 'Personal' : current.workspace.name,
-      slug: current.workspace.slug, mode: current.workspace.mode, role: current.member.workRole, owner: current.workspace.ownerName || 'You' })),
-  });
-  return withNowDatabase(env, value.id, async (client) => {
-    await ensureNowSchema(client);
-    await retractMissing(client, new Set(accesses.map((current) => current.workspace.id)));
-    const previous = await readNow(client, accesses);
-    const stale = accesses.filter((current) => refresh === current.workspace.id || refresh === current.workspace.slug
-      || !previous.sync[current.workspace.id]
-      || previous.authority[current.workspace.id] !== authorityKey(current)
-      || Date.now() - previous.sync[current.workspace.id] > 60_000);
-    if (!stale.length) return finish(previous, []);
-    const settled = await Promise.allSettled(stale.map((current) => withWorkspace(env, current, (source) => readInboxSource(source, current))));
-    const failed: string[] = [];
-    for (const [index, result] of settled.entries()) {
-      const source = stale[index].workspace.id;
-      if (result.status === 'rejected') {
-        failed.push(source);
-        console.error(JSON.stringify({ event: 'inbox.source.failed', workspace: source, error: result.reason instanceof Error ? result.reason.message.slice(0, 300) : String(result.reason).slice(0, 300) }));
-        continue;
-      }
-      try { await replaceSource(client, source, projectNow(result.value, value.id), authorityKey(stale[index])); }
-      catch (error) {
-        failed.push(source);
-        console.error(JSON.stringify({ event: 'inbox.projection.failed', workspace: source, error: error instanceof Error ? error.message.slice(0, 300) : String(error).slice(0, 300) }));
-      }
-    }
-    const projection = await readNow(client, accesses);
-    return finish(projection, failed);
-  });
-}
-
-async function enqueueInboxSync(env: RuntimeEnv, workspace: string): Promise<void> {
-  const members = await env.CONTROL.prepare("SELECT user_id FROM members WHERE workspace_id=? AND state='active'").bind(workspace).all<{ user_id: string }>();
-  for (let offset = 0; offset < members.results.length; offset += 100) {
-    await env.OUTBOX.sendBatch(members.results.slice(offset, offset + 100).map((member) => ({
-      body: { kind: 'inbox.sync', workspace, user: member.user_id },
-    })));
-  }
-}
-
-async function syncMemberInbox(env: RuntimeEnv, workspace: string, user: string): Promise<void> {
-  const person = await env.CONTROL.prepare('SELECT id,email,name FROM users WHERE id=?').bind(user).first<{ id: string; email: string; name: string | null }>();
-  if (!person) return;
-  const accesses = await Effect.runPromise(new ControlStore(env.CONTROL).listAccess(person));
-  const personal = accesses.find((current) => current.workspace.mode === 'personal');
-  if (!personal) return;
-  const source = accesses.find((current) => current.workspace.id === workspace);
-  const entries = source ? await withWorkspace(env, source, async (client) => projectNow(await readInboxSource(client, source), user)) : null;
-  await withNowDatabase(env, user, async (client) => {
-    await ensureNowSchema(client);
-    if (entries && source) await replaceSource(client, workspace, entries, authorityKey(source));
-    else await retractSource(client, workspace);
-  });
-}
-
 async function createWorkspace(request: Request, env: RuntimeEnv): Promise<Response> {
   const { value: owner, control } = await identity(request, env);
   const body = await Effect.runPromise(parseJson(request));
@@ -343,103 +226,16 @@ async function createWorkspace(request: Request, env: RuntimeEnv): Promise<Respo
   return response({ workspace: { ...pending, databaseHost: undefined, state: 'active' } }, 201);
 }
 
-async function listDefinitions(client: Client) {
-  const rows = await Effect.runPromise(query<Record<string, unknown>>(client, { sql: 'SELECT id,kind,name,version,state,data FROM definitions WHERE state != \'archived\' ORDER BY updated_at DESC' }));
-  return rows.map((item) => ({ id: String(item.id), kind: String(item.kind), name: String(item.name), version: Number(item.version), state: String(item.state), data: object(JSON.parse(String(item.data))) }));
-}
-
-async function workspaceCanvas(client: Client, member: AccessContext['member']) {
-  if (isCook(member)) return [{ id: 'kitchen', kind: 'data', title: 'Kitchen', display: 'value', value: 'Open Now', caption: 'Prepare assigned orders in Now' }];
-  const [definitions, counts] = await Promise.all([
-    listDefinitions(client),
-    Effect.runPromise(query<Record<string, unknown>>(client, { sql: `SELECT COUNT(*) AS records,
-      SUM(CASE WHEN type='task' AND state='open' THEN 1 ELSE 0 END) AS open_tasks,
-      SUM(CASE WHEN type LIKE 'pos.%' THEN 1 ELSE 0 END) AS pos_records
-      FROM records WHERE archived IS NULL` })),
-  ]);
-  const count = counts[0] || {};
-  const pos = Number(count.pos_records || 0) ? await posSummary(client) : undefined;
-  return buildWorkspaceCanvas(definitions, { records: Number(count.records || 0), openTasks: Number(count.open_tasks || 0), pos }, member.role)
-    .filter((card) => card.kind === 'data' ? member.workRole !== 'cashier' || !['pos-sales','records-total'].includes(card.id)
-      : canExecute(member, card.kind === 'action' ? card.actionId : card.actionId || 'flow.start'));
-}
-
-async function channelRequest(request: Request, env: RuntimeEnv, provider: Provider, ctx: ExecutionContext) {
-  const verified = await verifyEvent(request, provider, env);
-  if (verified.ping) return Response.json({ type: 1 });
-  const event = verified.event!;
-  if (!event.userId || !event.tenantId || !event.channelId || !event.eventId) throw badRequest('A team channel and verified sender are required.');
-  try {
-    const link = /^link\s+([a-f0-9]{32})$/i.exec(event.text.trim());
-    if (link) return chatResponse(provider, await proveLink(env.CONTROL, event, link[1]), event.userId);
-    const sender = await resolveSender(env.CONTROL, event);
-    const current = await Effect.runPromise(new ControlStore(env.CONTROL).access(sender.identity, sender.slug));
-    if (/^(help|hi|hello)?$/i.test(event.text.trim())) return chatResponse(provider, 'Use TAR Now for your work. Commands: done <task-id>, start <order-id> <product-id>, ready <order-id> <product-id>. Your TAR role applies here.', event.userId);
-    if (event.text.trim().toLowerCase() === 'status') {
-      const result = await env.CONTROL.prepare('SELECT state,result FROM channel_commands WHERE workspace_id=? AND user_id=? ORDER BY created_at DESC LIMIT 1').bind(current.workspace.id, current.identity.id).first<{ state: string; result: string | null }>();
-      return chatResponse(provider, result ? `${result.state}: ${result.result || 'Your request is being processed.'}` : 'No chat requests yet.', event.userId);
-    }
-    const id = await enqueueCommand(env.CONTROL, current, event);
-    ctx.waitUntil(env.OUTBOX.send({ kind: 'chat.command', id }).catch(() => { console.error(JSON.stringify({ event: 'chat.queue.unavailable', id })); }));
-    return chatResponse(provider, 'Request saved. Use “status” to check the result, or open TAR → Members & chat.', event.userId);
-  } catch (error) {
-    // Never post business payloads, provider roles, or private details to the room.
-    const message = error instanceof HarnessError ? error.message : 'Could not complete this request. Check TAR before trying again.';
-    return chatResponse(provider, message, event.userId);
-  }
-}
-
 async function handle(request: Request, env: RuntimeEnv, ctx: ExecutionContext): Promise<Response> {
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders });
   const url = new URL(request.url); const path = url.pathname;
-  const channelMatch = /^\/v1\/channels\/(slack|discord|google-chat)\/events$/.exec(path);
-  if (request.method === 'POST' && channelMatch) return channelRequest(request, env, channelMatch[1] as Provider, ctx);
   if (request.method === 'GET' && path === '/health') return response({ ok: true, service: 'tarharness', now: new Date().toISOString(), tursoProvisioning: Boolean(env.TURSO_PLATFORM_TOKEN && env.TURSO_ORG && !env.TURSO_ORG.startsWith('REPLACE_')) });
-  if (request.method === 'GET' && path === '/v1/actions') return response({ actions: actionCatalog.filter((action) => action.id !== 'flow.suggest' || Boolean(env.TYPESAFE_API_KEY)), interfaces: interfaceCatalog });
+  if (request.method === 'GET' && path === '/v1/actions') return response({ actions: actionCatalog, interfaces: interfaceCatalog });
   const previewMatch = /^\/v1\/site-previews\/([a-f0-9-]{36})(\/.*)?$/.exec(path);
   if (request.method === 'GET' && previewMatch) return serveSitePreview(previewMatch[1], previewMatch[2] || '/', env.CONTROL, env.SITE_RELEASES, siteSecurityHeaders, {
     frame: url.searchParams.get('frame'),
     embed: url.searchParams.get('embed') === '1',
   });
-  if (request.method === 'GET' && path === '/v1/space') return response(await spaceResponse(request, env, url));
-  if (request.method === 'GET' && (path === '/v1/inbox/sync' || path === '/v1/inbox/replica')) {
-    const { value, accesses } = await activeAccesses(request, env);
-    const personal = accesses.find((current) => current.workspace.mode === 'personal');
-    if (!personal) throw notFound('Personal Now database is unavailable.');
-    await withNowDatabase(env, value.id, async (client) => {
-      await ensureNowSchema(client);
-      const grants = new Map(accesses.map((current) => [current.workspace.id, authorityKey(current)]));
-      await retractMissing(client, new Set(grants.keys()));
-      const projections = await client.execute('SELECT source,authority FROM projection');
-      for (const projection of projections.rows) {
-        const source = String(projection.source);
-        if (String(projection.authority) !== grants.get(source)) await retractSource(client, source);
-      }
-    });
-    const database = await ensureNowDatabase(tursoEnv(env), value.id);
-    const authToken = await mintNowSyncToken(tursoEnv(env), database.Name);
-    return response({ url: `libsql://${database.Hostname}`, authToken,
-      expiresAt: Date.now() + 9 * 60_000, database: personal.workspace.id }, 200, { 'Cache-Control': 'no-store' });
-  }
-  if (request.method === 'GET' && path === '/v1/inbox') return response(await inboxResponse(request, env));
-  if (request.method === 'PUT' && path === '/v1/context') {
-    const { value, control, accesses } = await activeAccesses(request, env);
-    const body = await Effect.runPromise(parseJson(request));
-    const mode = body.mode === 'auto' ? 'auto' : body.mode === 'hold' ? 'hold' : null;
-    if (!mode) throw badRequest('Context mode must be auto or hold.');
-    const selected = mode === 'hold' ? accesses.find((item) => item.workspace.slug === body.scope || item.workspace.id === body.scope) : accesses[0];
-    if (!selected) throw forbidden();
-    const role = mode === 'hold' && typeof body.role === 'string' ? body.role.trim() : '';
-    if (role.length > 80 || /[\u0000-\u001f\u007f]/.test(role)) throw badRequest('Choose a valid role.');
-    if (role && selected.member.role === 'member') {
-      const normalize = (value: string) => ['chef', 'cook', 'kitchen'].includes(value.trim().toLowerCase()) ? 'kitchen' : value.trim().toLowerCase();
-      const grants = selected.member.roles?.length ? selected.member.roles : [selected.member.workRole || 'general'];
-      if (!grants.some((grant) => normalize(grant) === normalize(role))) throw badRequest('Choose a work role granted in that workspace.');
-    }
-    const duration = typeof body.duration === 'number' && Number.isSafeInteger(body.duration) ? Math.min(Math.max(body.duration, 900_000), 604_800_000) : 43_200_000;
-    await Effect.runPromise(control.saveContext(value.id, selected.workspace.id, mode, mode === 'hold' ? Date.now() + duration : null, role || null));
-    return response({ context: { mode, scope: mode === 'hold' ? selected.workspace.slug : null, role: role || null, expires: mode === 'hold' ? Date.now() + duration : null } });
-  }
   if (request.method === 'GET' && path === '/v1/workspaces') {
     const { value, control } = await identity(request, env);
     await ensurePersonalWorkspace(value, control, env);
@@ -453,12 +249,6 @@ async function handle(request: Request, env: RuntimeEnv, ctx: ExecutionContext):
     return response({ workspaces: workspaces.map(({ workspace, role, workRole, roles }) => ({ id: workspace.id, name: workspace.name, slug: workspace.slug, scope: workspace.slug, role, workRole, roles, owner: workspace.mode === 'personal' ? 'You' : workspace.ownerName || 'Workspace owner', mode: workspace.mode, state: workspace.state })) });
   }
   if (request.method === 'POST' && path === '/v1/workspaces') return createWorkspace(request, env);
-  if (request.method === 'POST' && path === '/v1/ai/workspace-suggest') {
-    await identity(request, env);
-    const body = await Effect.runPromise(parseJson(request));
-    const brief = typeof body.brief === 'string' ? body.brief : '';
-    return response(await suggestCapabilities(env.TYPESAFE_API_KEY, brief));
-  }
   const publicSiteMatch = /^\/v1\/sites\/([a-z0-9-]+)(\/.*)?$/.exec(path);
   const publicOrderMatch = /^\/v1\/sites\/([a-z0-9-]+)\/order$/.exec(path);
   if (request.method === 'POST' && publicOrderMatch) {
@@ -511,9 +301,6 @@ async function handle(request: Request, env: RuntimeEnv, ctx: ExecutionContext):
     });
     await env.CONTROL.batch([
       env.CONTROL.prepare('DELETE FROM sites WHERE workspace=?').bind(current.workspace.id),
-      env.CONTROL.prepare('DELETE FROM channel_commands WHERE workspace_id=?').bind(current.workspace.id),
-      env.CONTROL.prepare('DELETE FROM channel_identities WHERE workspace_id=?').bind(current.workspace.id),
-      env.CONTROL.prepare('DELETE FROM channel_link_requests WHERE workspace_id=?').bind(current.workspace.id),
       env.CONTROL.prepare('DELETE FROM workspace_invites WHERE workspace_id=?').bind(current.workspace.id),
       env.CONTROL.prepare('DELETE FROM members WHERE workspace_id=?').bind(current.workspace.id),
       env.CONTROL.prepare('DELETE FROM workspaces WHERE id=?').bind(current.workspace.id),
@@ -562,109 +349,6 @@ async function handle(request: Request, env: RuntimeEnv, ctx: ExecutionContext):
       }
     });
     return response({ members: enriched, currentUserId: current.identity.id });
-  }
-  if (request.method === 'POST' && nested === 'ai/member-suggest') {
-    const body = await Effect.runPromise(parseJson(request));
-    const duties = typeof body.duties === 'string' ? body.duties : '';
-    return response(await suggestMember(env.TYPESAFE_API_KEY, duties));
-  }
-  if (request.method === 'POST' && nested === 'ai/member-access') {
-    const body = await Effect.runPromise(parseJson(request));
-    const brief = typeof body.brief === 'string' ? body.brief : '';
-    let cachedResult: MemberAccessResult | null = null;
-    if (brief.trim()) {
-      try {
-        await withWorkspace(env, current, async (client) => {
-          const cached = await client.execute({
-            sql: "SELECT answers, model FROM assessments WHERE kind='access' AND evidence=? AND expires>? ORDER BY created DESC LIMIT 1",
-            args: [brief.trim(), Date.now()],
-          });
-          if (cached.rows.length > 0) {
-            const evals = JSON.parse(String(cached.rows[0].answers)) as ToolAccessEvaluation[];
-            const suggestedAccess = evals.filter((item) => item.on).map((item) => item.id);
-            cachedResult = {
-              brief: brief.trim(),
-              evaluations: evals,
-              suggestedAccess,
-              model: String(cached.rows[0].model),
-              review: true,
-            };
-          }
-        });
-      } catch { /* proceed */ }
-    }
-    if (cachedResult) return response(cachedResult);
-    const result = await evaluateMemberAccess(env.TYPESAFE_API_KEY, brief, canonicalTools);
-    ctx.waitUntil(withWorkspace(env, current, async (client) => {
-      try {
-        await client.execute({
-          sql: `INSERT INTO assessments(id, kind, evidence, questions, answers, model, expires, created)
-                VALUES(?, 'access', ?, ?, ?, ?, ?, ?)`,
-          args: [
-            crypto.randomUUID(),
-            brief.trim(),
-            JSON.stringify(canonicalTools.map((t) => ({ id: t.id, description: t.description }))),
-            JSON.stringify(result.evaluations),
-            result.model || 'heuristic',
-            Date.now() + 86400000,
-            Date.now(),
-          ],
-        });
-      } catch (err) {
-        console.error(JSON.stringify({ event: 'assessment.cache.failed', error: String(err) }));
-      }
-    }));
-    return response(result);
-  }
-  if (request.method === 'POST' && nested === 'ai/flow-match') {
-    const body = await Effect.runPromise(parseJson(request));
-    let lines: string[] = [];
-    if (Array.isArray(body.steps)) lines = body.steps.map(String);
-    else if (Array.isArray(body.lines)) lines = body.lines.map(String);
-    else if (typeof body.text === 'string') lines = body.text.split('\n');
-    lines = lines.map((l) => l.trim()).filter((l) => l.length > 0);
-    const evidenceKey = lines.join('\n');
-    let cachedFlowResult: FlowMatchResult | null = null;
-    if (lines.length > 0) {
-      try {
-        await withWorkspace(env, current, async (client) => {
-          const cached = await client.execute({
-            sql: "SELECT answers, model FROM assessments WHERE kind='flow' AND evidence=? AND expires>? ORDER BY created DESC LIMIT 1",
-            args: [evidenceKey, Date.now()],
-          });
-          if (cached.rows.length > 0) {
-            const steps = JSON.parse(String(cached.rows[0].answers)) as FlowStepMatch[];
-            cachedFlowResult = {
-              steps,
-              model: String(cached.rows[0].model),
-              review: true,
-            };
-          }
-        });
-      } catch { /* proceed */ }
-    }
-    if (cachedFlowResult) return response(cachedFlowResult);
-    const result = await matchFlowSteps(env.TYPESAFE_API_KEY, lines, canonicalTools);
-    ctx.waitUntil(withWorkspace(env, current, async (client) => {
-      try {
-        await client.execute({
-          sql: `INSERT INTO assessments(id, kind, evidence, questions, answers, model, expires, created)
-                VALUES(?, 'flow', ?, ?, ?, ?, ?, ?)`,
-          args: [
-            crypto.randomUUID(),
-            evidenceKey,
-            JSON.stringify(lines),
-            JSON.stringify(result.steps),
-            result.model || 'heuristic',
-            Date.now() + 86400000,
-            Date.now(),
-          ],
-        });
-      } catch (err) {
-        console.error(JSON.stringify({ event: 'assessment.cache.failed', error: String(err) }));
-      }
-    }));
-    return response(result);
   }
   if (request.method === 'POST' && nested === 'members') {
     const body = await Effect.runPromise(parseJson(request));
@@ -764,52 +448,18 @@ async function handle(request: Request, env: RuntimeEnv, ctx: ExecutionContext):
         }
       });
     }
-    ctx.waitUntil(syncMemberInbox(env, current.workspace.id, user).catch((error) => console.error(JSON.stringify({ event: 'inbox.member.sync.failed', error: error instanceof Error ? error.message.slice(0, 300) : String(error).slice(0, 300) }))));
     return response(result);
   }
-  if (request.method === 'GET' && nested === 'team-chat') return response({ ...await channelState(env.CONTROL, current), providers: providerStatus(env), canManage: managesMembers(current.member), role: current.member.role, workRole: current.member.workRole || 'general' });
-  if (request.method === 'POST' && nested === 'team-chat/link') {
-    const body = await Effect.runPromise(parseJson(request)); const provider = body.provider as Provider;
-    if (!providers.includes(provider)) throw badRequest('Choose Slack, Discord or Google Chat.');
-    if (!providerStatus(env).find((item) => item.id === provider)?.configured) throw unavailable('Provider setup is required before linking.');
-    return response(await beginLink(env.CONTROL, current, provider, String(body.purpose)), 201);
-  }
-  if (request.method === 'POST' && nested === 'team-chat/confirm') {
-    const body = await Effect.runPromise(parseJson(request));
-    return response(await confirmLink(env.CONTROL, current, String(body.id), body.joinUrl));
-  }
-  if (request.method === 'POST' && nested === 'team-chat/disconnect') {
-    const body = await Effect.runPromise(parseJson(request));
-    return response(await disconnect(env.CONTROL, current, body.destination === true));
-  }
-    if (request.method === 'GET' && nested === 'actions') return response({ actions: actionCatalog.filter((action) => canExecute(current.member, action.id)
-      && (action.id !== 'flow.suggest' || Boolean(env.TYPESAFE_API_KEY))
-      && (action.id !== 'web.search' || Boolean(env.TINYFISH_API_KEY)))
-      .map((action) => ({ ...action, workRoles: workRoleNames.filter((role) => canUseWorkRole(role, action.id)) })), interfaces: interfaceCatalog });
+    if (request.method === 'GET' && nested === 'actions') return response({ actions: actionCatalog.filter((action) => canExecute(current.member, action.id)), interfaces: interfaceCatalog });
   if (request.method === 'POST' && /^actions\/flow\.(start|advance)$/.test(nested)) {
     const key = request.headers.get('Idempotency-Key') || '';
     const input = await Effect.runPromise(parseJson(request));
     const actionId = nested.slice(8) as GatewayRequest['actionId'];
     const result = await acceptFlowRequest(env, current, { actionId, idempotencyKey: key, input });
-    ctx.waitUntil(enqueueInboxSync(env, current.workspace.id).catch((error) => console.error(JSON.stringify({ event: 'inbox.queue.failed', error: error instanceof Error ? error.message.slice(0, 300) : String(error).slice(0, 300) }))));
     return response(result, 201);
   }
   return withWorkspace(env, current, async (client) => {
-    if (request.method === 'GET' && nested === 'tools') return response(await readWorkspaceTools(client, current, { search: Boolean(env.TINYFISH_API_KEY) }));
-    const nowMatch = /^now\/(.+)$/.exec(nested);
-    if (request.method === 'GET' && nowMatch) {
-      const id = decodeURIComponent(nowMatch[1]);
-      const source = await readInboxSource(client, current);
-      const row = projectNow(source, current.identity.id).find((entry) => entry.id === id);
-      if (!row) throw notFound('This work is no longer available. Refresh Now.');
-      const item = [...source.tasks, ...source.orders, ...source.work].find((candidate) => candidate.id === row.target
-        && (candidate.type !== 'pos.order' || candidate.data.projectionRole === row.role || candidate.data.projectionRole === undefined))
-        || source.runs.filter((run) => run.id === row.target).map((run): RecordItem => ({ id: run.id, type: 'flow.run', title: run.title,
-          state: run.state, data: { step: run.step + 1, flow: run.flow, parent: run.parent }, owner: null,
-          assignee: current.identity.id, version: run.version, createdAt: run.updated, updatedAt: run.updated }))[0];
-      if (!item) throw notFound('Source record not found.');
-      return response({ row, record: item, workspace: source.workspace });
-    }
+    if (request.method === 'GET' && nested === 'tools') return response(await readWorkspaceTools(client, current));
     const productContentMatch = /^pos\/products\/([^/]+)\/content$/.exec(nested);
     if (request.method === 'GET' && productContentMatch) {
       if (isCook(current.member)) throw forbidden();
@@ -897,7 +547,7 @@ async function handle(request: Request, env: RuntimeEnv, ctx: ExecutionContext):
       const row = siteRows[0];
       const publication = await env.CONTROL.withSession('first-primary').prepare('SELECT domain,mode,release,status FROM sites WHERE workspace=? AND site=?')
         .bind(current.workspace.id, String(row.id)).first<{ domain: string; mode: string; release: string; status: string }>();
-      const stored = object(typeof row.data === 'string' ? JSON.parse(row.data) : row.data);
+      const stored = object(typeof row.data === 'string' ? JSON.parse(String(row.data)) : row.data);
       const { doc } = readDocument(stored);
       const history = Array.isArray((stored as { history?: unknown[] }).history) ? (stored as { history: unknown[] }).history : [];
       const designMarkdown = exportDesign(doc.design);
@@ -1007,27 +657,13 @@ async function handle(request: Request, env: RuntimeEnv, ctx: ExecutionContext):
       const visibleContext = full ? runContext : { source: runContext.source, step: runContext.step, actions: Array.isArray(runContext.actions) ? runContext.actions.map((entry) => { const action = object(entry); return { id: action.id, version: action.version, auto: action.auto, role: action.role }; }) : [] };
       return response({ run: { id: String(item.id), flowId: String(item.flow_id), flowVersion: Number(item.flow_version), state: String(item.state), actionId: typeof item.action_id === 'string' ? item.action_id : null, recordId: typeof item.record_id === 'string' ? item.record_id : null, context: visibleContext, version: Number(item.version), updatedAt: Number(item.updated_at), steps } });
     }
-    if (request.method === 'GET' && nested === 'canvas') return response({ cards: await workspaceCanvas(client, current.member) });
-    if (request.method === 'GET' && nested === 'definitions') return response({ definitions: await listDefinitions(client) });
     const actionMatch = /^actions\/([A-Za-z0-9_.-]+)$/.exec(nested);
     if (request.method === 'POST' && actionMatch) {
       const key = request.headers.get('Idempotency-Key') || ''; const input = await Effect.runPromise(parseJson(request));
       const registered = findAction(actionMatch[1]);
       const actionId = (registered?.id || actionMatch[1]) as GatewayRequest['actionId'];
-      if (actionId === 'routine.save') {
-        const allowed = await Effect.runPromise(new ControlStore(env.CONTROL).listAccess(current.identity));
-        const target = allowed.find((item) => item.workspace.id === input.workspace || item.workspace.slug === input.workspace);
-        if (!target) throw badRequest('Choose a workspace you can access.');
-        if (target.member.role === 'member' && typeof input.role === 'string' && input.role.trim()) {
-          const normalize = (value: string) => ['chef', 'cook', 'kitchen'].includes(value.trim().toLowerCase()) ? 'kitchen' : value.trim().toLowerCase();
-          const grants = target.member.roles?.length ? target.member.roles : [target.member.workRole || 'general'];
-          if (!grants.some((role) => normalize(role) === normalize(input.role as string))) throw badRequest('Choose a work role granted in that workspace.');
-        }
-        input.workspace = target.workspace.slug;
-      }
       const action = { actionId, idempotencyKey: key, input };
-      const result = await Effect.runPromise(executeGateway(client, current, action, { productContent: env.PRODUCT_CONTENT, siteReleases: env.SITE_RELEASES, publication: env.CONTROL, siteDomain: env.SITE_WORKER_ORIGIN || env.SITE_BASE_DOMAIN, ai: env.AI, tinyfish: env.TINYFISH_API_KEY, typesafe: env.TYPESAFE_API_KEY, siteModel: env.SITE_MODEL, groqApiKey: env.GROQ_API_KEY, pexelsApiKey: env.PEXELS_API_KEY }));
-      ctx.waitUntil(enqueueInboxSync(env, current.workspace.id).catch((error) => console.error(JSON.stringify({ event: 'inbox.queue.failed', error: error instanceof Error ? error.message.slice(0, 300) : String(error).slice(0, 300) }))));
+      const result = await Effect.runPromise(executeGateway(client, current, action, { productContent: env.PRODUCT_CONTENT, siteReleases: env.SITE_RELEASES, publication: env.CONTROL, siteDomain: env.SITE_WORKER_ORIGIN || env.SITE_BASE_DOMAIN, ai: env.AI, typesafe: env.TYPESAFE_API_KEY, siteModel: env.SITE_MODEL, groqApiKey: env.GROQ_API_KEY, pexelsApiKey: env.PEXELS_API_KEY }));
       return response(result, 201);
     }
     throw notFound('Route not found.');
@@ -1036,31 +672,10 @@ async function handle(request: Request, env: RuntimeEnv, ctx: ExecutionContext):
 
 export default {
   fetch(request: Request, env: RuntimeEnv, ctx: ExecutionContext): Promise<Response> { return handle(request, env, ctx).catch(errorResponse); },
-  async queue(batch: MessageBatch<unknown>, env: RuntimeEnv): Promise<void> {
-    for (const message of batch.messages) {
-      const body = object(message.body);
-      if (body.kind === 'inbox.sync' && typeof body.workspace === 'string' && typeof body.user === 'string') {
-        try { await syncMemberInbox(env, body.workspace, body.user); message.ack(); }
-        catch { message.retry({ delaySeconds: 60 }); }
-        continue;
-      }
-      if (body.kind !== 'chat.command' || typeof body.id !== 'string') { message.ack(); continue; }
-      try {
-        await processCommand(env.CONTROL, body.id, (current, work) => withWorkspace(env, current, work), { productContent: env.PRODUCT_CONTENT, siteReleases: env.SITE_RELEASES, publication: env.CONTROL, siteDomain: env.SITE_WORKER_ORIGIN || env.SITE_BASE_DOMAIN, ai: env.AI, typesafe: env.TYPESAFE_API_KEY, siteModel: env.SITE_MODEL, groqApiKey: env.GROQ_API_KEY, pexelsApiKey: env.PEXELS_API_KEY });
-        const completed = await env.CONTROL.prepare("SELECT workspace_id FROM channel_commands WHERE id=? AND state='completed'").bind(body.id).first<{ workspace_id: string }>();
-        if (completed) await enqueueInboxSync(env, completed.workspace_id);
-        message.ack();
-      } catch { message.retry({ delaySeconds: 60 }); }
-    }
-  },
   async scheduled(_controller: ScheduledController, env: RuntimeEnv): Promise<void> {
     await sweepFlowDispatches(env);
     await scoutPublishedSites(env);
     await regenerateDriftedSites(env);
     await env.CONTROL.prepare('DELETE FROM previews WHERE expires<=?').bind(Date.now()).run();
-    await env.CONTROL.prepare('DELETE FROM channel_link_requests WHERE expires_at<=?').bind(Date.now()).run();
-    await env.CONTROL.prepare("UPDATE channel_commands SET state='failed',result='Processing interrupted. Check TAR before retrying.' WHERE state='processing' AND attempts>=5 AND due_at<=?").bind(Date.now()).run();
-    const due = await env.CONTROL.prepare("SELECT id FROM channel_commands WHERE state IN ('pending','processing') AND due_at<=? AND attempts<5 ORDER BY due_at LIMIT 100").bind(Date.now()).all<{id: string}>();
-    if (due.results.length) await env.OUTBOX.sendBatch(due.results.map((item) => ({ body: { kind: 'chat.command', id: item.id } })));
   },
 } satisfies ExportedHandler<RuntimeEnv>;
