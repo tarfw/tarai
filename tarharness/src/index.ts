@@ -678,6 +678,26 @@ async function handle(request: Request, env: RuntimeEnv, ctx: ExecutionContext):
       return response({ consents: rows.map((item) => ({ id: String(item.id), contact: String(item.contact), channel: String(item.channel), purpose: String(item.purpose), state: String(item.state), source: String(item.source), actor: String(item.actor), created: Number(item.created) })) });
     }
     if (request.method === 'GET' && nested === 'skills') return response({ skills: await listSkills(client) });
+    if (request.method === 'POST' && nested === 'deck') {
+      const body = await Effect.runPromise(parseJson(request));
+      const tools = (Array.isArray(body.tools) ? body.tools : []).map(String).filter((id) => Boolean(findTool(id)) && !findTool(id)!.deferred);
+      await client.batch([deckStatement(tools as typeof import('./tools/registry.ts').TOOL_IDS[number][])], 'write');
+      return response({ deck: tools });
+    }
+    const toolRows = /^tool\/([a-z]+)\/rows$/.exec(nested);
+    if (request.method === 'GET' && toolRows) {
+      const tool = findTool(toolRows[1]);
+      if (!tool || !tool.rowType) throw notFound('Tool rows not found.');
+      const search = (url.searchParams.get('q') || '').trim().toLowerCase();
+      const offset = Math.max(0, Number(url.searchParams.get('offset') || 0));
+      const rows = await Effect.runPromise(query<Record<string, unknown>>(client, {
+        sql: "SELECT id,type,title,state,data,version,created,updated FROM records WHERE type=? AND archived IS NULL AND (?='' OR instr(lower(title),lower(?))>0) ORDER BY updated DESC LIMIT 51 OFFSET ?",
+        args: [tool.rowType, search, search, offset],
+      }));
+      const visible = rows.slice(0, 50).map((row) => ({ id: String(row.id), type: String(row.type), title: String(row.title), state: String(row.state), data: object(typeof row.data === 'string' ? JSON.parse(row.data) : row.data), assignee: null, version: Number(row.version), updatedAt: Number(row.updated) }))
+        .filter((row) => canReadRecord(current.member, row));
+      return response({ tool: tool.id, rows: visible, next: rows.length > 50 ? offset + 50 : null });
+    }
     if (request.method === 'GET' && nested === 'runs') return response({ runs: await listRuns(client) });
     const runPost = /^runs\/([A-Za-z0-9_-]+)\/advance$/.exec(nested);
     if (request.method === 'POST' && runPost) {
