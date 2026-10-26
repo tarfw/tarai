@@ -40,7 +40,7 @@ export default function AuthScreen() {
         if (user) {
           const token = await getValidIdToken();
           if (token) {
-            router.replace('/(home)/now');
+            router.replace('/canvas');
           } else {
             console.log(`[AUTH] ${ms()} — saved Google session needs sign-in`);
           }
@@ -51,7 +51,7 @@ export default function AuthScreen() {
         const silent = await trySilentSignIn();
         console.log(`[AUTH] ${Date.now() - t2}ms — trySilentSignIn: ${silent ? silent.email : 'null'}`);
         if (silent) {
-          router.replace('/(home)/now');
+          router.replace('/canvas');
         } else {
           console.log(`[AUTH] ${ms()} — no silent sign-in, staying on auth screen`);
         }
@@ -66,7 +66,7 @@ export default function AuthScreen() {
     setLoading(true);
     try {
       await signInWithGoogle();
-      router.replace('/(home)/now');
+      router.replace('/canvas');
     } catch (e: any) {
       console.warn('[Auth] Google sign-in failed:', e.message);
       Alert.alert('Google Sign-In Error', e.message || 'Failed to sign in with Google');
