@@ -54,6 +54,14 @@ async function ensureGroup(env: TursoEnv): Promise<void> {
 }
 
 async function initialize(client: Client): Promise<void> {
+  try {
+    const events = await client.execute("SELECT type FROM sqlite_master WHERE name='events'");
+    const kind = events.rows.length ? String(events.rows[0][0]) : '';
+    if (kind === 'table') await client.execute('DROP TABLE events');
+    else if (kind === 'view') await client.execute('DROP VIEW events');
+  } catch (cause) {
+    throw new Error('Events migration failed.', { cause });
+  }
   for (const [index, statement] of WORKSPACE_SCHEMA.entries()) {
     try { await client.execute(statement); }
     catch (cause) { throw new Error(`Workspace schema statement ${index + 1} failed.`, { cause }); }

@@ -8,7 +8,7 @@
     "OIDC_ISSUER": "https://accounts.google.com,accounts.google.com",
     "OIDC_AUDIENCE": "226183831843-5sjvl1hsv4d04aucnqsqn19u83o4f5ku.apps.googleusercontent.com",
     "OIDC_JWKS_URL": "https://www.googleapis.com/oauth2/v3/certs",
-    "TURSO_ORG": "tarfwrk",
+    "TURSO_ORG": "tarapp",
     "TURSO_GROUP": "default",
     "SITE_WORKER_ORIGIN": "https://tar-sites.tar-54d.workers.dev",
     "SITE_MODEL": "qwen/qwen3.8-27b"
@@ -19,7 +19,7 @@
     {
       "binding": "CONTROL",
       "database_name": "tarharness-control",
-      "database_id": "b95baf00-39d7-41d7-847a-8d8658165882",
+      "database_id": "548127bc-c645-441b-9fc1-1c79d357b4f8",
       "migrations_dir": "migrations"
     }
   ],
