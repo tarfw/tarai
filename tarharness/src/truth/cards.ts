@@ -149,6 +149,14 @@ export async function seedInbox(client: Client, context: AccessContext, actionId
   if (statements.length) await commitWrite(client, statements);
 }
 
+/** Settled rows: the action they pointed at just succeeded. Best-effort like seeds. */
+export async function settleInbox(client: Client, context: AccessContext, actionId: string): Promise<void> {
+  await client.execute({
+    sql: "UPDATE inbox SET status='done' WHERE member=? AND status='pending' AND json_extract(data,'$.action')=?",
+    args: [context.identity.id, actionId],
+  });
+}
+
 function ownerOf(context: AccessContext): string {
   // The workspace owner sees money alerts even when a member acts. The D1
   // owner id is not in the workspace context, so members' alerts go to the

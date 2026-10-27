@@ -11,7 +11,7 @@ import { executeSiteAssetGenerate, executeSiteAssetUpload, executeSiteAssets } f
 import { appendEvent, eventStatement, findReplay, fingerprint, runStatement, stamp, stepStatement } from './commit.ts';
 import { commerceActionIds } from '../commerce/catalog.ts';
 import { executeCommerce } from '../commerce/store.ts';
-import { refreshCards, seedInbox, toolsTouchedBy } from '../truth/cards.ts';
+import { refreshCards, seedInbox, settleInbox, toolsTouchedBy } from '../truth/cards.ts';
 import { executeChannelLog, executeChannelSend } from '../channel/adapters.ts';
 
 type GatewayError = ReturnType<typeof badRequest> | ReturnType<typeof conflict> | ReturnType<typeof forbidden> | ReturnType<typeof notFound> | ReturnType<typeof unavailable>;
@@ -261,6 +261,7 @@ export function executeGateway(client: Client, context: AccessContext, request: 
     try {
       const tools = toolsTouchedBy(request.actionId);
       if (tools.length) await refreshCards(client, tools);
+      await settleInbox(client, context, request.actionId);
       await seedInbox(client, context, request.actionId, result);
     } catch (cause) {
       console.error(JSON.stringify({ event: 'derived.refresh.failed', action: request.actionId, error: cause instanceof Error ? cause.message : String(cause) }));
