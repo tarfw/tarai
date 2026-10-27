@@ -5,6 +5,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import * as SecureStore from 'expo-secure-store';
 import { me, signOutSession, TarError, type Slice, type TarWorkspace } from '@/lib/tar';
 import { cachedSlice, saveSlice } from '@/lib/slicecache';
+import { cachedWorkspaces, saveWorkspaces } from '@/lib/wscache';
 
 const CURRENT_KEY = 'tar_current_ws';
 
@@ -32,6 +33,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     try {
       const result = await me();
       setWorkspaces(result.workspaces);
+      void saveWorkspaces(result.workspaces);
       setCurrentSlug((previous) => {
         const saved = previous ?? null;
         if (saved && result.workspaces.some((ws) => ws.slug === saved)) return saved;
@@ -68,6 +70,18 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     void (async () => {
       const saved = await SecureStore.getItemAsync(CURRENT_KEY);
       if (saved !== null && saved !== '') setCurrentSlug(saved);
+      // hydrate from disk so current exists before the network answers;
+      // without this canvas falls to Onboarding on every open
+      const cached = await cachedWorkspaces();
+      if (cached?.length) {
+        setWorkspaces(cached);
+        setCurrentSlug((previous) => {
+          if (previous && cached.some((ws) => ws.slug === previous)) return previous;
+          const fallback = cached.find((ws) => ws.mode === 'work') ?? cached[0];
+          void SecureStore.setItemAsync(CURRENT_KEY, fallback.slug);
+          return fallback.slug;
+        });
+      }
       await refreshMe();
       setLoading(false);
     })();

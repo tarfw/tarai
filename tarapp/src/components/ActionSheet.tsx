@@ -1,5 +1,6 @@
 // ActionSheet: one form, many configs. Fields come from the registry; the
-// submit is an intent with its idempotency key.
+// submit is an intent with its idempotency key. Full screen, sale-style:
+// header with a back, the form, one Save bar at the bottom.
 
 import { useMemo, useState } from 'react';
 import { Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
@@ -33,30 +34,35 @@ export function ActionSheet({
   };
 
   return (
-    <Modal visible={visible} animationType="slide" onRequestClose={onClose} transparent>
-      <View style={[styles.backdrop, { backgroundColor: 'rgba(0,0,0,0.4)' }]}>
-        <View style={[styles.sheet, { backgroundColor: theme.background, paddingBottom: insets.bottom + 16 }]}>
-          <Text style={[styles.title, { color: theme.text }]}>{title}</Text>
-          <ScrollView contentContainerStyle={styles.form}>
-            {shown.map((field) => (
-              <View key={field.key} style={styles.field}>
-                <Text style={[styles.label, { color: theme.textSecondary }]}>{field.label}{field.required ? '' : ''}</Text>
-                <TextInput
-                  style={[styles.input, { borderColor: theme.border, color: theme.text }]}
-                  value={values[field.key] ?? ''}
-                  onChangeText={(text) => setValues((previous) => ({ ...previous, [field.key]: text }))}
-                  keyboardType={field.kind === 'number' ? 'numeric' : 'default'}
-                  autoCapitalize="none"
-                />
-              </View>
-            ))}
-          </ScrollView>
-          <View style={styles.actions}>
-            <TouchableOpacity accessibilityRole="button" style={styles.cancel} onPress={onClose}><Text style={{ color: theme.textSecondary, fontWeight: '600' }}>Cancel</Text></TouchableOpacity>
-            <TouchableOpacity accessibilityRole="button" style={[styles.ok, { backgroundColor: theme.primary }]} onPress={() => void submit()}>
-              <Text style={{ color: '#fff', fontWeight: '700' }}>Save</Text>
+    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+      <View style={[styles.page, { backgroundColor: theme.background }]}>
+        <View style={[styles.header, { paddingTop: insets.top + 8, borderBottomColor: theme.border }]}>
+          <View style={styles.side}>
+            <TouchableOpacity accessibilityRole="button" onPress={onClose} accessibilityLabel="Cancel">
+              <Text style={{ color: theme.primary, fontSize: 17 }}>Cancel</Text>
             </TouchableOpacity>
           </View>
+          <Text style={[styles.title, { color: theme.text }]} numberOfLines={1}>{title}</Text>
+          <View style={styles.side} />
+        </View>
+        <ScrollView contentContainerStyle={styles.form}>
+          {shown.map((field) => (
+            <View key={field.key} style={styles.field}>
+              <Text style={[styles.label, { color: theme.textSecondary }]}>{field.label}</Text>
+              <TextInput
+                style={[styles.input, { borderColor: theme.border, color: theme.text }]}
+                value={values[field.key] ?? ''}
+                onChangeText={(text) => setValues((previous) => ({ ...previous, [field.key]: text }))}
+                keyboardType={field.kind === 'number' ? 'numeric' : 'default'}
+                autoCapitalize="none"
+              />
+            </View>
+          ))}
+        </ScrollView>
+        <View style={[styles.actions, { paddingBottom: insets.bottom + 12, borderTopColor: theme.border }]}>
+          <TouchableOpacity accessibilityRole="button" style={[styles.ok, { backgroundColor: theme.primary }]} onPress={() => void submit()}>
+            <Text style={{ color: '#fff', fontWeight: '800' }}>Save</Text>
+          </TouchableOpacity>
         </View>
       </View>
     </Modal>
@@ -64,14 +70,14 @@ export function ActionSheet({
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, justifyContent: 'flex-end' },
-  sheet: { borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: 18, paddingTop: 18, maxHeight: '80%' },
-  title: { fontSize: 20, fontWeight: '800', marginBottom: 12 },
-  form: { gap: 12 },
+  page: { flex: 1 },
+  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingBottom: 10, borderBottomWidth: StyleSheet.hairlineWidth },
+  side: { minWidth: 70, alignItems: 'flex-start' },
+  title: { fontSize: 17, fontWeight: '600', flex: 1, textAlign: 'center' },
+  form: { padding: 16, gap: 14 },
   field: { gap: 6 },
   label: { fontSize: 12, fontWeight: '600' },
   input: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15 },
-  actions: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 16 },
-  cancel: { padding: 12 },
-  ok: { borderRadius: 999, paddingVertical: 12, paddingHorizontal: 28 },
+  actions: { borderTopWidth: StyleSheet.hairlineWidth, paddingHorizontal: 16, paddingTop: 12 },
+  ok: { borderRadius: 999, paddingVertical: 14, alignItems: 'center' },
 });

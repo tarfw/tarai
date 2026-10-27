@@ -7,7 +7,7 @@ const file = (ws: string) => new File(Paths.cache, `slice-${ws}.json`);
 
 export async function saveSlice(ws: string, slice: Slice): Promise<void> {
   const target = file(ws);
-  target.delete();
+  // write() overwrites; delete() throws when the file doesn't exist yet
   await target.write(JSON.stringify({ savedAt: Date.now(), slice }), { encoding: 'utf8' });
 }
 

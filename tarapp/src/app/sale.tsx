@@ -1,13 +1,15 @@
 // The Sale route: pos (and invoice in gst mode). Cart, method, one confirm.
 // The tap is an intent: sale.write commits order + invoice + payment + stock.
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useTheme } from '@/hooks/use-theme';
 import { useWorkspace } from '@/state/Workspace';
+import { NavBar } from '@/components/NavBar';
 import { toolRows } from '@/lib/tar';
+import { SearchField } from '@/components/SearchField';
 import { enqueue } from '@/lib/queue';
 
 interface Item { id: string; title: string; price: number; variantId: string | null }
@@ -25,19 +27,24 @@ export default function SaleScreen() {
   const [method, setMethod] = useState<Method>('cash');
   const [tendered, setTendered] = useState('');
   const [reference, setReference] = useState('');
+  const seq = useRef(0);
 
   const load = useCallback(async () => {
     if (!current) return;
+    const mine = ++seq.current;
     setLoading(true);
     try {
       const result = await toolRows(current.slug, 'catalog', q);
       const rows = result.rows as { id: string; title: string; data: Record<string, unknown> }[];
-      setItems(rows.map((row) => ({ id: row.id, title: row.title, price: Number(row.data.price ?? 0), variantId: typeof row.data.variantId === 'string' ? row.data.variantId : null })));
+      if (mine === seq.current) setItems(rows.map((row) => ({ id: row.id, title: row.title, price: Number(row.data.price ?? 0), variantId: typeof row.data.variantId === 'string' ? row.data.variantId : null })));
     } catch { /* stale is fine */ }
-    finally { setLoading(false); }
+    finally { if (mine === seq.current) setLoading(false); }
   }, [current, q]);
 
-  useEffect(() => { void Promise.resolve().then(load); }, [load]);
+  useEffect(() => {
+    const timer = setTimeout(() => void load(), q ? 300 : 0);
+    return () => clearTimeout(timer);
+  }, [load, q]);
 
   const lines = useMemo(() => Object.entries(cart).filter(([, quantity]) => quantity > 0), [cart]);
   const total = useMemo(() => items.filter((item) => cart[item.id]).reduce((sum, item) => sum + item.price * cart[item.id], 0), [items, cart]);
@@ -70,12 +77,9 @@ export default function SaleScreen() {
 
   return (
     <View style={[styles.page, { backgroundColor: theme.background }]}>
-      <View style={[styles.header, { paddingTop: insets.top + 8, borderBottomColor: theme.border }]}>
-        <TouchableOpacity accessibilityRole="button" onPress={() => router.back()} accessibilityLabel="Back"><Text style={{ color: theme.primary, fontSize: 15 }}>&lt; Canvas</Text></TouchableOpacity>
-        <Text style={[styles.title, { color: theme.text }]}>COUNTER SALE</Text>
-      </View>
+      <NavBar title="COUNTER SALE" onBack={() => router.back()} />
       <View style={{ paddingHorizontal: 16, paddingVertical: 10 }}>
-        <TextInput style={[styles.search, { borderColor: theme.border, color: theme.text }]} placeholder="Search items" placeholderTextColor={theme.textSecondary} value={q} onChangeText={setQ} onSubmitEditing={() => void load()} returnKeyType="search" />
+        <SearchField value={q} onChangeText={setQ} />
       </View>
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24, gap: 8 }}>
         {loading && !items.length ? <ActivityIndicator color={theme.primary} style={{ paddingTop: 30 }} /> : null}
@@ -124,9 +128,6 @@ export default function SaleScreen() {
 
 const styles = StyleSheet.create({
   page: { flex: 1 },
-  header: { flexDirection: 'row', alignItems: 'center', gap: 16, paddingHorizontal: 16, paddingBottom: 10, borderBottomWidth: StyleSheet.hairlineWidth },
-  title: { fontSize: 17, fontWeight: '800' },
-  search: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8, fontSize: 14 },
   itemRow: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 12, padding: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   pay: { borderTopWidth: StyleSheet.hairlineWidth, paddingHorizontal: 16, paddingTop: 12, gap: 10 },
   payRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },

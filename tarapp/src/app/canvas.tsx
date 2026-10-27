@@ -3,7 +3,7 @@
 // the floating (+) is Ask. NEXT is the top row; urgent rows carry !.
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AppState, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, AppState, Image, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRouter } from 'expo-router';
@@ -15,6 +15,7 @@ import { confirmRequest, pendingCount, resolveConfirm, subscribe } from '@/lib/q
 import { actionCatalogs, setDeck, slice, type CardView, type InboxRow } from '@/lib/tar';
 import { saveSlice } from '@/lib/slicecache';
 import { registerPush } from '@/lib/push';
+import { getCurrentUser } from '@/lib/auth';
 import { Onboarding } from '@/components/Onboarding';
 
 const FALLBACK_FIELDS: Record<string, FieldConfig[]> = {
@@ -49,11 +50,16 @@ export default function Canvas() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { current, slice: data, refreshSlice, workspaces, select } = useWorkspace();
+  const { current, slice: data, refreshSlice, workspaces, select, loading } = useWorkspace();
   const [sheet, setSheet] = useState<'none' | 'inbox' | 'many' | 'deck'>('none');
   const [confirm, setConfirm] = useState<{ key: string; label: string } | null>(null);
   const [queueBadge, setQueueBadge] = useState(0);
   const [action, setAction] = useState<{ action: string; title: string; fields: FieldConfig[] } | null>(null);
+  const [photo, setPhoto] = useState<string | null>(null);
+
+  useEffect(() => {
+    void getCurrentUser().then((user) => { if (user?.photo) setPhoto(user.photo); });
+  }, []);
 
   useEffect(() => {
     const update = async () => setQueueBadge(await pendingCount());
@@ -112,22 +118,42 @@ export default function Canvas() {
   const dealt = useMemo(() => new Set(cards.map((card) => card.tool)), [cards]);
   const roleLabel = current?.role ? current.role.charAt(0).toUpperCase() + current.role.slice(1) : '';
 
-  if (!current) return <Onboarding />;
+  // onboarding is only for a settled no-workspace state, never the loading gap
+  if (!current) {
+    return loading ? (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.background }}>
+        <ActivityIndicator />
+      </View>
+    ) : (
+      <Onboarding />
+    );
+  }
 
   return (
     <View style={[styles.page, { backgroundColor: theme.background }]}>
       <View style={[styles.header, { paddingTop: insets.top + 10, borderBottomColor: theme.border }]}>
-        <TouchableOpacity accessibilityRole="button" style={styles.badgeWrap} onPress={() => setSheet('inbox')}>
-          <View style={[styles.badge, { backgroundColor: inboxRows.length ? theme.primary : theme.border }]}>
-            <Text style={styles.badgeText}>{inboxRows.length || ''}</Text>
-          </View>
+        <TouchableOpacity accessibilityRole="button" style={styles.badgeWrap} onPress={() => setSheet('inbox')} accessibilityLabel="Inbox">
+          <Ionicons name="notifications-outline" size={24} color={theme.text} />
+          {inboxRows.length > 0 ? (
+            <View style={[styles.badgeDot, { backgroundColor: theme.primary }]}>
+              <Text style={styles.badgeText}>{inboxRows.length > 9 ? '9+' : inboxRows.length}</Text>
+            </View>
+          ) : null}
         </TouchableOpacity>
         <View style={styles.heading}>
           <Text style={[styles.wsName, { color: theme.text }]} numberOfLines={1}>{current.mode === 'personal' ? 'Personal' : current.name}</Text>
-          <Text style={[styles.role, { color: theme.textSecondary }]}>{roleLabel}</Text>
         </View>
-        <TouchableOpacity accessibilityRole="button" style={[styles.avatar, { borderColor: theme.border }]} onPress={() => setSheet('many')}>
-          <Text style={styles.avatarText}>{(current.name[0] ?? 'T').toUpperCase()}</Text>
+        {roleLabel ? (
+          <View style={[styles.role, { backgroundColor: theme.backgroundElement }]}>
+            <Text style={[styles.roleText, { color: theme.textSecondary }]}>{roleLabel}</Text>
+          </View>
+        ) : null}
+        <TouchableOpacity accessibilityRole="button" style={[styles.avatar, { backgroundColor: `${theme.primary}1F` }]} onPress={() => setSheet('many')} accessibilityLabel="Workspaces">
+          {photo ? (
+            <Image source={{ uri: photo }} style={styles.avatarImage} />
+          ) : (
+            <Text style={[styles.avatarText, { color: theme.primary }]}>{(current.name[0] ?? 'T').toUpperCase()}</Text>
+          )}
         </TouchableOpacity>
       </View>
 
@@ -144,12 +170,13 @@ export default function Canvas() {
         </TouchableOpacity>
       </ScrollView>
 
-      {queueBadge > 0 ? (
-        <View style={[styles.queueBadge, { backgroundColor: theme.primary }]}><Text style={styles.queueText}>{queueBadge} waiting</Text></View>
-      ) : null}
-
       <TouchableOpacity accessibilityRole="button" style={[styles.fab, { backgroundColor: theme.primary, bottom: insets.bottom + 18 }]} onPress={() => router.push('/ask')} accessibilityLabel="Ask TAR">
         <Ionicons name="add" size={30} color="#fff" />
+        {queueBadge > 0 ? (
+          <View style={styles.fabBadge}>
+            <Text style={[styles.fabBadgeText, { color: theme.primary }]}>{queueBadge > 9 ? '9+' : queueBadge}</Text>
+          </View>
+        ) : null}
       </TouchableOpacity>
 
       <Sheet title="Inbox" visible={sheet === 'inbox'} onClose={() => setSheet('none')}>
@@ -262,22 +289,24 @@ function ConfirmCard({ label, onResolve }: { label: string; onResolve: (confirme
 const styles = StyleSheet.create({
   page: { flex: 1 },
   header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingBottom: 10, borderBottomWidth: StyleSheet.hairlineWidth },
-  badgeWrap: { width: 36, height: 36 },
-  badge: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  badgeText: { color: '#fff', fontSize: 13, fontWeight: '800' },
-  heading: { flex: 1, gap: 1 },
-  wsName: { fontSize: 16, fontWeight: '700' },
-  role: { fontSize: 12 },
-  avatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#1F1A17', alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
-  avatarText: { color: '#fff', fontWeight: '700' },
+  badgeWrap: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
+  badgeDot: { position: 'absolute', top: 1, right: 1, minWidth: 16, height: 16, borderRadius: 8, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center' },
+  badgeText: { color: '#fff', fontSize: 10, fontWeight: '800' },
+  heading: { flex: 1 },
+  wsName: { fontSize: 22, fontWeight: '800', letterSpacing: -0.5 },
+  role: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
+  roleText: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' },
+  avatar: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  avatarImage: { width: 36, height: 36, borderRadius: 18 },
+  avatarText: { fontSize: 14, fontWeight: '800' },
   stack: { padding: 16, gap: 12 },
   next: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 14, padding: 16, gap: 6 },
   nextLabel: { fontSize: 11, fontWeight: '800', letterSpacing: 1 },
   nextTitle: { fontSize: 16, fontWeight: '600' },
   add: { borderWidth: 1, borderStyle: 'dashed', borderRadius: 14, padding: 14, alignItems: 'center' },
   fab: { position: 'absolute', right: 18, width: 58, height: 58, borderRadius: 29, alignItems: 'center', justifyContent: 'center' },
-  queueBadge: { position: 'absolute', top: 76, right: 20, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3 },
-  queueText: { color: '#fff', fontSize: 12, fontWeight: '800' },
+  fabBadge: { position: 'absolute', top: -2, right: -2, minWidth: 20, height: 20, borderRadius: 10, backgroundColor: '#fff', paddingHorizontal: 5, alignItems: 'center', justifyContent: 'center' },
+  fabBadgeText: { fontSize: 11, fontWeight: '800' },
   sheetRow: { flexDirection: 'row', gap: 10, paddingVertical: 14, paddingHorizontal: 4, borderBottomWidth: StyleSheet.hairlineWidth, alignItems: 'center', justifyContent: 'space-between' },
   sheetRowText: { fontSize: 15, flexShrink: 1 },
   empty: { paddingVertical: 20, textAlign: 'center' },

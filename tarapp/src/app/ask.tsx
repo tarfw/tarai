@@ -6,6 +6,7 @@ import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useTheme } from '@/hooks/use-theme';
+import { NavBar } from '@/components/NavBar';
 import { useWorkspace } from '@/state/Workspace';
 import { ask as askTAR, confirmSkill } from '@/lib/tar';
 
@@ -30,7 +31,7 @@ export default function AskScreen() {
     try {
       const outcome = await askTAR(current.slug, text);
       if (outcome.skill) {
-        setTurns((previous) => [...previous, { who: 'tar', text: `I remember this: ${outcome.skill!.title}. Tap its card on the Canvas.` }]);
+        setTurns((previous) => [...previous, { who: 'tar', text: `I remember this: ${outcome.skill!.title}. Tap its card on Home.` }]);
       } else if (outcome.draft) {
         const plan = outcome.draft.steps.map((step, index) => `${index + 1}. ${step.action}${step.auto ? ' (auto)' : ''}`).join('\n');
         setTurns((previous) => [...previous, { who: 'tar', text: `PLAN ${outcome.draft!.title}\n${plan}\nConfirm once and it runs free forever.`, draft: outcome.draft! }]);
@@ -45,7 +46,7 @@ export default function AskScreen() {
     setBusy(true);
     try {
       await confirmSkill(current.slug, draft as unknown as Record<string, unknown>);
-      setTurns((previous) => [...previous, { who: 'tar', text: 'Saved as a skill. The card is on your Canvas.' }]);
+      setTurns((previous) => [...previous, { who: 'tar', text: 'Saved as a skill. The card is on your Home.' }]);
       await refreshSlice();
       router.back();
     } catch {
@@ -55,9 +56,7 @@ export default function AskScreen() {
 
   return (
     <KeyboardAvoidingView style={[styles.page, { backgroundColor: theme.background }]} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <View style={[styles.header, { paddingTop: insets.top + 8, borderBottomColor: theme.border }]}>
-        <TouchableOpacity accessibilityRole="button" onPress={() => router.back()} accessibilityLabel="Back"><Text style={{ color: theme.primary, fontSize: 15 }}>&lt; TAR</Text></TouchableOpacity>
-      </View>
+      <NavBar title="Ask TAR" onBack={() => router.back()} backLabel="Home" />
       <ScrollView ref={scroller} contentContainerStyle={[styles.talk, { paddingTop: 16 }]} onContentSizeChange={() => scroller.current?.scrollToEnd({ animated: true })}>
         {turns.map((turn, index) => (
           <View key={index} style={turn.who === 'you' ? [styles.bubbleYou, { backgroundColor: theme.primary }] : [styles.bubbleTar, { borderColor: theme.border }]}>
@@ -91,7 +90,6 @@ export default function AskScreen() {
 
 const styles = StyleSheet.create({
   page: { flex: 1 },
-  header: { paddingHorizontal: 16, paddingBottom: 10, borderBottomWidth: StyleSheet.hairlineWidth },
   talk: { paddingHorizontal: 16, gap: 10, paddingBottom: 16 },
   bubbleYou: { alignSelf: 'flex-end', borderRadius: 16, borderBottomRightRadius: 4, padding: 12, maxWidth: '80%' },
   youText: { color: '#fff' },

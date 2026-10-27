@@ -1,11 +1,13 @@
 // ToolList: one route, twelve tools. Rows + the number + the one tap.
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/hooks/use-theme';
 import { useWorkspace } from '@/state/Workspace';
+import { NavBar } from '@/components/NavBar';
+import { SearchField } from '@/components/SearchField';
 import { hire, importImage, toolRows } from '@/lib/tar';
 import { enqueue } from '@/lib/queue';
 import * as ImagePicker from 'expo-image-picker';
@@ -26,18 +28,23 @@ export default function ToolListScreen() {
   const [growWords, setGrowWords] = useState('');
   const [growEmail, setGrowEmail] = useState('');
   const [growing, setGrowing] = useState(false);
+  const seq = useRef(0);
 
   const load = useCallback(async () => {
     if (!current || !toolId) return;
+    const mine = ++seq.current;
     setLoading(true);
     try {
       const result = await toolRows(current.slug, toolId, q);
-      setRows(result.rows as Row[]);
+      if (mine === seq.current) setRows(result.rows as Row[]);
     } catch { /* rows stay; stale is fine */ }
-    finally { setLoading(false); }
+    finally { if (mine === seq.current) setLoading(false); }
   }, [current, toolId, q]);
 
-  useEffect(() => { void Promise.resolve().then(load); }, [load]);
+  useEffect(() => {
+    const timer = setTimeout(() => void load(), q ? 300 : 0);
+    return () => clearTimeout(timer);
+  }, [load, q]);
 
   const importPhoto = async () => {
     if (!current) return;
@@ -105,21 +112,10 @@ export default function ToolListScreen() {
           </View>
         </View>
       </Modal>
-      <View style={[styles.header, { paddingTop: insets.top + 8, borderBottomColor: theme.border }]}>
-        <TouchableOpacity accessibilityRole="button" onPress={() => router.back()} accessibilityLabel="Back"><Text style={{ color: theme.primary, fontSize: 15 }}>&lt; Canvas</Text></TouchableOpacity>
-        <Text style={[styles.title, { color: theme.text }]}>{String(toolId ?? '').toUpperCase()}</Text>
-      </View>
+      <NavBar title={String(toolId ?? '').toUpperCase()} onBack={() => router.back()} />
       <View style={{ paddingHorizontal: 16, paddingVertical: 10 }}>
         <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-          <TextInput
-            style={[styles.search, { borderColor: theme.border, color: theme.text, flex: 1 }]}
-            placeholder="Search"
-            placeholderTextColor={theme.textSecondary}
-            value={q}
-            onChangeText={setQ}
-            onSubmitEditing={() => void load()}
-            returnKeyType="search"
-          />
+          <SearchField value={q} onChangeText={setQ} style={{ flex: 1 }} />
           {toolId === 'catalog' ? (
             <TouchableOpacity accessibilityRole="button" style={[styles.photo, { borderColor: theme.border }]} onPress={() => void importPhoto()} disabled={importing} accessibilityLabel="Import a price list photo">
               <Text style={{ color: theme.primary, fontWeight: '700' }}>{importing ? '…' : 'photo'}</Text>
@@ -134,7 +130,7 @@ export default function ToolListScreen() {
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: insets.bottom + 32 }}
         ItemSeparatorComponent={() => <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: theme.border }} />}
         renderItem={({ item }) => (
-          <TouchableOpacity accessibilityRole="button" style={styles.row} onPress={() => router.push(`/record/${encodeURIComponent(item.id)}`)}>
+          <TouchableOpacity accessibilityRole="button" style={styles.row} onPress={() => router.push(`/record/${encodeURIComponent(item.id)}?from=${encodeURIComponent(String(toolId ?? ''))}`)}>
             <View style={{ flexShrink: 1, gap: 2 }}>
               <Text style={{ color: theme.text, fontSize: 15, fontWeight: '500' }} numberOfLines={1}>{item.title}</Text>
               <Text style={{ color: theme.textSecondary, fontSize: 12 }}>{item.state}</Text>
@@ -182,8 +178,6 @@ const importStyles = StyleSheet.create({
 
 const styles = StyleSheet.create({
   page: { flex: 1 },
-  header: { flexDirection: 'row', alignItems: 'center', gap: 16, paddingHorizontal: 16, paddingBottom: 10, borderBottomWidth: StyleSheet.hairlineWidth },
-  title: { fontSize: 17, fontWeight: '800', letterSpacing: 0.5 },
   search: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8, fontSize: 14 },
   photo: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 9 },
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 14, gap: 12 },

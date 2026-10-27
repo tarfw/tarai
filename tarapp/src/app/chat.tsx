@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useTheme } from '@/hooks/use-theme';
 import { useWorkspace } from '@/state/Workspace';
+import { NavBar } from '@/components/NavBar';
 import { toolRows } from '@/lib/tar';
 import { enqueue } from '@/lib/queue';
 
@@ -53,10 +54,7 @@ export default function ChatScreen() {
 
   return (
     <View style={[styles.page, { backgroundColor: theme.background }]}>
-      <View style={[styles.header, { paddingTop: insets.top + 8, borderBottomColor: theme.border }]}>
-        <TouchableOpacity accessibilityRole="button" onPress={() => router.back()} accessibilityLabel="Back"><Text style={{ color: theme.primary, fontSize: 15 }}>&lt; Canvas</Text></TouchableOpacity>
-        <Text style={[styles.title, { color: theme.text }]}>MESSAGES</Text>
-      </View>
+      <NavBar title="MESSAGES" onBack={() => router.back()} />
       <ScrollView contentContainerStyle={{ padding: 16, gap: 10, paddingBottom: insets.bottom + 24 }}>
         {loading && !messages.length ? <ActivityIndicator color={theme.primary} /> : null}
         <Text style={{ color: theme.textSecondary, fontSize: 12, fontWeight: '700', letterSpacing: 1 }}>RECENT</Text>
@@ -88,8 +86,6 @@ export default function ChatScreen() {
 
 const styles = StyleSheet.create({
   page: { flex: 1 },
-  header: { flexDirection: 'row', alignItems: 'center', gap: 16, paddingHorizontal: 16, paddingBottom: 10, borderBottomWidth: StyleSheet.hairlineWidth },
-  title: { fontSize: 17, fontWeight: '800' },
   msg: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 12, padding: 12, gap: 4 },
   contact: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 12, padding: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   input: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14 },

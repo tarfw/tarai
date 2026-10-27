@@ -27,9 +27,8 @@ const listeners = new Set<Listener>();
 function emit() { for (const listener of listeners) listener(); }
 
 async function persist() {
-  const target = file();
-  target.delete();
-  await target.write(JSON.stringify(items), { encoding: 'utf8' });
+  // write() overwrites; delete() throws when the file doesn't exist yet
+  await file().write(JSON.stringify(items), { encoding: 'utf8' });
 }
 
 async function load() {

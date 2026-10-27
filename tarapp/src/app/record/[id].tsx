@@ -3,15 +3,14 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/hooks/use-theme';
 import { useWorkspace } from '@/state/Workspace';
+import { NavBar } from '@/components/NavBar';
 import { record } from '@/lib/tar';
 
 export default function RecordDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, from } = useLocalSearchParams<{ id: string; from?: string }>();
   const theme = useTheme();
-  const insets = useSafeAreaInsets();
   const router = useRouter();
   const { current } = useWorkspace();
   const [item, setItem] = useState<{ id: string; type: string; title: string; state: string; data: Record<string, unknown>; version: number } | null>(null);
@@ -30,10 +29,7 @@ export default function RecordDetailScreen() {
 
   return (
     <View style={[styles.page, { backgroundColor: theme.background }]}>
-      <View style={[styles.header, { paddingTop: insets.top + 8, borderBottomColor: theme.border }]}>
-        <TouchableOpacity accessibilityRole="button" onPress={() => router.back()} accessibilityLabel="Back"><Text style={{ color: theme.primary, fontSize: 15 }}>&lt; Canvas</Text></TouchableOpacity>
-        <Text style={[styles.title, { color: theme.text }]} numberOfLines={1}>{item ? item.title : 'Record'}</Text>
-      </View>
+      <NavBar title={item ? item.title : 'Record'} backLabel={from ? String(from).charAt(0).toUpperCase() + String(from).slice(1) : undefined} onBack={() => router.back()} />
       <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
         {loading ? <ActivityIndicator color={theme.primary} /> : null}
         {!loading && !item ? <Text style={{ color: theme.textSecondary, textAlign: 'center', paddingTop: 40 }}>This record is gone.</Text> : null}
@@ -64,7 +60,5 @@ function summarize(value: unknown): string {
 
 const styles = StyleSheet.create({
   page: { flex: 1 },
-  header: { flexDirection: 'row', alignItems: 'center', gap: 16, paddingHorizontal: 16, paddingBottom: 10, borderBottomWidth: StyleSheet.hairlineWidth },
-  title: { fontSize: 17, fontWeight: '800', flexShrink: 1 },
   fact: { flexDirection: 'row', justifyContent: 'space-between', gap: 12, borderWidth: StyleSheet.hairlineWidth, borderRadius: 10, padding: 12 },
 });
