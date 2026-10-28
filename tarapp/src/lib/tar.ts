@@ -121,6 +121,20 @@ export async function intent(ws: string, action: string, input: Record<string, u
   return request('POST', '/v1/intent', { ws, action, input, key, confirmed }) as Promise<IntentOutcome>;
 }
 
+/** Store an item photo; returns its public immutable URL for photoUrl fields. */
+export async function uploadMedia(ws: string, mime: string, base64: string): Promise<string> {
+  const result = await request('POST', '/v1/workspaces/media', { ws, mime, data: base64 }) as { url?: string };
+  if (!result.url) throw new TarError(500, 'Media upload failed.');
+  return result.url;
+}
+
+/** Jev suggests item fields from the name; missing answers come back undefined. */
+export async function draftItem(ws: string, name: string): Promise<{ category?: string; unit?: string; tax?: number }> {
+  try {
+    return await request('POST', '/v1/workspaces/draft-item', { ws, name }) as { category?: string; unit?: string; tax?: number };
+  } catch { return {}; }
+}
+
 // --- ask / skills ---
 
 export async function ask(ws: string, words: string): Promise<{ ladder: string; skill: SkillView | null; draft: { title: string; words: string; trigger: Record<string, unknown>; steps: { action: string; input: Record<string, unknown>; auto?: boolean }[]; shape: string } | null }> {

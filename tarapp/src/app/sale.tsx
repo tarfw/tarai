@@ -48,6 +48,9 @@ export default function SaleScreen() {
 
   const lines = useMemo(() => Object.entries(cart).filter(([, quantity]) => quantity > 0), [cart]);
   const total = useMemo(() => items.filter((item) => cart[item.id]).reduce((sum, item) => sum + item.price * cart[item.id], 0), [items, cart]);
+  // tendered is typed in rupees like every other money field; stored paise
+  const tenderedPaise = /^\d+(\.\d{1,2})?$/.test(tendered.trim()) ? Math.round(Number(tendered) * 100) : 0;
+  const change = Math.max(0, tenderedPaise - total);
 
   const add = (id: string, delta: number) => setCart((previous) => {
     const quantity = Math.max(0, (previous[id] ?? 0) + delta);
@@ -67,7 +70,7 @@ export default function SaleScreen() {
           return { variant: item.variantId ?? item.id, quantity };
         }),
         method,
-        ...(method === 'cash' && tendered ? { tendered: Number(tendered) } : {}),
+        ...(method === 'cash' && tenderedPaise ? { tendered: tenderedPaise } : {}),
         ...(method !== 'cash' && reference ? { reference } : {}),
       },
     });
@@ -113,7 +116,10 @@ export default function SaleScreen() {
           ))}
         </View>
         {method === 'cash' ? (
-          <TextInput style={[styles.ref, { borderColor: theme.border, color: theme.text }]} placeholder="Cash tendered (paise)" placeholderTextColor={theme.textSecondary} keyboardType="numeric" value={tendered} onChangeText={setTendered} />
+          <View>
+            <TextInput style={[styles.ref, { borderColor: theme.border, color: theme.text }]} placeholder="Cash received" placeholderTextColor={theme.textSecondary} keyboardType="decimal-pad" value={tendered} onChangeText={setTendered} />
+            {change > 0 ? <Text style={{ color: theme.textSecondary, fontSize: 12, paddingTop: 4 }}>Change Rs. {(change / 100).toFixed(2)}</Text> : null}
+          </View>
         ) : null}
         {method !== 'cash' ? (
           <TextInput style={[styles.ref, { borderColor: theme.border, color: theme.text }]} placeholder="Provider reference" placeholderTextColor={theme.textSecondary} autoCapitalize="none" value={reference} onChangeText={setReference} />

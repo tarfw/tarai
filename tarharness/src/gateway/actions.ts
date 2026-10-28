@@ -77,7 +77,7 @@ export function executeGateway(client: Client, context: AccessContext, request: 
       for (const field of registeredAction.fields) {
         const value = request.input[field.key];
         if (field.required && (value === undefined || value === null || (typeof value === 'string' && !value.trim()))) throw badRequest(`${field.label} is required.`);
-        if (field.kind === 'number' && value !== undefined && (!Number.isFinite(Number(value)))) throw badRequest(`${field.label} must be a number.`);
+        if ((field.kind === 'number' || field.kind === 'money' || field.kind === 'percent') && value !== undefined && (!Number.isFinite(Number(value)))) throw badRequest(`${field.label} must be a number.`);
         if (field.kind === 'email' && typeof value === 'string' && value.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())) throw badRequest(`${field.label} must be a valid email address.`);
       }
       const hash = await fingerprint({ actor: context.identity.id, action: request.actionId, input: request.input });

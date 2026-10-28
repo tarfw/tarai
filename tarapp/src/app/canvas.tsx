@@ -19,11 +19,18 @@ import { getCurrentUser } from '@/lib/auth';
 import { Onboarding } from '@/components/Onboarding';
 
 const FALLBACK_FIELDS: Record<string, FieldConfig[]> = {
-  'catalog.item.save': [{ key: 'name', label: 'Item name', kind: 'text', required: true }, { key: 'price', label: 'Price (paise)', kind: 'number' }, { key: 'stock', label: 'Initial stock', kind: 'number' }],
-  'expense.record': [{ key: 'payee', label: 'Payee', kind: 'text', required: true }, { key: 'category', label: 'Category', kind: 'text', required: true }, { key: 'amount', label: 'Amount (paise)', kind: 'number', required: true }],
+  'catalog.item.save': [
+    { key: 'name', label: 'Name', kind: 'text', required: true, core: true },
+    { key: 'category', label: 'Category', kind: 'select', core: true, options: ['Grocery', 'Snacks', 'Beverages', 'Dairy', 'Personal care', 'Household', 'Electronics', 'Apparel'] },
+    { key: 'price', label: 'Price', kind: 'money', core: true },
+    { key: 'stock', label: 'Stock', kind: 'number', core: true },
+    { key: 'unit', label: 'Unit', kind: 'select', options: ['each', 'kg', 'g', 'L', 'mL', 'pack', 'box', 'dozen', 'm'], defaultValue: 'each' },
+    { key: 'tax', label: 'Tax', kind: 'percent', defaultValue: '0' },
+  ],
+  'expense.record': [{ key: 'payee', label: 'Payee or vendor', kind: 'text', required: true }, { key: 'category', label: 'Category', kind: 'text', required: true }, { key: 'amount', label: 'Amount', kind: 'money', required: true }],
   'contact.create': [{ key: 'name', label: 'Name', kind: 'text', required: true }, { key: 'phone', label: 'Phone', kind: 'text' }],
   'task.create': [{ key: 'title', label: 'What needs doing?', kind: 'text', required: true }],
-  'payment.record': [{ key: 'invoice', label: 'Invoice ID', kind: 'text', required: true }, { key: 'amount', label: 'Amount (paise)', kind: 'number', required: true }, { key: 'method', label: 'Method', kind: 'text', required: true }],
+  'payment.record': [{ key: 'invoice', label: 'Invoice ID', kind: 'text', required: true }, { key: 'amount', label: 'Amount', kind: 'money', required: true }, { key: 'method', label: 'Method', kind: 'text', required: true }],
   'invoice.issue': [{ key: 'order', label: 'Order ID', kind: 'text', required: true }],
   'order.create': [{ key: 'lines', label: 'Lines as JSON', kind: 'text', required: true }],
   default: [],

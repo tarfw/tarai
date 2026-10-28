@@ -24,6 +24,7 @@ import { ask, confirmSkill, findSkill, listSkills } from './skill/engine.ts';
 import { proposePlan } from './skill/propose.ts';
 import { advanceRun, listRuns, startRun } from './skill/run.ts';
 import { birthMoment, hireMoment, importMoment } from './brain/moments.ts';
+import { askSystemOne, choiceOf } from './brain/systemone.ts';
 import { buildClose, monthlyWriteCount, pruneHotWindow, sealClose } from './cost/close.ts';
 import { sendPush, tokensFor } from './push/expo.ts';
 import { deriveGate, mayExecute, missingFields } from './truth/gate.ts';
@@ -339,6 +340,81 @@ async function handle(request: Request, env: RuntimeEnv, ctx: ExecutionContext):
       }
       return response({ result, version }, 201);
     } finally { client.close(); }
+  }
+  // --- item photos: upload once, serve immutable so the storefront can render them ---
+  if (request.method === 'GET' && path === '/v1/health/jev') {
+    const outcome = await askSystemOne(env.TYPESAFE_API_KEY, { state: { name: 'health ping' }, questions: { ping: { type: 'choice', instructions: 'Health check. Choose the only option.', criteria: ['ok'] } }, timeout: 6_000 });
+    return response({ jev: outcome.ok ? 'ok' : outcome.failure.kind, model: outcome.ok ? outcome.value.model : undefined });
+  }
+  if (request.method === 'POST' && path === '/v1/workspaces/media') {
+    const body = await Effect.runPromise(parseJson(request, 900_000));
+    const slug = typeof body.ws === 'string' ? body.ws : '';
+    const mime = typeof body.mime === 'string' ? body.mime : '';
+    const data = typeof body.data === 'string' ? body.data : '';
+    if (!slug) throw badRequest('Media upload needs ws, mime and data.');
+    if (!mime.startsWith('image/')) throw badRequest('Only image uploads are allowed.');
+    if (!data || data.length > 900_000) throw badRequest('Image is too large.');
+    const { access: current } = await access(request, env, slug);
+    const id = `media_${crypto.randomUUID()}`;
+    const at = now();
+    await withWorkspace(env, current, (client) => client.execute({
+      sql: "INSERT INTO records (id, type, title, state, data, owner, version, created, updated) VALUES (?, 'media', ?, 'active', ?, ?, 1, ?, ?)",
+      args: [id, 'Photo', JSON.stringify({ mime, bytes: data.length, data }), current.identity.id, at, at],
+    }));
+    return response({ id, url: `${url.origin}/v1/media/${id}?ws=${encodeURIComponent(slug)}` }, 201);
+  }
+  const mediaMatch = /^\/v1\/media\/([A-Za-z0-9_-]+)$/.exec(path);
+  if (request.method === 'GET' && mediaMatch) {
+    const slug = url.searchParams.get('ws') || '';
+    if (!slug) throw badRequest('The ws parameter names the workspace.');
+    const workspace = await env.CONTROL.prepare('SELECT database_name, database_host, state FROM workspaces WHERE slug=?').bind(slug).first<{ database_name: string; database_host: string | null; state: string }>();
+    if (!workspace || workspace.state !== 'active' || !workspace.database_host) throw notFound('No media lives here.');
+    const client = await Effect.runPromise(openWorkspaceDatabase(tursoEnv(env), workspace.database_name, workspace.database_host));
+    try {
+      const media = await client.execute({ sql: "SELECT data FROM records WHERE id=? AND type='media' AND archived IS NULL", args: [mediaMatch[1]] });
+      if (!media.rows[0]) throw notFound('Media not found.');
+      const data = object(JSON.parse(String(media.rows[0][0])));
+      const bytes = Uint8Array.from(atob(String(data.data || '')), (ch) => ch.charCodeAt(0));
+      return new Response(bytes, { status: 200, headers: { 'Content-Type': String(data.mime || 'application/octet-stream'), 'Cache-Control': 'public, max-age=31536000, immutable', ...corsHeaders } });
+    } finally { client.close(); }
+  }
+  // --- AI draft: Jev suggests category, unit and tax for an item name; the member stays the author ---
+  if (request.method === 'POST' && path === '/v1/workspaces/draft-item') {
+    const body = await Effect.runPromise(parseJson(request));
+    const slug = typeof body.ws === 'string' ? body.ws : '';
+    const name = typeof body.name === 'string' ? body.name.trim().slice(0, 200) : '';
+    if (!slug || !name) throw badRequest('A draft needs ws and name.');
+    await access(request, env, slug);
+    const item = findAction('catalog.item.save');
+    const categories = item?.fields.find((field) => field.key === 'category')?.options ?? [];
+    const units = item?.fields.find((field) => field.key === 'unit')?.options ?? [];
+    const outcome = await askSystemOne(env.TYPESAFE_API_KEY, {
+      state: { name },
+      questions: {
+        category: { type: 'choice', instructions: 'A shop is adding this item to its catalog. Which shelf category does it belong to?', criteria: categories },
+        unit: { type: 'choice', instructions: 'How is one unit of this item sold at the counter?', criteria: units },
+        tax: { type: 'choice', instructions: 'Which GST slab applies to this item in India?', criteria: ['0', '5', '12', '18', '28'] },
+      },
+      timeout: 12_000,
+    });
+    if (!outcome.ok) return response({ failure: outcome.failure.kind });
+    const read = (key: string): { choice?: string; confidence: number | null } => {
+      const answer = choiceOf(outcome.value.answers[key]);
+      return { choice: answer.choice ?? undefined, confidence: answer.confidence };
+    };
+    const category = read('category');
+    const unit = read('unit');
+    const tax = read('tax');
+    const trusted = (answer: { choice?: string; confidence: number | null }) =>
+      answer.choice && answer.confidence !== null && answer.confidence >= 0.45 ? answer.choice : undefined;
+    const taxChoice = trusted(tax);
+    return response({
+      category: trusted(category),
+      unit: trusted(unit),
+      tax: taxChoice !== undefined ? Number(taxChoice) : undefined,
+      model: outcome.value.model,
+      confidence: { category: category.confidence, unit: unit.confidence, tax: tax.confidence },
+    });
   }
   const previewMatch = /^\/v1\/site-previews\/([a-f0-9-]{36})(\/.*)?$/.exec(path);
   if (request.method === 'GET' && previewMatch) return serveSitePreview(previewMatch[1], previewMatch[2] || '/', env.CONTROL, env.SITE_RELEASES, siteSecurityHeaders, {

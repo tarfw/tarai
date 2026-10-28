@@ -1,7 +1,7 @@
 import { commerceActions } from '../commerce/catalog.ts';
 export type ActionType = 'app' | 'agent' | 'human';
 export type InterfacePresentation = 'sheet' | 'screen' | 'flow';
-export type FieldKind = 'text' | 'email' | 'number' | 'textarea' | 'record' | 'action-list';
+export type FieldKind = 'text' | 'email' | 'number' | 'textarea' | 'record' | 'action-list' | 'money' | 'percent' | 'select' | 'photo';
 
 export interface ActionField {
   readonly key: string;
@@ -11,6 +11,9 @@ export interface ActionField {
   readonly hidden?: boolean;
   readonly defaultValue?: string;
   readonly recordType?: string;
+  readonly options?: readonly string[];
+  readonly icon?: string;
+  readonly core?: boolean;
 }
 
 export interface ActionDefinition {
