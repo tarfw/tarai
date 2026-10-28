@@ -1,5 +1,5 @@
 import { File, Paths } from 'expo-file-system';
-import { Database, getDbPath } from '@tursodatabase/sync-react-native';
+import type { Database } from '@tursodatabase/sync-react-native';
 import { getCurrentUser } from './auth';
 import { harness, type HarnessWorkspace, type NowFeed, type NowRow } from './harness';
 
@@ -20,7 +20,32 @@ const feedRequests = new Map<string, Promise<NowFeed>>();
 const safe = (value: string) => value.replace(/[^a-zA-Z0-9]/g, '');
 const key = (user: string, personal: string) => `${safe(user)}-${safe(personal)}`;
 const file = (user: string, personal: string) => new File(Paths.document, `inbox-${key(user, personal)}.json`);
-const databasePath = (user: string, personal: string) => getDbPath(`inbox-${key(user, personal)}.db`);
+
+type TursoRuntime = {
+  Database: new (options: {
+    path: string;
+    url: string;
+    authToken: () => Promise<string>;
+    bootstrapIfEmpty: boolean;
+    longPollTimeoutMs: number;
+    clientName: string;
+  }) => Database;
+  getDbPath: (name: string) => string;
+};
+
+let turso: TursoRuntime | null | undefined;
+
+/** The binary is only present in builds made after Turso was added; otherwise fall back to the Gateway feed. */
+function tursoRuntime(): TursoRuntime | null {
+  if (turso !== undefined) return turso;
+  try {
+    turso = require('@tursodatabase/sync-react-native') as TursoRuntime;
+  } catch (cause) {
+    if (__DEV__) console.warn('[Now] Turso sync is unavailable in this build; using the Gateway feed.', cause);
+    turso = null;
+  }
+  return turso;
+}
 
 async function readSnapshot(personal: string): Promise<Snapshot | null> {
   const user = await getCurrentUser();
@@ -58,8 +83,10 @@ function openDatabase(snapshot: Snapshot): Promise<Database> {
   const existing = databases.get(id);
   if (existing) return existing;
   if (!snapshot.url) return Promise.reject(new Error('Now sync URL is unavailable.'));
-  const db = new Database({
-    path: databasePath(snapshot.user, snapshot.personal),
+  const runtime = tursoRuntime();
+  if (!runtime) return Promise.reject(new Error('Now sync is unavailable in this build.'));
+  const db = new runtime.Database({
+    path: runtime.getDbPath(`inbox-${id}.db`),
     url: snapshot.url,
     authToken: async () => (await syncCredentials(snapshot)).authToken,
     // Open the local file without waiting for a remote bootstrap; pull below hydrates it.
@@ -223,8 +250,10 @@ export async function clearNowStorage(userId: string): Promise<void> {
   for (const entry of Paths.document.list()) {
     if (entry instanceof File && ['inbox', 'now'].some((prefix) => entry.name.startsWith(`${prefix}-${safe(userId)}-`)) && entry.name.endsWith('.json')) entry.delete();
   }
+  const runtime = tursoRuntime();
+  if (!runtime) return;
   try {
-    const directory = new File(`file://${getDbPath('inbox.db')}`).parentDirectory;
+    const directory = new File(`file://${runtime.getDbPath('inbox.db')}`).parentDirectory;
     for (const entry of directory.list()) {
       if (entry instanceof File && ['inbox', 'now'].some((prefix) => entry.name.startsWith(`${prefix}-${safe(userId)}-`))) entry.delete();
     }

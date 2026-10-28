@@ -1,24 +1,25 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'expo-router';
+import { ActivityIndicator, View } from 'react-native';
 import { getCurrentUser, getValidIdToken } from '@/lib/auth';
 
 export default function Index() {
   const router = useRouter();
-  const [target, setTarget] = useState<string | null>(null);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     let active = true;
-    void getValidIdToken()
-      .then(async (token) => { if (active) setTarget(token || await getCurrentUser() ? '/(home)/now' : '/auth'); })
-      .catch(async () => { if (active) setTarget(await getCurrentUser() ? '/(home)/now' : '/auth'); });
+    const decide = async () => {
+      const token = await getValidIdToken().catch(() => null);
+      const user = token ? true : await getCurrentUser();
+      if (active) {
+        router.replace(user ? '/canvas' : '/auth');
+        setReady(true);
+      }
+    };
+    void decide();
     return () => { active = false; };
-  }, []);
+  }, [router]);
 
-  useEffect(() => {
-    if (target) {
-      router.replace(target as any);
-    }
-  }, [target, router]);
-
-  return null;
+  return ready ? null : <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator /></View>;
 }

@@ -2,14 +2,11 @@ import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRouter } from 'expo-router';
-import * as SecureStore from 'expo-secure-store';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TarLogo } from '@/components/TarLogo';
-import { clearNowCache } from '@/components/NowScreen';
 import { useTheme } from '@/hooks/use-theme';
 import { useThemeMode } from '@/hooks/use-theme-context';
 import { getCurrentUser, signOutGoogle, type UserProfile } from '@/lib/auth';
-import { clearNowStorage } from '@/lib/now-sync';
 import { useAgentName } from '@/lib/agent';
 
 export default function SettingsScreen() {
@@ -18,11 +15,6 @@ export default function SettingsScreen() {
   const { themeMode, setThemeMode } = useThemeMode(); const [user, setUser] = useState<UserProfile | null>(null);
   useEffect(() => { void getCurrentUser().then(setUser); }, []);
   const signOut = async () => {
-    if (user?.id) {
-      await SecureStore.deleteItemAsync(`onb_${user.id}`);
-      await clearNowStorage(user.id);
-    }
-    clearNowCache();
     await signOutGoogle(); router.replace('/auth');
   };
   return <View style={[styles.page, { backgroundColor: theme.background }]}> 
