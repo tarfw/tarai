@@ -42,6 +42,53 @@ function text(value: unknown, max = 400): string {
 export const GROQ_ENDPOINT = 'https://api.groq.com/openai/v1/chat/completions';
 export const GROQ_DEFAULT_MODEL = 'qwen/qwen3.8-27b';
 
+/** Onboarding prose prefers the strongest model the account can actually run. */
+export const ONBOARDING_MODEL_DEFAULT = 'openai/gpt-oss-120b';
+export const ONBOARDING_MODEL_RANKED = [
+  ONBOARDING_MODEL_DEFAULT,
+  'qwen/qwen3.8-27b',
+  'qwen/qwen3.6-27b',
+  'openai/gpt-oss-20b',
+  'llama-3.3-70b-versatile',
+] as const;
+
+export interface GroqProbe {
+  readonly status: 'ok' | 'unconfigured' | 'error';
+  readonly model: string;
+}
+
+let groqProbeCache: { at: number; value: GroqProbe } | null = null;
+
+/** Check the key and pick the best model the account lists. No tokens spent. */
+export async function probeGroq(apiKey: string | undefined, preferred?: string): Promise<GroqProbe> {
+  const fallback = preferred || ONBOARDING_MODEL_DEFAULT;
+  if (!apiKey) return { status: 'unconfigured', model: fallback };
+  if (groqProbeCache && Date.now() - groqProbeCache.at < 10 * 60_000) return groqProbeCache.value;
+  let value: GroqProbe;
+  try {
+    const response = await fetch('https://api.groq.com/openai/v1/models', {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!response.ok) value = { status: 'error', model: fallback };
+    else {
+      const payload = object(await response.json());
+      const ids = (Array.isArray(payload.data) ? payload.data : []).map((entry) => object(entry).id).filter((id): id is string => typeof id === 'string');
+      const ranked = [preferred, ...ONBOARDING_MODEL_RANKED].find((id) => id && ids.includes(id));
+      const text = ids.find((id) => !/(whisper|tts|audio|guard|safeguard|compound)/i.test(id));
+      value = { status: ids.length ? 'ok' : 'error', model: ranked ?? text ?? fallback };
+    }
+  } catch {
+    value = { status: 'error', model: fallback };
+  }
+  groqProbeCache = { at: Date.now(), value };
+  return value;
+}
+
+export async function bestGroqModel(apiKey: string | undefined, preferred?: string): Promise<string> {
+  return (await probeGroq(apiKey, preferred)).model;
+}
+
 async function callGroq(apiKey: string, model: string, messages: { role: string; content: string }[], maxTokens: number, temperature: number, timeoutMs = 15_000): Promise<{ content: string; promptTokens: number; outputTokens: number }> {
   const response = await fetch(GROQ_ENDPOINT, {
     method: 'POST',

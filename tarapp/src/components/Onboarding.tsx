@@ -1,80 +1,285 @@
-// The way in: three cases, one confirm, one surface. Before the first card,
-// this IS the app. CREATE a sentence. JOIN an invite. The pick follows birth.
+// The way in: one sentence, one plan. Groq names it, Jev deals the cards,
+// the plan is read-only. Flat by design.
 
 import { useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import {
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTheme } from '@/hooks/use-theme';
+import { useThemeMode } from '@/hooks/use-theme-context';
 import { useWorkspace } from '@/state/Workspace';
-import { createWorkspace, me, TarError } from '@/lib/tar';
+import { createWorkspace, me, planOnboarding, TarError, type OnboardingPlan } from '@/lib/tar';
+
+type Stage = 'describe' | 'plan';
+
+const NATURE_LABEL: Record<OnboardingPlan['nature'], string> = {
+  food: 'Food and drink',
+  shop: 'Shop',
+  service: 'Service',
+  general: 'General',
+};
+
+function fallbackName(words: string): string {
+  const first = words.split(/[.\n]/)[0].replace(/\s+/g, ' ').trim();
+  const short = first.length > 48 ? first.slice(0, 48).replace(/\s+\S*$/, '') : first;
+  return short || 'My workspace';
+}
 
 export function Onboarding() {
   const theme = useTheme();
+  const { resolvedScheme } = useThemeMode();
   const insets = useSafeAreaInsets();
   const { refreshMe, select } = useWorkspace();
-  const [stage, setStage] = useState<'first' | 'plan'>('first');
+  const [stage, setStage] = useState<Stage>('describe');
   const [words, setWords] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [plan, setPlan] = useState<OnboardingPlan | null>(null);
+  const [name, setName] = useState('');
+  const [work, setWork] = useState<string[]>([]);
+  const [personal, setPersonal] = useState<string[]>([]);
+  const [busy, setBusy] = useState<'plan' | 'create' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [nameFocused, setNameFocused] = useState(false);
 
-  const create = async () => {
+  const dark = resolvedScheme === 'dark';
+  const ink = theme.text;
+  const paper = dark ? theme.background : '#F6F5F2';
+  const fieldBackground = dark ? theme.backgroundElement : '#FFFFFF';
+  const hairline = dark ? theme.border : '#DCDBD7';
+  const step = stage === 'describe' ? 1 : 2;
+  const canContinue = words.trim().length >= 3 && busy === null;
+
+  const makePlan = async () => {
     const text = words.trim();
-    if (!text) return;
-    setBusy(true); setError(null);
+    if (!text || busy !== null) return;
+    setBusy('plan');
+    setError(null);
     try {
-      // one sentence -> birth: Jev names the nature, code deals the cards
-      const name = text.split(/[.,\n]/)[0].trim().slice(0, 60) || 'My Workspace';
-      await createWorkspace(name, text);
-      await refreshMe();
-      const fresh = await me();
-      select(fresh.workspaces.filter((ws) => ws.mode === 'work')[0]?.slug ?? '');
+      const result = await planOnboarding(text, '');
+      setPlan(result);
+      setName(result.name);
+      setWork(result.work.length ? result.work : ['task']);
+      setPersonal(result.personal.length ? result.personal : ['task']);
+      setStage('plan');
     } catch (cause) {
-      setError(cause instanceof TarError ? cause.message : 'Birth failed. Try again.');
-    } finally { setBusy(false); }
+      setError(cause instanceof TarError ? cause.message : 'Could not build a plan. Try again.');
+    } finally {
+      setBusy(null);
+    }
   };
 
+  const create = async () => {
+    if (busy !== null) return;
+    setBusy('create');
+    setError(null);
+    try {
+      const finalName = name.trim() || plan?.name || fallbackName(words);
+      const selection = plan ? { cards: work, personalCards: personal, nature: plan.nature } : undefined;
+      const created = await createWorkspace(finalName, words.trim(), selection);
+      await refreshMe();
+      let slug = created.workspace?.slug ?? '';
+      if (!slug) {
+        try {
+          const fresh = await me();
+          slug = fresh.workspaces.find((item) => item.mode === 'work')?.slug ?? '';
+        } catch { /* the workspace list refreshes on the next open */ }
+      }
+      if (slug) select(slug);
+    } catch (cause) {
+      setError(cause instanceof TarError ? cause.message : 'Could not create the workspace. Try again.');
+      setBusy(null);
+    }
+  };
+
+  const titles = new Map(plan?.catalog.map((card) => [card.id, card.title]) ?? []);
+  const chipTitle = (id: string) => titles.get(id) ?? id;
+
   return (
-    <View style={[styles.page, { backgroundColor: theme.background, paddingTop: insets.top + 60 }]}>
-      <Text style={[styles.logo, { color: theme.text }]}>TAR</Text>
-      {stage === 'first' ? (
-        <>
-          <Text style={[styles.prompt, { color: theme.text }]}>tell TAR about your business in one line</Text>
-          <TouchableOpacity accessibilityRole="button" style={[styles.door, { borderColor: theme.primary }]} onPress={() => setStage('plan')}>
-            <Text style={{ color: theme.primary, fontWeight: '700' }}>I will describe it</Text>
-          </TouchableOpacity>
-          <View style={[styles.door, { borderColor: theme.border }]}>
-            <Text style={{ color: theme.textSecondary, fontWeight: '600' }}>I have an invite</Text>
-            <Text style={{ color: theme.textSecondary, fontSize: 12, paddingTop: 4, textAlign: 'center' }}>sign in with the invited email and the workspace is waiting</Text>
+    <View style={{ flex: 1, backgroundColor: paper }}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <View style={[styles.header, { paddingTop: insets.top + 18, paddingHorizontal: 24 }]}>
+          {stage === 'plan' ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Back"
+              hitSlop={12}
+              onPress={() => { setError(null); setStage('describe'); }}
+              style={styles.back}
+            >
+              <Ionicons name="arrow-back" size={19} color={ink} />
+            </Pressable>
+          ) : <View style={styles.back} />}
+          <View style={styles.progress}>
+            {[1, 2].map((item) => (
+              <View
+                key={item}
+                style={[styles.segment, { backgroundColor: item === step ? ink : dark ? theme.backgroundSelected : '#E3E2DF' }]}
+              />
+            ))}
           </View>
-        </>
-      ) : (
-        <>
-          <Text style={[styles.prompt, { color: theme.text }]}>one sentence</Text>
-          <TextInput
-            style={[styles.input, { borderColor: theme.border, color: theme.text }]}
-            placeholder="tea shop. snacks to go. just me."
-            placeholderTextColor={theme.textSecondary}
-            value={words}
-            onChangeText={setWords}
-            multiline
-            autoFocus
-          />
-          {error ? <Text style={{ color: '#B42318', fontSize: 13 }}>{error}</Text> : null}
-          <TouchableOpacity accessibilityRole="button" style={[styles.go, { backgroundColor: words.trim() ? theme.primary : theme.border }]} disabled={!words.trim() || busy} onPress={() => void create()}>
-            {busy ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontWeight: '800' }}>Create</Text>}
-          </TouchableOpacity>
-          <TouchableOpacity accessibilityRole="button" onPress={() => setStage('first')}><Text style={{ color: theme.textSecondary, padding: 12 }}>back</Text></TouchableOpacity>
-        </>
-      )}
+          <View style={styles.back} />
+        </View>
+
+        <ScrollView
+          contentContainerStyle={[styles.content, { paddingBottom: 28 }]}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          {stage === 'describe' ? (
+            <View>
+              <Text style={[styles.title, { color: ink }]}>What do{'\n'}you do?</Text>
+              <Text style={[styles.lede, { color: theme.textSecondary }]}>One line. We handle the rest.</Text>
+              <TextInput
+                style={[styles.field, { borderColor: hairline, backgroundColor: fieldBackground, color: ink }]}
+                placeholder="A studio, shop or service — what you sell and who buys it."
+                placeholderTextColor={theme.textMuted}
+                value={words}
+                onChangeText={setWords}
+                multiline
+                autoFocus
+                maxLength={600}
+                textAlignVertical="top"
+                accessibilityLabel="Describe what you do"
+              />
+              {error ? (
+                <View>
+                  <Text style={styles.error}>{error}</Text>
+                  <Pressable accessibilityRole="button" hitSlop={8} onPress={() => void create()}>
+                    <Text style={[styles.retry, { color: theme.textSecondary }]}>Create without a plan</Text>
+                  </Pressable>
+                </View>
+              ) : null}
+            </View>
+          ) : null}
+
+          {stage === 'plan' && plan ? (
+            <View>
+              <Text style={[styles.title, { color: ink }]}>Your{'\n'}workspace</Text>
+              <TextInput
+                value={name}
+                onChangeText={setName}
+                onFocus={() => setNameFocused(true)}
+                onBlur={() => setNameFocused(false)}
+                maxLength={40}
+                accessibilityLabel="Workspace name"
+                style={[styles.planName, { color: ink, borderBottomColor: nameFocused ? ink : 'transparent' }]}
+              />
+              <Text style={[styles.summary, { color: theme.textSecondary }]}>{plan.summary}</Text>
+              <Text style={[styles.meta, { color: theme.textMuted }]}>
+                {NATURE_LABEL[plan.nature]} · {Math.round(plan.confidence * 100)}%
+              </Text>
+
+              <Text style={[styles.label, { color: theme.textSecondary }]}>Business</Text>
+              <View style={styles.cardChips}>
+                {work.map((id) => (
+                  <View key={id} style={[styles.cardChip, { borderColor: hairline }]}>
+                    <Text style={[styles.cardChipText, { color: ink }]}>{chipTitle(id)}</Text>
+                  </View>
+                ))}
+              </View>
+
+              <Text style={[styles.label, { color: theme.textSecondary }]}>Personal</Text>
+              <View style={styles.cardChips}>
+                {personal.map((id) => (
+                  <View key={id} style={[styles.cardChip, { borderColor: hairline }]}>
+                    <Text style={[styles.cardChipText, { color: ink }]}>{chipTitle(id)}</Text>
+                  </View>
+                ))}
+              </View>
+
+              {error ? (
+                <View>
+                  <Text style={styles.error}>{error}</Text>
+                  <Pressable accessibilityRole="button" hitSlop={8} onPress={() => void create()}>
+                    <Text style={[styles.retry, { color: theme.textSecondary }]}>Try again</Text>
+                  </Pressable>
+                </View>
+              ) : null}
+            </View>
+          ) : null}
+        </ScrollView>
+
+        <View style={[styles.footer, { paddingBottom: insets.bottom + 14 }]}>
+          <Pressable
+            accessibilityRole="button"
+            disabled={busy !== null || (stage === 'describe' && !canContinue)}
+            onPress={() => { if (stage === 'describe') void makePlan(); else void create(); }}
+            style={({ pressed }) => [
+              styles.primary,
+              {
+                backgroundColor: stage === 'describe' && !canContinue ? (dark ? theme.backgroundSelected : '#D6D5D1') : ink,
+                opacity: pressed ? 0.82 : 1,
+              },
+            ]}
+          >
+            {busy !== null ? (
+              <ActivityIndicator color={theme.background} />
+            ) : (
+              <Text style={[styles.primaryText, { color: stage === 'describe' && !canContinue ? theme.textMuted : theme.background }]}>
+                {stage === 'describe' ? 'Next' : 'Create workspace'}
+              </Text>
+            )}
+          </Pressable>
+        </View>
+      </KeyboardAvoidingView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, alignItems: 'center', paddingHorizontal: 28, gap: 18 },
-  logo: { fontSize: 34, fontWeight: '900' },
-  prompt: { fontSize: 16, textAlign: 'center' },
-  door: { borderWidth: 1, borderRadius: 14, padding: 16, width: '100%', alignItems: 'center', gap: 4 },
-  input: { borderWidth: 1, borderRadius: 14, padding: 14, width: '100%', minHeight: 90, fontSize: 15, textAlignVertical: 'top' },
-  go: { borderRadius: 999, paddingVertical: 14, paddingHorizontal: 44 },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 30 },
+  back: { width: 30, height: 30, alignItems: 'center', justifyContent: 'center', marginLeft: -4 },
+  progress: { flexDirection: 'row', gap: 6 },
+  segment: { width: 64, height: 3, borderRadius: 2 },
+  content: { flexGrow: 1, paddingHorizontal: 24, paddingTop: 56 },
+  title: { fontSize: 42, lineHeight: 44, fontWeight: '800', letterSpacing: -1.6 },
+  lede: { fontSize: 15, lineHeight: 22, fontWeight: '500', marginTop: 14, maxWidth: 330 },
+  field: {
+    borderWidth: 1,
+    borderRadius: 2,
+    paddingHorizontal: 14,
+    paddingTop: 14,
+    paddingBottom: 14,
+    minHeight: 118,
+    marginTop: 34,
+    fontSize: 16,
+    lineHeight: 23,
+    fontWeight: '500',
+  },
+  planName: {
+    fontSize: 34,
+    lineHeight: 40,
+    fontWeight: '800',
+    letterSpacing: -1,
+    marginTop: 8,
+    paddingBottom: 4,
+    paddingHorizontal: 0,
+    borderBottomWidth: 1,
+  },
+  summary: { fontSize: 15, lineHeight: 22, fontWeight: '500', marginTop: 10 },
+  meta: { fontSize: 12.5, fontWeight: '600', marginTop: 10 },
+  label: { fontSize: 13, lineHeight: 18, fontWeight: '500', marginTop: 26, marginBottom: 9 },
+  cardChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
+  cardChip: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7 },
+  cardChipText: { fontSize: 13, fontWeight: '500' },
+  error: { marginTop: 14, fontSize: 13, lineHeight: 18, fontWeight: '500', color: '#B42318' },
+  retry: { marginTop: 10, fontSize: 13.5, fontWeight: '600' },
+  footer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    paddingHorizontal: 24,
+    paddingTop: 12,
+  },
+  primary: { minWidth: 132, height: 52, borderRadius: 2, paddingHorizontal: 22, alignItems: 'center', justifyContent: 'center' },
+  primaryText: { fontSize: 15, fontWeight: '600', letterSpacing: 0.1 },
 });

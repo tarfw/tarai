@@ -49,7 +49,13 @@ export async function askSystemOne(apiKey: string | undefined, request: SystemOn
       body: JSON.stringify({
         model: request.model || JEV_MODEL,
         state: request.state,
-        questions: request.questions,
+        // Jev takes criteria as a map of label → description; arrays are a 422.
+        questions: Object.fromEntries(Object.entries(request.questions).map(([key, question]) => [
+          key,
+          question.criteria && Array.isArray(question.criteria)
+            ? { ...question, criteria: Object.fromEntries(question.criteria.map((value) => [value, value])) }
+            : question,
+        ])),
       }),
       signal: AbortSignal.timeout(request.timeout ?? 8_000),
     });

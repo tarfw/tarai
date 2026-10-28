@@ -68,8 +68,29 @@ function safeJson(text: string): Record<string, unknown> {
 
 // --- reads ---
 
-export async function createWorkspace(name: string, words: string) {
-  return request('POST', '/v1/workspaces', { name, words });
+export interface PlanCard { id: string; title: string }
+export interface OnboardingPlan {
+  name: string;
+  summary: string;
+  nature: 'food' | 'shop' | 'service' | 'general';
+  confidence: number;
+  doubt: boolean;
+  risk: number;
+  work: string[];
+  personal: string[];
+  catalog: PlanCard[];
+  models: { llm: string | null; jev: string | null };
+}
+
+/** Read-only: Groq writes the name and sentence, Jev types both decks. */
+export async function planOnboarding(words: string, audience: string): Promise<OnboardingPlan> {
+  return request('POST', '/v1/onboarding/plan', { words, audience }) as unknown as Promise<OnboardingPlan>;
+}
+
+export interface OnboardingSelection { cards: string[]; personalCards: string[]; nature: OnboardingPlan['nature'] }
+
+export async function createWorkspace(name: string, words: string, plan?: OnboardingSelection): Promise<{ workspace?: { slug?: string } }> {
+  return request('POST', '/v1/workspaces', { name, words, ...(plan || {}) }) as Promise<{ workspace?: { slug?: string } }>;
 }
 
 export async function me(): Promise<{ user: { id: string; email: string; name: string | null }; workspaces: TarWorkspace[] }> {

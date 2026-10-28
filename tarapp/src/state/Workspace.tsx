@@ -37,7 +37,9 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       setCurrentSlug((previous) => {
         const saved = previous ?? null;
         if (saved && result.workspaces.some((ws) => ws.slug === saved)) return saved;
-        const fallback = result.workspaces.find((ws) => ws.mode === 'work') ?? result.workspaces[0];
+        // A new account gets only Personal; onboarding creates the business
+        // workspace, so never fall through to Personal on first open.
+        const fallback = result.workspaces.find((ws) => ws.mode === 'work');
         void SecureStore.setItemAsync(CURRENT_KEY, fallback?.slug ?? '');
         return fallback?.slug ?? null;
       });
@@ -77,7 +79,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         setWorkspaces(cached);
         setCurrentSlug((previous) => {
           if (previous && cached.some((ws) => ws.slug === previous)) return previous;
-          const fallback = cached.find((ws) => ws.mode === 'work') ?? cached[0];
+          const fallback = cached.find((ws) => ws.mode === 'work');
+          if (!fallback) return null;
           void SecureStore.setItemAsync(CURRENT_KEY, fallback.slug);
           return fallback.slug;
         });

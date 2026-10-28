@@ -96,6 +96,36 @@ export function cardDeck(nature: Nature): readonly ToolId[] {
   return TOOL_IDS.filter((id) => dealt.has(id) && !findTool(id)?.deferred);
 }
 
+/** Tools Jev may pick for the owner's private space. Life admin, not the business. */
+export const PERSONAL_CANDIDATES: readonly ToolId[] = ['task', 'expense', 'contact', 'catalog', 'order', 'payment'];
+
+/** Owner- or Jev-chosen cards, validated against the registry and capped. */
+export function normalizeDeck(value: unknown, limit: number = TOOL_IDS.length): ToolId[] {
+  const requested = new Set((Array.isArray(value) ? value : []).map(String));
+  return TOOL_IDS.filter((id) => requested.has(id) && !findTool(id)?.deferred).slice(0, Math.max(1, limit));
+}
+
+/** The nature recipe is a floor; chosen cards add to it. */
+export function dealDeck(nature: Nature, additions: readonly ToolId[] = [], limit = 10): ToolId[] {
+  const dealt = new Set<ToolId>([...NATURE_RECIPES[nature], 'contact', 'member', ...additions]);
+  return TOOL_IDS.filter((id) => dealt.has(id) && !findTool(id)?.deferred).slice(0, Math.max(1, limit));
+}
+
+export interface InboxSeed {
+  readonly tool: ToolId;
+  readonly reach: ToolReach;
+  readonly title: string;
+  readonly action: string | null;
+}
+
+/** The first NEXT row points at a card the workspace actually carries. */
+export function firstInboxSeed(deck: readonly ToolId[]): InboxSeed | null {
+  const catalog = deck.includes('catalog') ? findTool('catalog') : undefined;
+  const tool = catalog ?? deck.map((id) => findTool(id)).find((candidate) => Boolean(candidate?.card.tap.action));
+  if (!tool) return null;
+  return { tool: tool.id, reach: tool.reach, title: catalog ? 'Add your first item' : tool.card.tap.label, action: tool.card.tap.action };
+}
+
 /** The workspace's dealt deck lives in current(kind='deck'): one row, toggled by Add-a-Card. */
 export async function readDeck(client: Pick<Client, 'execute'>): Promise<readonly ToolId[]> {
   const result = await client.execute({ sql: "SELECT data FROM current WHERE kind='deck' AND key='cards'", args: [] });

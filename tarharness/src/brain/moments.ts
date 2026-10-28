@@ -4,9 +4,18 @@
 
 import { askSystemOne, choiceOf, noulOf } from './systemone.ts';
 import { fallbackTrade } from './trade.ts';
+import { findTool, PERSONAL_CANDIDATES, TOOL_IDS, cardDeck, dealDeck, type ToolId } from '../tools/registry.ts';
 
 export type Nature = 'food' | 'shop' | 'service' | 'general';
 export const NATURES: readonly Nature[] = ['food', 'shop', 'service', 'general'];
+
+/** Jev needs descriptions, not bare ids, to tell the natures apart. */
+const NATURE_CRITERIA: Record<Nature, string> = {
+  food: 'Cooks, bakes or serves food and drink: cafe, restaurant, bakery, cloud kitchen, catering.',
+  shop: 'Sells physical goods: boutique, retail store, grocery, pharmacy, hardware, online shop.',
+  service: 'Sells work or expertise: salon, repair, studio, consulting, agency, tuition, clinic.',
+  general: 'None of the above clearly fits.',
+};
 
 export interface BirthVerdict {
   readonly nature: Nature;
@@ -31,8 +40,8 @@ export async function birthMoment(typesafeKey: string | undefined, words: string
   const outcome = await askSystemOne(typesafeKey, {
     state: { words },
     questions: {
-      nature: { type: 'choice', instructions: 'A member describes their business. Which nature is it?', criteria: NATURES },
-      risk: { type: 'noul', instructions: 'Could this description be abuse, spam or a harmful business?' },
+      nature: { type: 'choice', instructions: 'A member describes their business. Which nature fits best?', criteria: NATURE_CRITERIA },
+      risk: { type: 'noul', instructions: 'The description is abuse, spam or a harmful business.' },
     },
   });
   if (!outcome.ok) return { nature: mapTrade(fallback.id), confidence: fallback.confidence, risk: 0, doubt: false, model: null };
@@ -44,6 +53,79 @@ export async function birthMoment(typesafeKey: string | undefined, words: string
   const ranked = Object.values(nature.probabilities).sort((a, b) => b - a);
   const margin = ranked.length > 1 ? ranked[0] - ranked[1] : 1;
   return { nature: pick, confidence, risk: riskScore, doubt: margin < 0.3 || riskScore > 0.45, model: outcome.value.model };
+}
+
+const TOOL_PURPOSE: Record<ToolId, string> = {
+  pos: 'take a sale, a payment and a bill at the counter',
+  order: 'pack and dispatch customer orders',
+  invoice: 'issue GST bills and track receivables',
+  payment: 'record UPI, cash or card receipts and refunds',
+  register: 'track cash in the drawer and shifts',
+  catalog: 'keep products, prices and photos',
+  stock: 'track inventory and low stock',
+  purchase: 'raise supplier purchase orders and receive goods',
+  expense: 'record daily business expenses',
+  contact: 'keep customers, leads and their history',
+  member: 'manage staff, roles and shifts',
+  site: 'publish an online storefront',
+  task: 'keep a manual to-do list',
+  channel: 'read and send customer messages',
+};
+
+const PERSONAL_PURPOSE: Partial<Record<ToolId, string>> = {
+  task: 'keep personal to-dos',
+  expense: 'record personal spending',
+  contact: 'keep personal contacts',
+  catalog: 'keep a personal list of things with prices',
+  order: 'track things ordered online',
+  payment: 'record money paid or received personally',
+};
+
+export interface PlanVerdict extends BirthVerdict {
+  /** the business deck: the nature recipe plus cards Jev judged needed */
+  readonly work: readonly ToolId[];
+  /** the private deck: cards Jev judged useful for life admin */
+  readonly personal: readonly ToolId[];
+}
+
+/**
+ * The onboarding plan: one Jev call, many verdicts. Nature, risk and one
+ * yes/no per candidate card for both the business and the personal space.
+ * Code owns the deck; a missing key or a failed call falls back to the recipe.
+ */
+export async function planMoment(typesafeKey: string | undefined, words: string, audience = ''): Promise<PlanVerdict> {
+  const fallback = fallbackTrade(words);
+  const fallbackNature = mapTrade(fallback.id);
+  const home: PlanVerdict = {
+    nature: fallbackNature, confidence: fallback.confidence, risk: 0, doubt: false, model: null,
+    work: cardDeck(fallbackNature), personal: ['task', 'expense'],
+  };
+  if (!typesafeKey) return home;
+  const questions: Record<string, { type: 'choice' | 'noul'; instructions: string; criteria?: readonly string[] | Record<string, string> }> = {
+    nature: { type: 'choice', instructions: 'A member describes their business. Which nature fits best?', criteria: NATURE_CRITERIA },
+    risk: { type: 'noul', instructions: 'The description is abuse, spam or a harmful business.' },
+  };
+  for (const id of TOOL_IDS) {
+    questions[`work_${id}`] = { type: 'noul', instructions: `This business needs the "${findTool(id)?.card.title}" card to ${TOOL_PURPOSE[id]}.` };
+  }
+  for (const id of PERSONAL_CANDIDATES) {
+    questions[`personal_${id}`] = { type: 'noul', instructions: `The owner needs a personal "${findTool(id)?.card.title}" card to ${PERSONAL_PURPOSE[id] ?? id}.` };
+  }
+  const outcome = await askSystemOne(typesafeKey, { state: { words, audience }, questions, timeout: 12_000 });
+  if (!outcome.ok) return home;
+  const natureAnswer = choiceOf(outcome.value.answers.nature);
+  const pick = NATURES.find((candidate) => candidate === natureAnswer.choice) ?? fallbackNature;
+  const confidence = natureAnswer.probabilities[pick] ?? fallback.confidence;
+  const risk = noulOf(outcome.value.answers.risk).probability ?? 0;
+  const ranked = Object.values(natureAnswer.probabilities).sort((a, b) => b - a);
+  const margin = ranked.length > 1 ? ranked[0] - ranked[1] : 1;
+  const selectedWork = TOOL_IDS.filter((id) => (noulOf(outcome.value.answers[`work_${id}`]).probability ?? 0) >= 0.55);
+  const selectedPersonal = PERSONAL_CANDIDATES.filter((id) => (noulOf(outcome.value.answers[`personal_${id}`]).probability ?? 0) >= 0.55);
+  return {
+    nature: pick, confidence, risk, doubt: margin < 0.3 || risk > 0.45, model: outcome.value.model,
+    work: dealDeck(pick, selectedWork, 10),
+    personal: selectedPersonal.length ? selectedPersonal.slice(0, 3) : ['task'],
+  };
 }
 
 export interface ImportRow {

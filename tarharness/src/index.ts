@@ -1,5 +1,5 @@
 import { Effect } from 'effect';
-import type { Client } from '@libsql/client/web';
+import type { Client, InStatement } from '@libsql/client/web';
 import { verifyGoogleIdentity } from './auth/google.ts';
 import { mintSession, verifySession } from './auth/session.ts';
 import { ControlStore } from './db/control.ts';
@@ -19,7 +19,9 @@ import { siteRegenerate } from './site/store.ts';
 import { canExecute, canReadRecord, canRunFlowStep, managesMembers } from './access.ts';
 import { inviteMember, listMembers, updateMember } from './team.ts';
 import { searchContacts } from './contacts/search.ts';
-import { cardDeck, deckStatement, findTool, readCardStack, readDeck, toolForAction } from './tools/registry.ts';
+import { cardDeck, dealDeck, deckStatement, findTool, firstInboxSeed, normalizeDeck, readCardStack, readDeck, toolForAction } from './tools/registry.ts';
+import { isNature, onboardingPlan } from './onboarding/plan.ts';
+import { probeGroq } from './site/model.ts';
 import { ask, confirmSkill, findSkill, listSkills } from './skill/engine.ts';
 import { proposePlan } from './skill/propose.ts';
 import { advanceRun, listRuns, startRun } from './skill/run.ts';
@@ -30,7 +32,7 @@ import { sendPush, tokensFor } from './push/expo.ts';
 import { deriveGate, mayExecute, missingFields } from './truth/gate.ts';
 import { currentStatement, inboxStatement, lastMoveId, readInbox } from './truth/write.ts';
 
-type RuntimeEnv = Env & { readonly TURSO_PLATFORM_TOKEN?: string; readonly TAR_SESSION_SECRET?: string; readonly TELEGRAM_BOT_TOKEN?: string; readonly EXPO_ACCESS_TOKEN?: string; readonly TAR_MONTHLY_WRITE_CEILING?: string; readonly TYPESAFE_API_KEY?: string; readonly GROQ_API_KEY?: string; readonly PEXELS_API_KEY?: string; readonly SITE_BASE_DOMAIN?: string; readonly SITE_WORKER_ORIGIN?: string; readonly SITE_MODEL?: string };
+type RuntimeEnv = Env & { readonly TURSO_PLATFORM_TOKEN?: string; readonly TAR_SESSION_SECRET?: string; readonly TELEGRAM_BOT_TOKEN?: string; readonly EXPO_ACCESS_TOKEN?: string; readonly TAR_MONTHLY_WRITE_CEILING?: string; readonly TYPESAFE_API_KEY?: string; readonly GROQ_API_KEY?: string; readonly GROQ_MODEL?: string; readonly PEXELS_API_KEY?: string; readonly SITE_BASE_DOMAIN?: string; readonly SITE_WORKER_ORIGIN?: string; readonly SITE_MODEL?: string };
 const jsonHeaders = { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' };
 const corsHeaders = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'Authorization, Content-Type, Idempotency-Key', 'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS' };
 const now = () => Date.now();
@@ -195,7 +197,11 @@ async function provision(control: ControlStore, env: RuntimeEnv, pending: { id: 
 async function ensurePersonalWorkspace(owner: Awaited<ReturnType<typeof identity>>['value'], control: ControlStore, env: RuntimeEnv) {
   const key = identityKey(owner.id);
   const pending = await Effect.runPromise(control.ensurePersonalWorkspace({ identity: owner, name: 'Personal', slug: `personal-${key}`, databaseName: key, mode: 'personal' }));
-  if (pending.state !== 'active') await provision(control, env, pending);
+  if (pending.state !== 'active') {
+    const provisioned = await provision(control, env, pending);
+    return { ...pending, databaseHost: provisioned.host, state: 'active' as const };
+  }
+  return pending;
 }
 
 async function activeAccesses(request: Request, env: RuntimeEnv) {
@@ -216,9 +222,17 @@ async function createWorkspace(request: Request, env: RuntimeEnv): Promise<Respo
   if (!name || !slug) throw badRequest('Workspace name is required.');
   const databaseName = `${identityKey(owner.id)}-${slug}`.slice(0, 56);
   const input = { identity: owner, name, slug, databaseName, mode: 'work' as const };
-  // Birth: Jev names the nature, code deals the cards. One call, once.
   const words = typeof body.words === 'string' ? body.words : name;
-  const birth = await birthMoment(env.TYPESAFE_API_KEY, words);
+  // A confirmed plan carries the owner's nature and deck. Without one, birth
+  // names the nature and code deals the recipe: one Jev call, once.
+  const requestedCards = normalizeDeck(body.cards, 10);
+  const personalCards = normalizeDeck(body.personalCards, 3);
+  const requestedNature = isNature(body.nature) ? body.nature : null;
+  const birth = requestedNature && requestedCards.length
+    ? { nature: requestedNature, confidence: 1, risk: 0, doubt: false, model: null }
+    : await birthMoment(env.TYPESAFE_API_KEY, words);
+  const deck = requestedCards.length ? dealDeck(birth.nature, requestedCards, 10) : cardDeck(birth.nature);
+  const seed = firstInboxSeed(deck);
   const pending = await Effect.runPromise(control.resumeErroredWorkspace(input)) ?? await Effect.runPromise(control.createPendingWorkspace(input));
   const provisioned = await provision(control, env, pending);
   try {
@@ -227,20 +241,37 @@ async function createWorkspace(request: Request, env: RuntimeEnv): Promise<Respo
       const siteDoc = defaultSite(name, `${name} — official online store, products and services.`);
       const siteId = `site_${crypto.randomUUID()}`;
       const at = Date.now();
-      await client.batch([
+      const statements: InStatement[] = [
         { sql: "INSERT INTO records(id,type,title,state,data,owner,version,created,updated) VALUES(?,'site',?,'draft',?,?,1,?,?)", args: [siteId, name, JSON.stringify(siteDoc), owner.id, at, at] },
-        // Birth deals the cards (general recipe until Jev names the nature at
-        // the birth moment) and seeds the first NEXT: never a blank Canvas.
-        deckStatement(cardDeck(birth.nature)),
-        currentStatement('card', 'catalog', { itemCount: '0 items', pending: 'add your first item' }),
+        // Birth deals the cards and seeds the first NEXT: never a blank Canvas.
+        deckStatement(deck),
+        ...(deck.includes('catalog') ? [currentStatement('card', 'catalog', { itemCount: '0 items', pending: 'add your first item' })] : []),
         currentStatement('workspace', 'nature', { nature: birth.nature, confidence: birth.confidence, doubt: birth.doubt }),
-        inboxStatement({ member: owner.id, tool: 'catalog', reach: 'data', title: 'Add your first item', action: 'catalog.item.save' }),
-      ], 'write');
+        ...(seed ? [inboxStatement({ member: owner.id, tool: seed.tool, reach: seed.reach, title: seed.title, action: seed.action })] : []),
+      ];
+      await client.batch(statements, 'write');
     } finally {
       client.close();
     }
   } catch (err) {
     console.error('Initial site draft auto-generation note:', err);
+  }
+  // The personal space uses the same description. Seed its deck once; later
+  // edits belong to the owner and are never overwritten.
+  if (personalCards.length) {
+    try {
+      const personal = await ensurePersonalWorkspace(owner, control, env);
+      if (personal.databaseHost) {
+        const personalClient = await Effect.runPromise(openWorkspaceDatabase(tursoEnv(env), personal.databaseName, personal.databaseHost));
+        try {
+          if ((await readDeck(personalClient)).length === 0) await personalClient.batch([deckStatement(personalCards)], 'write');
+        } finally {
+          personalClient.close();
+        }
+      }
+    } catch (cause) {
+      console.error(JSON.stringify({ event: 'onboarding.personal-deck.failed', error: cause instanceof Error ? cause.message : String(cause) }));
+    }
   }
   return response({ workspace: { ...pending, databaseHost: undefined, state: 'active' } }, 201);
 }
@@ -257,6 +288,16 @@ async function handle(request: Request, env: RuntimeEnv, ctx: ExecutionContext):
     await Effect.runPromise(control.upsertUser(google));
     const session = await mintSession(env, google);
     return response({ token: session.token, expiresAt: session.expiresAt, user: google });
+  }
+  if (request.method === 'POST' && path === '/v1/onboarding/plan') {
+    await identity(request, env);
+    const body = await Effect.runPromise(parseJson(request, 20_000));
+    const words = typeof body.words === 'string' ? body.words.replace(/\s+/g, ' ').trim().slice(0, 600) : '';
+    if (words.length < 3) throw badRequest('Describe what you do in a few words.');
+    const audience = typeof body.audience === 'string' ? body.audience.replace(/\s+/g, ' ').trim().slice(0, 300) : '';
+    return response(await onboardingPlan({
+      typesafeKey: env.TYPESAFE_API_KEY, groqApiKey: env.GROQ_API_KEY, groqModel: env.GROQ_MODEL, words, audience,
+    }));
   }
   if (request.method === 'GET' && path === '/v1/me') {
     const { value, control } = await identity(request, env);
@@ -345,6 +386,13 @@ async function handle(request: Request, env: RuntimeEnv, ctx: ExecutionContext):
   if (request.method === 'GET' && path === '/v1/health/jev') {
     const outcome = await askSystemOne(env.TYPESAFE_API_KEY, { state: { name: 'health ping' }, questions: { ping: { type: 'choice', instructions: 'Health check. Choose the only option.', criteria: ['ok'] } }, timeout: 6_000 });
     return response({ jev: outcome.ok ? 'ok' : outcome.failure.kind, model: outcome.ok ? outcome.value.model : undefined });
+  }
+  if (request.method === 'GET' && path === '/v1/health/model') {
+    const [jev, groq] = await Promise.all([
+      askSystemOne(env.TYPESAFE_API_KEY, { state: { name: 'health ping' }, questions: { ping: { type: 'choice', instructions: 'Health check. Choose the only option.', criteria: ['ok'] } }, timeout: 6_000 }),
+      probeGroq(env.GROQ_API_KEY, env.GROQ_MODEL),
+    ]);
+    return response({ jev: jev.ok ? 'ok' : jev.failure.kind, groq: groq.status, model: groq.model });
   }
   if (request.method === 'POST' && path === '/v1/workspaces/media') {
     const body = await Effect.runPromise(parseJson(request, 900_000));

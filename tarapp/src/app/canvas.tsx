@@ -17,6 +17,8 @@ import { saveSlice } from '@/lib/slicecache';
 import { registerPush } from '@/lib/push';
 import { getCurrentUser } from '@/lib/auth';
 import { Onboarding } from '@/components/Onboarding';
+import { Terms } from '@/components/Terms';
+import { acceptedTerms, acceptTerms } from '@/lib/terms';
 
 const FALLBACK_FIELDS: Record<string, FieldConfig[]> = {
   'catalog.item.save': [
@@ -63,6 +65,24 @@ export default function Canvas() {
   const [queueBadge, setQueueBadge] = useState(0);
   const [action, setAction] = useState<{ action: string; title: string; fields: FieldConfig[] } | null>(null);
   const [photo, setPhoto] = useState<string | null>(null);
+  // one look at the terms per account, before any workspace work
+  const [gate, setGate] = useState<'checking' | 'terms' | 'ready'>('checking');
+
+  useEffect(() => {
+    let active = true;
+    void getCurrentUser().then(async (user) => {
+      if (!active) return;
+      if (!user) { setGate('ready'); return; }
+      setGate(await acceptedTerms(user.id) ? 'ready' : 'terms');
+    });
+    return () => { active = false; };
+  }, []);
+
+  const accept = useCallback(async () => {
+    const user = await getCurrentUser();
+    if (user) await acceptTerms(user.id);
+    setGate('ready');
+  }, []);
 
   useEffect(() => {
     void getCurrentUser().then((user) => { if (user?.photo) setPhoto(user.photo); });
@@ -125,7 +145,16 @@ export default function Canvas() {
   const dealt = useMemo(() => new Set(cards.map((card) => card.tool)), [cards]);
   const roleLabel = current?.role ? current.role.charAt(0).toUpperCase() + current.role.slice(1) : '';
 
-  // onboarding is only for a settled no-workspace state, never the loading gap
+  // terms come first, then onboarding, never behind the loading gap
+  if (gate === 'checking') {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.background }}>
+        <ActivityIndicator />
+      </View>
+    );
+  }
+  if (gate === 'terms') return <Terms onAccept={accept} />;
+
   if (!current) {
     return loading ? (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.background }}>
