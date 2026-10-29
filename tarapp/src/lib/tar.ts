@@ -10,7 +10,7 @@ const SESSION_KEY = 'tar_session';
 export interface TarWorkspace { id: string; name: string; slug: string; mode: 'personal' | 'work'; role: string; state: string; badge: number }
 export interface InboxRow { id: string; tool: string; reach: string; due: number | null; status: string; title: string; urgent: boolean; action: string | null; input: Record<string, unknown>; created: number }
 export interface CardView { tool: string; title: string; reach: string; shape: string; tap: { action: string | null; label: string }; number: string | null; pendingLine: string | null }
-export interface SkillView { id: string; title: string; trigger: { type: string; at?: string }; steps: { action: string; input: Record<string, unknown>; auto?: boolean }[] }
+export interface SkillView { id: string; title: string; shape?: string; trigger: { type: string; at?: string; on?: string }; steps: { action: string; input: Record<string, unknown>; auto?: boolean }[] }
 export interface Slice {
   version: string | null;
   next: InboxRow | null;
@@ -117,13 +117,48 @@ export async function record(ws: string, id: string) {
   return request('GET', `/v1/workspaces/${ws}/records/${encodeURIComponent(id)}`);
 }
 
-export async function deck(ws: string) {
-  const result = await slice(ws);
-  return result;
+// --- cards: Jev's stack, grown by one confirmed plan ---
+
+export interface CardChanges {
+  kind: 'card';
+  add: string[];
+  remove: string[];
+  changes: string[];
+  confidence: number;
 }
 
-export async function setDeck(ws: string, tools: string[]) {
-  return request('POST', `/v1/workspaces/${ws}/deck`, { tools });
+export interface CustomCard {
+  kind: 'skill';
+  draft: { title: string; words: string; trigger: Record<string, unknown>; steps: { action: string; input: Record<string, unknown>; auto?: boolean }[]; shape: string };
+}
+
+export type CardPlan = CardChanges | CustomCard | { kind: 'none' };
+
+/** The owner names a job; Jev types the change or proposes a custom card. */
+export async function planCard(ws: string, words: string): Promise<CardPlan> {
+  return request('POST', `/v1/workspaces/${ws}/cards/plan`, { words }) as Promise<CardPlan>;
+}
+
+export async function confirmCard(ws: string, plan: { add?: string[]; remove?: string[] } | { draft: CustomCard['draft'] }) {
+  return request('POST', `/v1/workspaces/${ws}/cards/confirm`, plan);
+}
+
+export type RunStatus = 'ready' | 'waiting' | 'done' | 'failed';
+export interface RunView { id: string; skill: string; title: string; step: number; status: RunStatus; key: string }
+
+/** A skill card taps through two calls: start the run, then advance it. */
+export async function startSkill(ws: string, skillId: string): Promise<RunView> {
+  const key = `run-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const started = await request('POST', `/v1/workspaces/${ws}/runs/${skillId}/advance`, {}, undefined, { 'Idempotency-Key': key }) as { run?: RunView };
+  if (!started.run) throw new TarError(500, 'The card did not start.');
+  return advanceSkill(ws, started.run.id);
+}
+
+/** A waiting run resumes with one confirm; money and customer still ask once. */
+export async function advanceSkill(ws: string, runId: string, confirmed = false): Promise<RunView> {
+  const result = await request('POST', `/v1/workspaces/${ws}/runs/${runId}/advance`, { confirmed }) as { run?: RunView };
+  if (!result.run) throw new TarError(500, 'The card did not run.');
+  return result.run;
 }
 
 // --- writes: intent -> gate -> one confirm ---

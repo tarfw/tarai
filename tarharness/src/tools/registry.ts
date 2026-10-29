@@ -1,9 +1,10 @@
 // The 14-tool registry: one row per tool, the only menu. A tool is an entry,
 // never a screen; the shape (list, sale, chat, sheet) decides the route. At
 // birth Jev names the nature and code deals the cards from the recipes; after
-// that, Add-a-Card browses this file with zero model calls.
+// that cards are Jev's stack — the owner names a job, one plan is confirmed.
 
 import type { Client } from '@libsql/client/web';
+import { badRequest } from '../errors.ts';
 
 export const TOOL_IDS = ['pos', 'order', 'invoice', 'payment', 'register', 'catalog', 'stock', 'purchase', 'expense', 'contact', 'member', 'site', 'task', 'channel'] as const;
 export type ToolId = typeof TOOL_IDS[number];
@@ -126,7 +127,14 @@ export function firstInboxSeed(deck: readonly ToolId[]): InboxSeed | null {
   return { tool: tool.id, reach: tool.reach, title: catalog ? 'Add your first item' : tool.card.tap.label, action: tool.card.tap.action };
 }
 
-/** The workspace's dealt deck lives in current(kind='deck'): one row, toggled by Add-a-Card. */
+/** One confirmed card change: add missing, drop dealt, registry order, never empty. */
+export function nextDeck(deck: readonly ToolId[], add: readonly ToolId[], remove: ReadonlySet<string>): ToolId[] {
+  const next = TOOL_IDS.filter((id) => (deck.includes(id) || add.includes(id)) && !remove.has(id));
+  if (!next.length) throw badRequest('A Canvas needs one card.');
+  return next;
+}
+
+/** The workspace's dealt deck lives in current(kind='deck'): one row, grown by one confirmed plan. */
 export async function readDeck(client: Pick<Client, 'execute'>): Promise<readonly ToolId[]> {
   const result = await client.execute({ sql: "SELECT data FROM current WHERE kind='deck' AND key='cards'", args: [] });
   const row = result.rows[0];

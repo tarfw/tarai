@@ -80,24 +80,26 @@ export default function SaleScreen() {
 
   return (
     <View style={[styles.page, { backgroundColor: theme.background }]}>
-      <NavBar title="COUNTER SALE" onBack={() => router.back()} />
-      <View style={{ paddingHorizontal: 16, paddingVertical: 10 }}>
-        <SearchField value={q} onChangeText={setQ} />
-      </View>
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24, gap: 8 }}>
+      <NavBar title="Counter Sale" onBack={() => router.back()} />
+      <SearchField flush value={q} onChangeText={setQ} />
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 24, gap: 8 }}>
         {loading && !items.length ? <ActivityIndicator color={theme.primary} style={{ paddingTop: 30 }} /> : null}
         {!loading && !items.length ? <Text style={{ color: theme.textSecondary, textAlign: 'center', paddingTop: 30 }}>Add items in Products and Prices first.</Text> : null}
         {items.map((item) => (
-          <TouchableOpacity key={item.id} accessibilityRole="button" style={[styles.itemRow, { borderColor: theme.border }]} onPress={() => add(item.id, 1)}>
-            <View style={{ flexShrink: 1 }}>
-              <Text style={{ color: theme.text, fontWeight: '600' }} numberOfLines={1}>{item.title}</Text>
-              <Text style={{ color: theme.textSecondary, fontSize: 12 }}>Rs. {(item.price / 100).toFixed(2)}</Text>
+          <TouchableOpacity key={item.id} accessibilityRole="button" style={[styles.itemRow, { backgroundColor: theme.backgroundElement }]} onPress={() => add(item.id, 1)}>
+            <View style={{ flexShrink: 1, gap: 2 }}>
+              <Text style={{ color: theme.text, fontSize: 16, fontWeight: '600' }} numberOfLines={1}>{item.title}</Text>
+              <Text style={{ color: theme.textSecondary, fontSize: 13 }}>Rs. {(item.price / 100).toFixed(2)}</Text>
             </View>
             {cart[item.id] ? (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                <TouchableOpacity accessibilityRole="button" onPress={() => add(item.id, -1)}><Text style={{ color: theme.primary, fontSize: 22 }}>−</Text></TouchableOpacity>
-                <Text style={{ color: theme.text, fontWeight: '700' }}>{cart[item.id]}</Text>
-                <TouchableOpacity accessibilityRole="button" onPress={() => add(item.id, 1)}><Text style={{ color: theme.primary, fontSize: 20 }}>+</Text></TouchableOpacity>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+                <TouchableOpacity accessibilityRole="button" accessibilityLabel={`Remove one ${item.title}`} style={[styles.step, { backgroundColor: theme.background }]} onPress={() => add(item.id, -1)}>
+                  <Text style={{ color: theme.primary, fontSize: 18, fontWeight: '600' }}>−</Text>
+                </TouchableOpacity>
+                <Text style={{ color: theme.text, fontSize: 15, fontWeight: '700' }}>{cart[item.id]}</Text>
+                <TouchableOpacity accessibilityRole="button" accessibilityLabel={`Add one ${item.title}`} style={[styles.step, { backgroundColor: theme.background }]} onPress={() => add(item.id, 1)}>
+                  <Text style={{ color: theme.primary, fontSize: 18, fontWeight: '600' }}>+</Text>
+                </TouchableOpacity>
               </View>
             ) : null}
           </TouchableOpacity>
@@ -105,27 +107,27 @@ export default function SaleScreen() {
       </ScrollView>
       <View style={[styles.pay, { paddingBottom: insets.bottom + 12, borderTopColor: theme.border }]}>
         <View style={styles.payRow}>
-          <Text style={{ color: theme.textSecondary }}>CART ({lines.length})</Text>
-          <Text style={{ color: theme.text, fontSize: 22, fontWeight: '800' }}>Rs. {(total / 100).toFixed(2)}</Text>
+          <Text style={{ color: theme.textSecondary, fontSize: 11, fontWeight: '800', letterSpacing: 1 }}>CART ({lines.length})</Text>
+          <Text style={{ color: theme.text, fontSize: 22, fontWeight: '800', letterSpacing: -0.4 }}>Rs. {(total / 100).toFixed(2)}</Text>
         </View>
         <View style={[styles.methods, { gap: 8 }]}>
           {(['cash', 'upi', 'card'] as Method[]).map((entry) => (
-            <TouchableOpacity key={entry} accessibilityRole="button" style={[styles.method, { borderColor: method === entry ? theme.primary : theme.border, backgroundColor: method === entry ? theme.primary : 'transparent' }]} onPress={() => setMethod(entry)}>
-              <Text style={{ color: method === entry ? '#fff' : theme.text, fontWeight: '600', textTransform: 'uppercase' }}>{entry}</Text>
+            <TouchableOpacity key={entry} accessibilityRole="button" style={[styles.method, { backgroundColor: method === entry ? theme.primary : theme.backgroundElement }]} onPress={() => setMethod(entry)}>
+              <Text style={{ color: method === entry ? '#fff' : theme.text, fontSize: 12, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' }}>{entry}</Text>
             </TouchableOpacity>
           ))}
         </View>
         {method === 'cash' ? (
           <View>
-            <TextInput style={[styles.ref, { borderColor: theme.border, color: theme.text }]} placeholder="Cash received" placeholderTextColor={theme.textSecondary} keyboardType="decimal-pad" value={tendered} onChangeText={setTendered} />
+            <TextInput style={[styles.ref, { backgroundColor: theme.backgroundElement, color: theme.text }]} placeholder="Cash received" placeholderTextColor={theme.textSecondary} keyboardType="decimal-pad" value={tendered} onChangeText={setTendered} />
             {change > 0 ? <Text style={{ color: theme.textSecondary, fontSize: 12, paddingTop: 4 }}>Change Rs. {(change / 100).toFixed(2)}</Text> : null}
           </View>
         ) : null}
         {method !== 'cash' ? (
-          <TextInput style={[styles.ref, { borderColor: theme.border, color: theme.text }]} placeholder="Provider reference" placeholderTextColor={theme.textSecondary} autoCapitalize="none" value={reference} onChangeText={setReference} />
+          <TextInput style={[styles.ref, { backgroundColor: theme.backgroundElement, color: theme.text }]} placeholder="Provider reference" placeholderTextColor={theme.textSecondary} autoCapitalize="none" value={reference} onChangeText={setReference} />
         ) : null}
-        <TouchableOpacity accessibilityRole="button" style={[styles.complete, { backgroundColor: lines.length ? theme.primary : theme.border }]} disabled={!lines.length} onPress={() => void checkout()}>
-          <Text style={{ color: '#fff', fontWeight: '800' }}>Complete Sale — Rs. {(total / 100).toFixed(2)}</Text>
+        <TouchableOpacity accessibilityRole="button" style={[styles.complete, { backgroundColor: lines.length ? theme.primary : theme.backgroundSelected }]} disabled={!lines.length} onPress={() => void checkout()}>
+          <Text style={{ color: lines.length ? '#fff' : theme.textSecondary, fontWeight: '800' }}>Complete Sale — Rs. {(total / 100).toFixed(2)}</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -134,11 +136,12 @@ export default function SaleScreen() {
 
 const styles = StyleSheet.create({
   page: { flex: 1 },
-  itemRow: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 12, padding: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  itemRow: { borderRadius: 4, paddingHorizontal: 14, paddingVertical: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12, minHeight: 56 },
+  step: { width: 30, height: 30, borderRadius: 4, alignItems: 'center', justifyContent: 'center' },
   pay: { borderTopWidth: StyleSheet.hairlineWidth, paddingHorizontal: 16, paddingTop: 12, gap: 10 },
   payRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   methods: { flexDirection: 'row' },
-  method: { flex: 1, borderWidth: 1, borderRadius: 10, paddingVertical: 9, alignItems: 'center' },
-  ref: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9, fontSize: 14 },
-  complete: { borderRadius: 999, paddingVertical: 14, alignItems: 'center' },
+  method: { flex: 1, borderRadius: 4, paddingVertical: 10, alignItems: 'center' },
+  ref: { borderRadius: 4, paddingHorizontal: 14, height: 46, fontSize: 15 },
+  complete: { borderRadius: 4, height: 52, alignItems: 'center', justifyContent: 'center' },
 });

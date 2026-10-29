@@ -1,7 +1,8 @@
 // RecordDetail: one record, any tool. Read + status; the fourth shape.
+// Flat facts: an eyebrow label, the value, one hairline-free tile each.
 
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useTheme } from '@/hooks/use-theme';
 import { useWorkspace } from '@/state/Workspace';
@@ -29,20 +30,20 @@ export default function RecordDetailScreen() {
 
   return (
     <View style={[styles.page, { backgroundColor: theme.background }]}>
-      <NavBar title={item ? item.title : 'Record'} backLabel={from ? String(from).charAt(0).toUpperCase() + String(from).slice(1) : undefined} onBack={() => router.back()} />
-      <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
-        {loading ? <ActivityIndicator color={theme.primary} /> : null}
+      <NavBar title={item ? item.title : 'Record'} onBack={() => router.back()} backLabel={from ? titleOf(String(from)) : 'Back'} />
+      <ScrollView contentContainerStyle={{ padding: 16, gap: 8 }}>
+        {loading ? <ActivityIndicator color={theme.primary} style={{ paddingTop: 24 }} /> : null}
         {!loading && !item ? <Text style={{ color: theme.textSecondary, textAlign: 'center', paddingTop: 40 }}>This record is gone.</Text> : null}
         {item ? (
           <>
-            <View style={[styles.fact, { borderColor: theme.border }]}><Text style={{ color: theme.textSecondary }}>TYPE</Text><Text style={{ color: theme.text }}>{item.type}</Text></View>
-            <View style={[styles.fact, { borderColor: theme.border }]}><Text style={{ color: theme.textSecondary }}>STATUS</Text><Text style={{ color: theme.text }}>{item.state}</Text></View>
-            <View style={[styles.fact, { borderColor: theme.border }]}><Text style={{ color: theme.textSecondary }}>VERSION</Text><Text style={{ color: theme.text }}>{item.version}</Text></View>
-            <Text style={{ color: theme.textSecondary, paddingTop: 8 }}>FACTS</Text>
+            <View style={[styles.fact, { backgroundColor: theme.backgroundElement }]}><Text style={[styles.eyebrow, { color: theme.textSecondary }]}>TYPE</Text><Text style={[styles.value, { color: theme.text }]}>{item.type}</Text></View>
+            <View style={[styles.fact, { backgroundColor: theme.backgroundElement }]}><Text style={[styles.eyebrow, { color: theme.textSecondary }]}>STATUS</Text><Text style={[styles.value, { color: theme.text }]}>{item.state}</Text></View>
+            <View style={[styles.fact, { backgroundColor: theme.backgroundElement }]}><Text style={[styles.eyebrow, { color: theme.textSecondary }]}>VERSION</Text><Text style={[styles.value, { color: theme.text }]}>{item.version}</Text></View>
+            <Text style={[styles.eyebrow, { color: theme.textSecondary, paddingTop: 16, paddingBottom: 2 }]}>FACTS</Text>
             {Object.entries(item.data ?? {}).slice(0, 24).map(([key, value]) => (
-              <View key={key} style={[styles.fact, { borderColor: theme.border }]}>
-                <Text style={{ color: theme.textSecondary, flex: 1 }}>{key}</Text>
-                <Text style={{ color: theme.text, flex: 2 }}>{summarize(value)}</Text>
+              <View key={key} style={[styles.fact, { backgroundColor: theme.backgroundElement }]}>
+                <Text style={[styles.eyebrow, { color: theme.textSecondary, flex: 1 }]} numberOfLines={1}>{key.toUpperCase()}</Text>
+                <Text style={[styles.value, { color: theme.text, flex: 2, textAlign: 'right' }]}>{summarize(value)}</Text>
               </View>
             ))}
           </>
@@ -50,6 +51,11 @@ export default function RecordDetailScreen() {
       </ScrollView>
     </View>
   );
+}
+
+function titleOf(from: string): string {
+  const known: Record<string, string> = { catalog: 'Products', stock: 'Inventory', purchase: 'POs', expense: 'Expenses', contact: 'Customers', member: 'Team', task: 'Tasks', channel: 'Messages' };
+  return known[from] ?? from.charAt(0).toUpperCase() + from.slice(1);
 }
 
 function summarize(value: unknown): string {
@@ -60,5 +66,7 @@ function summarize(value: unknown): string {
 
 const styles = StyleSheet.create({
   page: { flex: 1 },
-  fact: { flexDirection: 'row', justifyContent: 'space-between', gap: 12, borderWidth: StyleSheet.hairlineWidth, borderRadius: 10, padding: 12 },
+  fact: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, borderRadius: 4, paddingHorizontal: 14, paddingVertical: 13, minHeight: 48 },
+  eyebrow: { fontSize: 11, fontWeight: '800', letterSpacing: 0.8 },
+  value: { fontSize: 15, fontWeight: '500' },
 });

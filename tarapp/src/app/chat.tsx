@@ -52,31 +52,33 @@ export default function ChatScreen() {
     void refreshSlice();
   };
 
+  const canSend = Boolean(draft.trim() && draftPhone);
+
   return (
     <View style={[styles.page, { backgroundColor: theme.background }]}>
-      <NavBar title="MESSAGES" onBack={() => router.back()} />
-      <ScrollView contentContainerStyle={{ padding: 16, gap: 10, paddingBottom: insets.bottom + 24 }}>
+      <NavBar title="Messages" onBack={() => router.back()} />
+      <ScrollView contentContainerStyle={{ padding: 16, gap: 8, paddingBottom: insets.bottom + 24 }}>
         {loading && !messages.length ? <ActivityIndicator color={theme.primary} /> : null}
-        <Text style={{ color: theme.textSecondary, fontSize: 12, fontWeight: '700', letterSpacing: 1 }}>RECENT</Text>
+        <Text style={[styles.eyebrow, { color: theme.textSecondary }]}>RECENT</Text>
         {messages.slice(0, 12).map((message) => (
-          <View key={message.id} style={[styles.msg, { borderColor: theme.border }]}>
-            <Text style={{ color: theme.text }} numberOfLines={2}>{message.data.text ?? message.title}</Text>
+          <View key={message.id} style={[styles.tile, { backgroundColor: theme.backgroundElement }]}>
+            <Text style={{ color: theme.text, fontSize: 15, lineHeight: 21 }} numberOfLines={2}>{message.data.text ?? message.title}</Text>
             <Text style={{ color: theme.textSecondary, fontSize: 12 }}>{message.data.direction === 'in' ? 'in' : 'out'} · {message.data.phone ?? ''}</Text>
           </View>
         ))}
-        {!loading && !messages.length ? <Text style={{ color: theme.textSecondary }}>No chats logged yet.</Text> : null}
-        <Text style={{ color: theme.textSecondary, fontSize: 12, fontWeight: '700', letterSpacing: 1, paddingTop: 8 }}>OPEN WHATSAPP</Text>
+        {!loading && !messages.length ? <Text style={{ color: theme.textSecondary, paddingVertical: 6 }}>No chats logged yet.</Text> : null}
+        <Text style={[styles.eyebrow, { color: theme.textSecondary, paddingTop: 16 }]}>OPEN WHATSAPP</Text>
         {contacts.map((contact) => (
-          <TouchableOpacity key={contact.id} accessibilityRole="button" style={[styles.contact, { borderColor: theme.border }]} onPress={() => setDraftPhone(contact.data.phone ?? '')}>
-            <Text style={{ color: theme.text, fontWeight: '600' }}>{contact.title}</Text>
+          <TouchableOpacity key={contact.id} accessibilityRole="button" style={[styles.tile, { backgroundColor: theme.backgroundElement }]} onPress={() => setDraftPhone(contact.data.phone ?? '')}>
+            <Text style={{ color: theme.text, fontSize: 15, fontWeight: '600' }}>{contact.title}</Text>
             <Text style={{ color: theme.textSecondary, fontSize: 12 }}>{contact.data.phone}</Text>
           </TouchableOpacity>
         ))}
-        <View style={{ gap: 8, paddingTop: 8 }}>
-          <TextInput style={[styles.input, { borderColor: theme.border, color: theme.text }]} placeholder="Phone (+91…)" placeholderTextColor={theme.textSecondary} value={draftPhone} onChangeText={setDraftPhone} keyboardType="phone-pad" />
-          <TextInput style={[styles.input, { borderColor: theme.border, color: theme.text }]} placeholder="Message" placeholderTextColor={theme.textSecondary} value={draft} onChangeText={setDraft} multiline />
-          <TouchableOpacity accessibilityRole="button" style={[styles.send, { backgroundColor: draft && draftPhone ? theme.primary : theme.border }]} disabled={!draft || !draftPhone} onPress={() => void send(draftPhone, draft)}>
-            <Text style={{ color: '#fff', fontWeight: '700' }}>Send on WhatsApp</Text>
+        <View style={{ gap: 8, paddingTop: 16 }}>
+          <TextInput style={[styles.input, { backgroundColor: theme.backgroundElement, color: theme.text }]} placeholder="Phone (+91…)" placeholderTextColor={theme.textSecondary} value={draftPhone} onChangeText={setDraftPhone} keyboardType="phone-pad" />
+          <TextInput style={[styles.input, styles.tall, { backgroundColor: theme.backgroundElement, color: theme.text }]} placeholder="Message" placeholderTextColor={theme.textSecondary} value={draft} onChangeText={setDraft} multiline />
+          <TouchableOpacity accessibilityRole="button" style={[styles.send, { backgroundColor: canSend ? theme.primary : theme.backgroundSelected }]} disabled={!canSend} onPress={() => void send(draftPhone, draft)}>
+            <Text style={{ color: canSend ? '#fff' : theme.textSecondary, fontWeight: '700' }}>Send on WhatsApp</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -86,8 +88,9 @@ export default function ChatScreen() {
 
 const styles = StyleSheet.create({
   page: { flex: 1 },
-  msg: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 12, padding: 12, gap: 4 },
-  contact: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 12, padding: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  input: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14 },
-  send: { borderRadius: 999, paddingVertical: 12, alignItems: 'center' },
+  eyebrow: { fontSize: 11, fontWeight: '800', letterSpacing: 1 },
+  tile: { borderRadius: 4, paddingHorizontal: 14, paddingVertical: 12, gap: 3 },
+  input: { borderRadius: 4, paddingHorizontal: 14, height: 46, fontSize: 15 },
+  tall: { height: 92, paddingTop: 12, textAlignVertical: 'top' },
+  send: { borderRadius: 4, height: 52, alignItems: 'center', justifyContent: 'center' },
 });

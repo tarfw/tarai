@@ -1,6 +1,6 @@
-// Jev speaks three times: at birth, at import, at hire. Nowhere else.
-// One call, many verdicts, in parallel. Doubt (a noul near one half)
-// escalates to the one confirm — never a silent middle answer.
+// Jev speaks at birth, at import, at hire, and when the owner grows a deck.
+// Nowhere else. One call, many verdicts, in parallel. Doubt (a noul near one
+// half) escalates to the one confirm — never a silent middle answer.
 
 import { askSystemOne, choiceOf, noulOf } from './systemone.ts';
 import { fallbackTrade } from './trade.ts';
@@ -126,6 +126,44 @@ export async function planMoment(typesafeKey: string | undefined, words: string,
     work: dealDeck(pick, selectedWork, 10),
     personal: selectedPersonal.length ? selectedPersonal.slice(0, 3) : ['task'],
   };
+}
+
+export interface CardChangeVerdict {
+  /** cards the owner's words ask for and the deck does not carry */
+  readonly add: readonly ToolId[];
+  /** cards the owner's words no longer need */
+  readonly remove: readonly ToolId[];
+  readonly confidence: number;
+  readonly model: string | null;
+}
+
+/**
+ * Growth: the owner names a job, Jev types the card change. One call over the
+ * cards this workspace could add and the cards it carries. Code validates and
+ * applies; a custom card is proposed only when no core card fits.
+ */
+export async function cardMoment(typesafeKey: string | undefined, words: string, deck: readonly ToolId[], mode: 'work' | 'personal'): Promise<CardChangeVerdict> {
+  const candidates = (mode === 'personal' ? PERSONAL_CANDIDATES : TOOL_IDS).filter((id) => !findTool(id)?.deferred);
+  const carried = new Set(deck);
+  const addable = candidates.filter((id) => !carried.has(id));
+  const removable = deck.filter((id) => candidates.includes(id));
+  const empty: CardChangeVerdict = { add: [], remove: [], confidence: 0, model: null };
+  if (!typesafeKey || (!addable.length && !removable.length)) return empty;
+  const questions: Record<string, { type: 'noul'; instructions: string }> = {};
+  for (const id of addable) {
+    const purpose = mode === 'personal' ? PERSONAL_PURPOSE[id] : TOOL_PURPOSE[id];
+    questions[`add_${id}`] = { type: 'noul', instructions: `The owner's words ask this workspace to add the "${findTool(id)?.card.title}" card to ${purpose ?? id}.` };
+  }
+  for (const id of removable) {
+    questions[`drop_${id}`] = { type: 'noul', instructions: `The owner's words say this workspace no longer needs the "${findTool(id)?.card.title}" card.` };
+  }
+  const outcome = await askSystemOne(typesafeKey, { state: { words, mode }, questions, timeout: 10_000 });
+  if (!outcome.ok) return empty;
+  const yes = (prefix: 'add' | 'drop', id: ToolId) => noulOf(outcome.value.answers[`${prefix}_${id}`]).probability ?? 0;
+  const add = addable.filter((id) => yes('add', id) >= 0.55);
+  const remove = removable.filter((id) => yes('drop', id) >= 0.55);
+  const scores = [...add.map((id) => yes('add', id)), ...remove.map((id) => yes('drop', id))];
+  return { add, remove, confidence: scores.length ? Math.max(...scores) : 0, model: outcome.value.model };
 }
 
 export interface ImportRow {

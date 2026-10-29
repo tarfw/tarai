@@ -14,14 +14,16 @@ export function Card({ card, onTap }: { card: CardView; onTap: (card: CardView) 
       accessibilityRole="button"
       accessibilityLabel={`${card.title}, ${card.number ?? ''}, ${card.tap.label}`}
       onPress={() => onTap(card)}
-      style={({ pressed }) => [styles.card, { borderColor: theme.border, backgroundColor: pressed ? theme.backgroundElement : theme.background }]}
+      style={({ pressed }) => [styles.card, { backgroundColor: pressed ? theme.backgroundSelected : theme.backgroundElement }]}
     >
       <View style={styles.head}>
         <Text style={[styles.title, { color: theme.textSecondary }]}>{card.title.toUpperCase()}</Text>
       </View>
       {card.pendingLine ? <Text style={[styles.pending, { color: theme.textSecondary }]}>{card.pendingLine}</Text> : null}
       <View style={styles.row}>
-        <Text style={[styles.number, { color: theme.text }]} numberOfLines={1}>{card.number ?? '—'}</Text>
+        {card.number ? (
+          <Text style={[styles.number, { color: theme.text }]} numberOfLines={1}>{card.number}</Text>
+        ) : <View style={{ flex: 1 }} />}
         <Text style={[styles.tapLabel, { color: theme.textSecondary }]} numberOfLines={1}>{card.tap.label}</Text>
       </View>
     </Pressable>
@@ -29,7 +31,7 @@ export function Card({ card, onTap }: { card: CardView; onTap: (card: CardView) 
 }
 
 const styles = StyleSheet.create({
-  card: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 14, padding: 16, gap: 10 },
+  card: { borderRadius: 4, minHeight: 108, paddingHorizontal: 18, paddingVertical: 16, gap: 6, justifyContent: 'space-between' },
   head: { flexDirection: 'row', justifyContent: 'space-between' },
   title: { fontSize: 12, fontWeight: '700', letterSpacing: 1 },
   pending: { fontSize: 13 },

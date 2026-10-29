@@ -5,6 +5,8 @@ import type { Client } from '@libsql/client/web';
 import { badRequest, conflict, notFound } from '../errors.ts';
 import type { AccessContext } from '../types.ts';
 import { findAction } from '../registry/catalog.ts';
+import { findTool, toolForAction } from '../tools/registry.ts';
+import { deriveGate, mayExecute } from '../truth/gate.ts';
 import { ask as askSkill, type SkillRecord, type Trigger } from './engine.ts';
 
 export type RunStatus = 'ready' | 'waiting' | 'done' | 'failed';
@@ -47,7 +49,7 @@ interface Stepper { readonly execute: (actionId: string, input: Record<string, u
  * (which is the gateway, gates and all). Auto steps keep advancing until an
  * ask/approve step or the end; ask steps park the run as waiting.
  */
-export async function advanceRun(client: Client, context: AccessContext, runId: string, stepper: Stepper, confirmedInput?: Record<string, unknown>): Promise<RunView> {
+export async function advanceRun(client: Client, context: AccessContext, runId: string, stepper: Stepper, confirmedInput?: Record<string, unknown>, confirmed = false): Promise<RunView> {
   const runRow = await client.execute({ sql: 'SELECT id,skill,step,status,key,input FROM run WHERE id=?', args: [runId] });
   const row = runRow.rows[0];
   if (!row) throw notFound('Run not found.');
@@ -62,14 +64,24 @@ export async function advanceRun(client: Client, context: AccessContext, runId: 
   // waiting runs resume only with the member's supplied input
   if (String(row[3]) === 'waiting' && !confirmedInput) throw conflict('This step needs your answer.');
   let status: RunStatus = 'ready';
+  // one confirm covers one gated step; the next money step asks again
+  let approved = confirmed;
   while (step < steps.length) {
     const current = steps[step];
     const action = findAction(String(current.action || ''));
     if (!action) throw badRequest('This skill uses an unregistered action.');
     const isResume = step === Number(row[2]) && confirmedInput !== undefined;
     if (current.auto === true || isResume) {
-      const result = await stepper.execute(action.id, { ...object(current.input), ...input }, `run:${runId}:${step}`);
+      const stepInput = { ...object(current.input), ...input };
+      const owner = toolForAction(action.id);
+      const reach = owner ? findTool(owner)?.reach ?? 'data' : 'data';
+      const required = action.fields.filter((field) => field.required).map((field) => field.key);
+      const gate = deriveGate({ action: { reach, requiredFields: required }, input: stepInput, confirmed: approved });
+      // the floor holds in runs too: money or customer parks for one confirm
+      if (!mayExecute(reach, gate, approved)) { status = 'waiting'; break; }
+      const result = await stepper.execute(action.id, stepInput, `run:${runId}:${step}`);
       void result;
+      approved = false;
       step += 1;
       continue;
     }

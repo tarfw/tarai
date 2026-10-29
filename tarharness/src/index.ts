@@ -16,16 +16,16 @@ import { defaultBlueprint } from './site/blueprint.ts';
 import { exportDesign } from './site/design.ts';
 import { compileDocument } from './site/compile.ts';
 import { siteRegenerate } from './site/store.ts';
-import { canExecute, canReadRecord, canRunFlowStep, managesMembers } from './access.ts';
+import { canExecute, canReadRecord, canRunFlowStep, canRunSkill, managesMembers, memberTools } from './access.ts';
 import { inviteMember, listMembers, updateMember } from './team.ts';
 import { searchContacts } from './contacts/search.ts';
-import { cardDeck, dealDeck, deckStatement, findTool, firstInboxSeed, normalizeDeck, readCardStack, readDeck, toolForAction } from './tools/registry.ts';
+import { PERSONAL_CANDIDATES, TOOL_IDS, cardDeck, dealDeck, deckStatement, findTool, firstInboxSeed, nextDeck, normalizeDeck, readCardStack, readDeck, toolForAction } from './tools/registry.ts';
 import { isNature, onboardingPlan } from './onboarding/plan.ts';
 import { probeGroq } from './site/model.ts';
-import { ask, confirmSkill, findSkill, listSkills } from './skill/engine.ts';
+import { ask, confirmSkill, findSkill, listSkills, shapeOf, validatePlan, type Draft } from './skill/engine.ts';
 import { proposePlan } from './skill/propose.ts';
 import { advanceRun, listRuns, startRun } from './skill/run.ts';
-import { birthMoment, hireMoment, importMoment } from './brain/moments.ts';
+import { birthMoment, cardMoment, hireMoment, importMoment } from './brain/moments.ts';
 import { askSystemOne, choiceOf } from './brain/systemone.ts';
 import { buildClose, monthlyWriteCount, pruneHotWindow, sealClose } from './cost/close.ts';
 import { sendPush, tokensFor } from './push/expo.ts';
@@ -335,9 +335,14 @@ async function handle(request: Request, env: RuntimeEnv, ctx: ExecutionContext):
       const etag = `"${version ?? 'empty'}"`;
       if (request.headers.get('If-None-Match') === etag) return new Response(null, { status: 304, headers: { ETag: etag, ...corsHeaders } });
       const [inbox, deck, skills] = await Promise.all([readInbox(client, current.member.userId), readDeck(client), listSkills(client)]);
-      const cards = await readCardStack(client, current.member.role, deck);
+      // Grants choose the stack: a member sees the dealt cards their hires allow,
+      // and the skills whose every step is theirs to run. Owner and admin see all.
+      const granted = current.member.role === 'member' || current.member.role === 'guest' ? memberTools(current.member) : null;
+      const visibleDeck = granted ? deck.filter((id) => granted.has(id)) : deck;
+      const visibleSkills = granted ? skills.filter((skill) => canRunSkill(current.member, skill.steps)) : skills;
+      const cards = await readCardStack(client, current.member.role, visibleDeck);
       const sorted = [...inbox].sort((a, b) => Number(b.urgent) - Number(a.urgent) || (a.due ?? Infinity) - (b.due ?? Infinity) || b.created - a.created);
-      return response({ version, next: sorted[0] ?? null, inbox: sorted, cards, skills, workspace: { id: current.workspace.id, name: current.workspace.name, slug: current.workspace.slug, mode: current.workspace.mode, role: current.member.role } }, 200, { ETag: etag });
+      return response({ version, next: sorted[0] ?? null, inbox: sorted, cards, skills: visibleSkills, workspace: { id: current.workspace.id, name: current.workspace.name, slug: current.workspace.slug, mode: current.workspace.mode, role: current.member.role } }, 200, { ETag: etag });
     });
   }
   if (request.method === 'POST' && path === '/v1/intent') {
@@ -831,11 +836,54 @@ async function handle(request: Request, env: RuntimeEnv, ctx: ExecutionContext):
       return response({ consents: rows.map((item) => ({ id: String(item.id), contact: String(item.contact), channel: String(item.channel), purpose: String(item.purpose), state: String(item.state), source: String(item.source), actor: String(item.actor), created: Number(item.created) })) });
     }
     if (request.method === 'GET' && nested === 'skills') return response({ skills: await listSkills(client) });
-    if (request.method === 'POST' && nested === 'deck') {
+    // Cards are Jev's stack: the owner names a job, Jev types the change, code
+    // applies it after one confirm. A custom card is a confirmed skill.
+    if (request.method === 'POST' && nested === 'cards/plan') {
+      if (!managesMembers(current.member)) throw forbidden();
       const body = await Effect.runPromise(parseJson(request));
-      const tools = (Array.isArray(body.tools) ? body.tools : []).map(String).filter((id) => Boolean(findTool(id)) && !findTool(id)!.deferred);
-      await client.batch([deckStatement(tools as typeof import('./tools/registry.ts').TOOL_IDS[number][])], 'write');
-      return response({ deck: tools });
+      const words = typeof body.words === 'string' ? body.words.replace(/\s+/g, ' ').trim().slice(0, 300) : '';
+      if (words.length < 3) throw badRequest('Name the card or the job in a few words.');
+      const deck = await readDeck(client);
+      const mode = current.workspace.mode === 'personal' ? 'personal' : 'work';
+      const verdict = await cardMoment(env.TYPESAFE_API_KEY, words, deck, mode);
+      if (verdict.add.length || verdict.remove.length) {
+        return response({
+          kind: 'card',
+          add: verdict.add,
+          remove: verdict.remove,
+          changes: [
+            ...verdict.add.map((id) => `+ ${findTool(id)?.card.title ?? id}`),
+            ...verdict.remove.map((id) => `− ${findTool(id)?.card.title ?? id}`),
+          ],
+          confidence: verdict.confidence,
+        });
+      }
+      // No core card fits: the same process proposes a custom card from the registry.
+      try {
+        const proposal = await proposePlan(env.AI, words);
+        const validated = validatePlan(proposal.steps);
+        const draft = { ...proposal, steps: validated, words, shape: await shapeOf(proposal.trigger, validated) };
+        return response({ kind: 'skill', draft });
+      } catch {
+        return response({ kind: 'none' });
+      }
+    }
+    if (request.method === 'POST' && nested === 'cards/confirm') {
+      if (!managesMembers(current.member)) throw forbidden();
+      const body = await Effect.runPromise(parseJson(request));
+      const deck = await readDeck(client);
+      const personal = current.workspace.mode === 'personal';
+      const allowed = personal ? PERSONAL_CANDIDATES : TOOL_IDS;
+      const add = normalizeDeck(body.add, TOOL_IDS.length).filter((id) => allowed.includes(id));
+      const remove = new Set((Array.isArray(body.remove) ? body.remove : []).map(String));
+      if (add.length || remove.size) {
+        const next = nextDeck(deck, add, remove);
+        await client.batch([deckStatement(next)], 'write');
+        return response({ deck: next });
+      }
+      if (!body.draft || typeof body.draft !== 'object' || Array.isArray(body.draft)) throw badRequest('A card change or a custom card is required.');
+      const skill = await confirmSkill(client, current.member.userId, body.draft as Draft, request.headers.get('Idempotency-Key') || `skill-${crypto.randomUUID()}`);
+      return response({ deck, skill }, 201);
     }
     const toolRows = /^tool\/([a-z]+)\/rows$/.exec(nested);
     if (request.method === 'GET' && toolRows) {
@@ -871,7 +919,7 @@ async function handle(request: Request, env: RuntimeEnv, ctx: ExecutionContext):
       }
       const view = await advanceRun(client, current, runPost[1], {
         execute: async (actionId, input, key) => Effect.runPromise(executeGateway(client, current, { actionId: actionId as GatewayRequest['actionId'], idempotencyKey: key, input }, { productContent: env.PRODUCT_CONTENT, siteReleases: env.SITE_RELEASES, publication: env.CONTROL, siteDomain: env.SITE_WORKER_ORIGIN || env.SITE_BASE_DOMAIN, ai: env.AI, typesafe: env.TYPESAFE_API_KEY, siteModel: env.SITE_MODEL, groqApiKey: env.GROQ_API_KEY, pexelsApiKey: env.PEXELS_API_KEY })),
-      }, object(body.input));
+      }, object(body.input), body.confirmed === true);
       return response({ run: view });
     }
     const actionMatch = /^actions\/([A-Za-z0-9_.-]+)$/.exec(nested);

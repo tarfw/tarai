@@ -9,13 +9,13 @@ export const Colors = {
   light: {
     text: '#000000',
     background: '#ffffff',
-    backgroundElement: '#F0F0F3',
-    backgroundSelected: '#E0E1E6',
+    backgroundElement: '#F9F9F7',
+    backgroundSelected: '#EFEFEA',
     textSecondary: '#60646C',
-    primary: '#208AEF',
+    primary: '#2563EB',
     textMuted: '#9CA3AF',
     border: '#E5E7EB',
-    borderFocused: '#208AEF',
+    borderFocused: '#2563EB',
   },
   dark: {
     text: '#ffffff',

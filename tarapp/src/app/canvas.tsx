@@ -1,9 +1,9 @@
-// Canvas: one screen, every member. The header ends in a hairline; the
-// circle badge opens the flat inbox; the avatar is You (the many list);
-// the floating (+) is Ask. NEXT is the top row; urgent rows carry !.
+// Canvas: one screen, every member. The header ends in a hairline; the bell
+// opens the flat inbox; the name opens the flat workspaces sheet; the bottom
+// bar is Ask. NEXT is the top row; urgent rows carry !.
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, AppState, Image, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, AppState, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRouter } from 'expo-router';
@@ -12,7 +12,7 @@ import { useWorkspace } from '@/state/Workspace';
 import { Card } from '@/components/Card';
 import { ActionSheet, type FieldConfig } from '@/components/ActionSheet';
 import { confirmRequest, pendingCount, resolveConfirm, subscribe } from '@/lib/queue';
-import { actionCatalogs, setDeck, slice, type CardView, type InboxRow } from '@/lib/tar';
+import { actionCatalogs, advanceSkill, slice, startSkill, type CardView, type InboxRow, type RunView, type SkillView } from '@/lib/tar';
 import { saveSlice } from '@/lib/slicecache';
 import { registerPush } from '@/lib/push';
 import { getCurrentUser } from '@/lib/auth';
@@ -38,33 +38,15 @@ const FALLBACK_FIELDS: Record<string, FieldConfig[]> = {
   default: [],
 };
 
-const CORE_TOOLS: readonly { id: string; title: string }[] = [
-  { id: 'pos', title: 'Counter Sales' },
-  { id: 'order', title: 'Orders and Dispatch' },
-  { id: 'invoice', title: 'Billing and GST' },
-  { id: 'payment', title: 'Payments and UPI' },
-  { id: 'register', title: 'Cash Drawer' },
-  { id: 'catalog', title: 'Products and Prices' },
-  { id: 'stock', title: 'Inventory and Warehouse' },
-  { id: 'purchase', title: 'Supplier POs and GRN' },
-  { id: 'expense', title: 'Daily Expenses' },
-  { id: 'contact', title: 'Customers and Leads' },
-  { id: 'member', title: 'Team and Shifts' },
-  { id: 'site', title: 'Online Storefront' },
-  { id: 'task', title: 'Manual Tasks' },
-  { id: 'channel', title: 'Messages' },
-];
-
 export default function Canvas() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { current, slice: data, refreshSlice, workspaces, select, loading } = useWorkspace();
-  const [sheet, setSheet] = useState<'none' | 'inbox' | 'many' | 'deck'>('none');
+  const [sheet, setSheet] = useState<'none' | 'inbox' | 'many'>('none');
   const [confirm, setConfirm] = useState<{ key: string; label: string } | null>(null);
   const [queueBadge, setQueueBadge] = useState(0);
   const [action, setAction] = useState<{ action: string; title: string; fields: FieldConfig[] } | null>(null);
-  const [photo, setPhoto] = useState<string | null>(null);
   // one look at the terms per account, before any workspace work
   const [gate, setGate] = useState<'checking' | 'terms' | 'ready'>('checking');
 
@@ -82,10 +64,6 @@ export default function Canvas() {
     const user = await getCurrentUser();
     if (user) await acceptTerms(user.id);
     setGate('ready');
-  }, []);
-
-  useEffect(() => {
-    void getCurrentUser().then((user) => { if (user?.photo) setPhoto(user.photo); });
   }, []);
 
   useEffect(() => {
@@ -122,8 +100,44 @@ export default function Canvas() {
     return () => { active = false; clearInterval(interval); sub.remove(); };
   }, [current, data?.version, refreshSlice]);
 
+  // a run parked for a person: one confirm resumes it; money still asks
+  const [run, setRun] = useState<{ run: RunView; title: string } | null>(null);
+
+  const runSkillCard = useCallback(async (skill: SkillView) => {
+    if (!current) return;
+    try {
+      const started = await startSkill(current.slug, skill.id);
+      if (started.status === 'waiting') setRun({ run: started, title: skill.title });
+      else if (started.status === 'done') Alert.alert(skill.title, 'Done.');
+      else if (started.status === 'failed') Alert.alert(skill.title, 'That card did not finish.');
+    } catch (cause) {
+      Alert.alert(skill.title, cause instanceof Error ? cause.message : 'That card did not run.');
+    }
+  }, [current]);
+
+  const resumeRun = useCallback(async (confirmed: boolean) => {
+    if (!run || !current) return;
+    const held = run;
+    setRun(null);
+    if (!confirmed) return;
+    try {
+      const next = await advanceSkill(current.slug, held.run.id, true);
+      if (next.status === 'waiting' && next.step === held.run.step) Alert.alert(held.title, 'This card needs details. Finish it in Ask.');
+      else if (next.status === 'waiting') setRun({ run: next, title: held.title });
+      else if (next.status === 'done') Alert.alert(held.title, 'Done.');
+      else if (next.status === 'failed') Alert.alert(held.title, 'That card did not finish.');
+    } catch (cause) {
+      Alert.alert(held.title, cause instanceof Error ? cause.message : 'That card did not run.');
+    }
+  }, [run, current]);
+
   const openTap = useCallback(async (card: CardView) => {
     if (!current) return;
+    if (card.tool.startsWith('skill:')) {
+      const skill = data?.skills.find((entry) => entry.id === card.tool.slice(6));
+      if (skill) await runSkillCard(skill);
+      return;
+    }
     if (card.shape === 'sale') { router.push('/sale'); return; }
     if (card.tool === 'order' || card.tool === 'contact' || card.tool === 'member' || card.tool === 'stock' || card.tool === 'purchase' || card.tool === 'expense' || card.tool === 'invoice' || card.tool === 'payment' || card.tool === 'task') {
       router.push(`/tool/${card.tool}`);
@@ -137,14 +151,21 @@ export default function Canvas() {
       if (registered?.fields?.length) fields = registered.fields.filter((field) => !field.hidden);
     } catch { /* fallback fields stand */ }
     setAction({ action: card.tap.action!, title: card.tap.label, fields });
-  }, [current, router]);
+  }, [current, router, data, runSkillCard]);
 
   const inboxRows: InboxRow[] = useMemo(() => data?.inbox ?? [], [data]);
   const next = data?.next ?? null;
   const cards = useMemo(() => data?.cards ?? [], [data]);
-  const dealt = useMemo(() => new Set(cards.map((card) => card.tool)), [cards]);
-  const roleLabel = current?.role ? current.role.charAt(0).toUpperCase() + current.role.slice(1) : '';
-
+  const skillCards: CardView[] = useMemo(() => (data?.skills ?? []).map((skill) => ({
+    tool: `skill:${skill.id}`,
+    title: skill.title,
+    reach: 'data',
+    shape: 'skill',
+    tap: { action: null, label: 'Run' },
+    number: skill.trigger.type === 'schedule' ? skill.trigger.at ?? null : null,
+    pendingLine: skill.trigger.type === 'schedule' ? 'every day' : skill.trigger.type === 'event' ? 'when something happens' : null,
+  })), [data]);
+  const roleLabel = current?.role && current.role !== 'owner' ? current.role.charAt(0).toUpperCase() + current.role.slice(1) : '';
   // terms come first, then onboarding, never behind the loading gap
   if (gate === 'checking') {
     return (
@@ -176,44 +197,34 @@ export default function Canvas() {
             </View>
           ) : null}
         </TouchableOpacity>
-        <View style={styles.heading}>
+        <TouchableOpacity accessibilityRole="button" style={styles.heading} onPress={() => setSheet('many')} accessibilityLabel="Switch workspace">
           <Text style={[styles.wsName, { color: theme.text }]} numberOfLines={1}>{current.mode === 'personal' ? 'Personal' : current.name}</Text>
-        </View>
-        {roleLabel ? (
-          <View style={[styles.role, { backgroundColor: theme.backgroundElement }]}>
-            <Text style={[styles.roleText, { color: theme.textSecondary }]}>{roleLabel}</Text>
-          </View>
-        ) : null}
-        <TouchableOpacity accessibilityRole="button" style={[styles.avatar, { backgroundColor: `${theme.primary}1F` }]} onPress={() => setSheet('many')} accessibilityLabel="Workspaces">
-          {photo ? (
-            <Image source={{ uri: photo }} style={styles.avatarImage} />
-          ) : (
-            <Text style={[styles.avatarText, { color: theme.primary }]}>{(current.name[0] ?? 'T').toUpperCase()}</Text>
-          )}
         </TouchableOpacity>
+        {roleLabel ? <Text style={[styles.roleText, { color: theme.textSecondary }]}>{roleLabel}</Text> : null}
       </View>
 
       <ScrollView contentContainerStyle={[styles.stack, { paddingBottom: insets.bottom + 96 }]}>
         {next ? (
-          <View style={[styles.next, { borderColor: theme.border }]}>
+          <View style={[styles.next, { backgroundColor: theme.backgroundElement }]}>
             <Text style={[styles.nextLabel, { color: next.urgent ? '#B42318' : theme.textSecondary }]}>{next.urgent ? '! NEXT' : 'NEXT'}</Text>
             <Text style={[styles.nextTitle, { color: theme.text }]} numberOfLines={2}>{next.title}</Text>
           </View>
         ) : null}
         {cards.map((card) => <Card key={card.tool} card={card} onTap={(tapped) => void openTap(tapped)} />)}
-        <TouchableOpacity accessibilityRole="button" style={[styles.add, { borderColor: theme.border }]} onPress={() => setSheet('deck')}>
-          <Text style={{ color: theme.primary, fontWeight: '600' }}>+ Add a Card</Text>
-        </TouchableOpacity>
+        {skillCards.map((card) => <Card key={card.tool} card={card} onTap={(tapped) => void openTap(tapped)} />)}
       </ScrollView>
 
-      <TouchableOpacity accessibilityRole="button" style={[styles.fab, { backgroundColor: theme.primary, bottom: insets.bottom + 18 }]} onPress={() => router.push('/ask')} accessibilityLabel="Ask TAR">
-        <Ionicons name="add" size={30} color="#fff" />
-        {queueBadge > 0 ? (
-          <View style={styles.fabBadge}>
-            <Text style={[styles.fabBadgeText, { color: theme.primary }]}>{queueBadge > 9 ? '9+' : queueBadge}</Text>
-          </View>
-        ) : null}
-      </TouchableOpacity>
+      <View style={[styles.askFooter, { backgroundColor: theme.background, borderTopColor: theme.border, paddingBottom: insets.bottom + 12 }]}>
+        <TouchableOpacity accessibilityRole="button" style={[styles.askBar, { backgroundColor: theme.primary }]} onPress={() => router.push('/ask')} accessibilityLabel="Ask TAR">
+          <Ionicons name="add" size={20} color="#fff" />
+          <Text style={styles.askBarText}>Ask TAR</Text>
+          {queueBadge > 0 ? (
+            <View style={styles.askBarBadge}>
+              <Text style={[styles.askBarBadgeText, { color: theme.primary }]}>{queueBadge > 9 ? '9+' : queueBadge}</Text>
+            </View>
+          ) : null}
+        </TouchableOpacity>
+      </View>
 
       <Sheet title="Inbox" visible={sheet === 'inbox'} onClose={() => setSheet('none')}>
         {inboxRows.length === 0 ? <Text style={[styles.empty, { color: theme.textSecondary }]}>Nothing waiting.</Text> : null}
@@ -225,16 +236,27 @@ export default function Canvas() {
         ))}
       </Sheet>
 
-      <Sheet title="Workspaces" visible={sheet === 'many'} onClose={() => setSheet('none')}>
-        {workspaces.map((ws) => (
-          <TouchableOpacity key={ws.id} accessibilityRole="button" style={[styles.sheetRow, { borderBottomColor: theme.border }]} onPress={() => { select(ws.slug); setSheet('none'); }}>
-            <Text style={[styles.sheetRowText, { color: theme.text, fontWeight: ws.slug === current.slug ? '700' : '400' }]}>{ws.mode === 'personal' ? 'Personal' : ws.name}</Text>
-            <Text style={{ color: theme.textSecondary }}>{ws.role}{ws.badge ? ` · ${ws.badge}` : ''}</Text>
-          </TouchableOpacity>
-        ))}
+      <Sheet title="Workspaces" gap visible={sheet === 'many'} onClose={() => setSheet('none')}>
+        {workspaces.map((ws) => {
+          const active = ws.slug === current.slug;
+          return (
+            <TouchableOpacity
+              key={ws.id}
+              accessibilityRole="button"
+              accessibilityState={{ selected: active }}
+              style={[styles.wsRow, { backgroundColor: active ? theme.primary : theme.backgroundElement }]}
+              onPress={() => { select(ws.slug); setSheet('none'); }}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.wsRowName, { color: active ? '#fff' : theme.text }]} numberOfLines={1}>{ws.mode === 'personal' ? 'Personal' : ws.name}</Text>
+                <Text style={[styles.wsRowMeta, { color: active ? 'rgba(255,255,255,0.8)' : theme.textSecondary }]} numberOfLines={1}>{ws.role}{ws.badge ? ` · ${ws.badge}` : ''}</Text>
+              </View>
+            </TouchableOpacity>
+          );
+        })}
       </Sheet>
 
-      <DeckSheet visible={sheet === 'deck'} ws={current.slug} dealt={dealt} onClose={() => setSheet('none')} />
+      {run ? <RunCard title={run.title} onResolve={(confirmed) => void resumeRun(confirmed)} /> : null}
 
       {confirm ? (
         <ConfirmCard label={confirm.label} onResolve={async (yes) => { await resolveConfirm(confirm.key, yes); setConfirm(null); void refreshSlice(); }} />
@@ -255,7 +277,7 @@ export default function Canvas() {
   );
 }
 
-function Sheet({ title, visible, onClose, children }: { title: string; visible: boolean; onClose: () => void; children: React.ReactNode }) {
+function Sheet({ title, visible, gap, onClose, children }: { title: string; visible: boolean; gap?: boolean; onClose: () => void; children: React.ReactNode }) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   return (
@@ -266,38 +288,26 @@ function Sheet({ title, visible, onClose, children }: { title: string; visible: 
             <Text style={[sheetStyles.title, { color: theme.text }]}>{title}</Text>
             <TouchableOpacity accessibilityRole="button" onPress={onClose} accessibilityLabel="Close"><Ionicons name="close" size={22} color={theme.textSecondary} /></TouchableOpacity>
           </View>
-          <ScrollView>{children}</ScrollView>
+          <ScrollView contentContainerStyle={gap ? { gap: 8, paddingBottom: 4 } : undefined}>{children}</ScrollView>
         </View>
       </View>
     </Modal>
   );
 }
 
-function DeckSheet({ visible, ws, dealt, onClose }: { visible: boolean; ws: string; dealt: Set<string>; onClose: () => void }) {
+// A parked run asks once, then continues. Money and customers never skip it.
+function RunCard({ title, onResolve }: { title: string; onResolve: (confirmed: boolean) => void }) {
   const theme = useTheme();
-  const [state, setState] = useState(dealt);
-  const toggle = async (tool: string) => {
-    const next = new Set(state);
-    if (next.has(tool)) next.delete(tool); else next.add(tool);
-    setState(next);
-    try { await setDeck(ws, [...next]); } catch { /* the deck retries on next open */ }
-  };
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={sheetStyles.backdrop}>
-        <View style={[sheetStyles.sheet, { backgroundColor: theme.background }]}>
-          <View style={sheetStyles.head}>
-            <Text style={[sheetStyles.title, { color: theme.text }]}>CARD CORE · 14</Text>
-            <TouchableOpacity accessibilityRole="button" onPress={onClose} accessibilityLabel="Close"><Ionicons name="close" size={22} color={theme.textSecondary} /></TouchableOpacity>
+    <Modal visible animationType="fade" transparent onRequestClose={() => onResolve(false)}>
+      <View style={[sheetStyles.backdrop, { alignItems: 'center', justifyContent: 'center' }]}>
+        <View style={[sheetStyles.confirm, { backgroundColor: theme.background }]}>
+          <Text style={{ color: theme.text, fontWeight: '700', fontSize: 16 }}>This card asks before it continues.</Text>
+          <Text style={{ color: theme.textSecondary, paddingTop: 6 }}>{title} needs one confirm.</Text>
+          <View style={{ flexDirection: 'row', gap: 12, paddingTop: 18, justifyContent: 'flex-end' }}>
+            <TouchableOpacity accessibilityRole="button" onPress={() => onResolve(false)} style={{ padding: 10 }}><Text style={{ color: theme.textSecondary, fontWeight: '600' }}>Not now</Text></TouchableOpacity>
+            <TouchableOpacity accessibilityRole="button" onPress={() => onResolve(true)} style={{ backgroundColor: theme.primary, borderRadius: 4, paddingVertical: 10, paddingHorizontal: 22 }}><Text style={{ color: '#fff', fontWeight: '700' }}>Confirm</Text></TouchableOpacity>
           </View>
-          <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
-            {CORE_TOOLS.map((tool) => (
-              <TouchableOpacity key={tool.id} accessibilityRole="button" style={[sheetStyles.deckRow, { borderBottomColor: theme.border }]} onPress={() => void toggle(tool.id)} >
-                <Text style={{ color: theme.text }}>{tool.title}</Text>
-                <Text style={{ color: state.has(tool.id) ? theme.primary : theme.textSecondary }}>{state.has(tool.id) ? "on" : "off"}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
         </View>
       </View>
     </Modal>
@@ -314,7 +324,7 @@ function ConfirmCard({ label, onResolve }: { label: string; onResolve: (confirme
           <Text style={{ color: theme.textSecondary, paddingTop: 6 }}>{label} needs your confirm.</Text>
           <View style={{ flexDirection: 'row', gap: 12, paddingTop: 18, justifyContent: 'flex-end' }}>
             <TouchableOpacity accessibilityRole="button" onPress={() => onResolve(false)} style={{ padding: 10 }}><Text style={{ color: theme.textSecondary, fontWeight: '600' }}>Not now</Text></TouchableOpacity>
-            <TouchableOpacity accessibilityRole="button" onPress={() => onResolve(true)} style={{ backgroundColor: theme.primary, borderRadius: 999, paddingVertical: 10, paddingHorizontal: 22 }}><Text style={{ color: '#fff', fontWeight: '700' }}>Confirm</Text></TouchableOpacity>
+            <TouchableOpacity accessibilityRole="button" onPress={() => onResolve(true)} style={{ backgroundColor: theme.primary, borderRadius: 4, paddingVertical: 10, paddingHorizontal: 22 }}><Text style={{ color: '#fff', fontWeight: '700' }}>Confirm</Text></TouchableOpacity>
           </View>
         </View>
       </View>
@@ -330,29 +340,28 @@ const styles = StyleSheet.create({
   badgeText: { color: '#fff', fontSize: 10, fontWeight: '800' },
   heading: { flex: 1 },
   wsName: { fontSize: 22, fontWeight: '800', letterSpacing: -0.5 },
-  role: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
   roleText: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' },
-  avatar: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
-  avatarImage: { width: 36, height: 36, borderRadius: 18 },
-  avatarText: { fontSize: 14, fontWeight: '800' },
   stack: { padding: 16, gap: 12 },
-  next: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 14, padding: 16, gap: 6 },
+  next: { borderRadius: 4, minHeight: 108, paddingHorizontal: 18, paddingVertical: 16, gap: 6, justifyContent: 'space-between' },
   nextLabel: { fontSize: 11, fontWeight: '800', letterSpacing: 1 },
   nextTitle: { fontSize: 16, fontWeight: '600' },
-  add: { borderWidth: 1, borderStyle: 'dashed', borderRadius: 14, padding: 14, alignItems: 'center' },
-  fab: { position: 'absolute', right: 18, width: 58, height: 58, borderRadius: 29, alignItems: 'center', justifyContent: 'center' },
-  fabBadge: { position: 'absolute', top: -2, right: -2, minWidth: 20, height: 20, borderRadius: 10, backgroundColor: '#fff', paddingHorizontal: 5, alignItems: 'center', justifyContent: 'center' },
-  fabBadgeText: { fontSize: 11, fontWeight: '800' },
+  askFooter: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 16, paddingTop: 10, borderTopWidth: StyleSheet.hairlineWidth },
+  askBar: { height: 52, borderRadius: 4, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16 },
+  askBarText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  askBarBadge: { marginLeft: 'auto', minWidth: 22, height: 22, borderRadius: 11, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 },
+  askBarBadgeText: { fontSize: 11, fontWeight: '800' },
   sheetRow: { flexDirection: 'row', gap: 10, paddingVertical: 14, paddingHorizontal: 4, borderBottomWidth: StyleSheet.hairlineWidth, alignItems: 'center', justifyContent: 'space-between' },
   sheetRowText: { fontSize: 15, flexShrink: 1 },
+  wsRow: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 56, paddingHorizontal: 14, paddingVertical: 12, borderRadius: 4 },
+  wsRowName: { fontSize: 16, fontWeight: '700' },
+  wsRowMeta: { fontSize: 12, paddingTop: 2, textTransform: 'capitalize' },
   empty: { paddingVertical: 20, textAlign: 'center' },
 });
 
 const sheetStyles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
-  sheet: { borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: 18, paddingTop: 16, maxHeight: '75%' },
-  head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 10 },
-  title: { fontSize: 18, fontWeight: '800' },
-  deckRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 14, borderBottomWidth: StyleSheet.hairlineWidth },
-  confirm: { borderRadius: 16, padding: 20, width: '86%' },
+  sheet: { borderTopLeftRadius: 4, borderTopRightRadius: 4, paddingHorizontal: 16, paddingTop: 16, maxHeight: '75%' },
+  head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 12 },
+  title: { fontSize: 18, fontWeight: '800', letterSpacing: -0.4 },
+  confirm: { borderRadius: 4, padding: 20, width: '86%' },
 });

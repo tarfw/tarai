@@ -34,11 +34,12 @@ const ROLE_TOOLS: Record<string, readonly ToolId[]> = {
   warehouse: ['stock', 'purchase', 'order', 'task'],
 };
 
-function grantedTools(member: Member): Set<ToolId> {
+/** The cards a member's grants carry. The Canvas stack is the deck ∩ this set. */
+export function memberTools(member: Member): Set<ToolId> {
   const tools = new Set<ToolId>();
   if (member.access !== undefined) {
     for (const entry of member.access) {
-      const tool = normalizeTool(entry) ?? (LEGACY_TOOL[entry] ? null : null);
+      const tool = normalizeTool(entry);
       if (tool) tools.add(tool);
     }
     return tools;
@@ -55,7 +56,12 @@ export function canExecute(member: Member, actionId: string): boolean {
   if (member.role !== 'member') return true;
   const tool = toolForAction(action.id);
   if (!tool) return true; // control-plane actions gated by roles alone
-  return grantedTools(member).has(tool);
+  return memberTools(member).has(tool);
+}
+
+/** A member sees a skill card only when every step is theirs to run. */
+export function canRunSkill(member: Member, steps: readonly { readonly action: string }[]): boolean {
+  return steps.length > 0 && steps.every((step) => canExecute(member, step.action));
 }
 
 export function canRunFlowStep(member: Member, step: Record<string, unknown>, starter: string): boolean {

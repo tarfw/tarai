@@ -1,10 +1,12 @@
 // ActionSheet: one form, many configs. Fields come from the registry; the
-// submit is an intent with its idempotency key. Rendered as a flat data list,
-// backlog-style: label column on the left, value on the right, hairlines
-// between rows, a small accent section header. Money is typed in rupees, tax
-// in percent, selects are plain text options, photos are picked and uploaded.
-// Focus turns the row accent; required fields gate Save; optional ones fold
-// under More details.
+// submit is an intent with its idempotency key. Flat data list: a small
+// eyebrow label on the left, the value on the right, hairlines between rows;
+// selects are chips, money is typed in rupees with the rupee alongside, tax in
+// percent, photos are picked and uploaded. Focus turns the value accent;
+// required fields gate Save; optional ones sit under ONE MORE eyebrow.
+//
+// For a new item: name first, Jev drafts category, unit and tax into rows the
+// member has not touched. Anything they wrote is never overwritten.
 
 import { useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
@@ -16,8 +18,6 @@ import { enqueue } from '@/lib/queue';
 import { draftItem, uploadMedia } from '@/lib/tar';
 
 export interface FieldConfig { key: string; label: string; kind: string; required?: boolean; hidden?: boolean; core?: boolean; icon?: string; defaultValue?: string; options?: string[] }
-
-const GROUP_NAMES = ['Essentials', 'Details'];
 
 // registry defaults for money/percent arrive in stored units (paise / basis points)
 const displayDefault = (field: FieldConfig): string => {
@@ -44,6 +44,8 @@ const submitValue = (field: FieldConfig, raw: string): unknown => {
   return raw;
 };
 
+const titleCase = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
+
 export function ActionSheet({
   visible, onClose, ws, action, title, fields, onQueued,
 }: {
@@ -59,13 +61,10 @@ export function ActionSheet({
   const [uploading, setUploading] = useState<string | null>(null);
   const [focused, setFocused] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
-  const [tab, setTab] = useState(0);
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [aiFilled, setAiFilled] = useState<Record<string, boolean>>({});
   const aiRequested = useRef(false);
   const draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // tabbed groups instead of an expander: core fields first, the rest behind a second segment
-  const groups = useMemo(() => (more.length ? [core, more] : [shown]), [core, more, shown]);
 
   const errors = useMemo(() => {
     const map: Record<string, string> = {};
@@ -75,7 +74,7 @@ export function ActionSheet({
     }
     return map;
   }, [shown, values]);
-  const canSave = Object.keys(errors).length === 0;
+  const canSave = Object.keys(errors).length === 0 && !uploading;
   // a pristine form stays quiet; problems surface on the first Save attempt,
   // then clear live as each row is fixed
   const shownErrors = submitted ? errors : {};
@@ -97,7 +96,6 @@ export function ActionSheet({
     if (aiRequested.current || trimmed.length < 3) return;
     aiRequested.current = true;
     const draft = await draftItem(ws, trimmed);
-    console.warn('draft-item', trimmed, JSON.stringify(draft));
     const next: Record<string, string> = {};
     const filled: Record<string, boolean> = {};
     const draftCategory = typeof draft.category === 'string' ? draft.category : '';
@@ -131,9 +129,6 @@ export function ActionSheet({
     if (uploading) return;
     if (!canSave) {
       setSubmitted(true);
-      // land the user on the tab that holds the first problem
-      const first = shown.findIndex((field) => errors[field.key]);
-      if (first >= 0 && groups.length > 1) setTab(first < groups[0].length ? 0 : 1);
       return;
     }
     const input: Record<string, unknown> = {};
@@ -151,52 +146,82 @@ export function ActionSheet({
     const value = values[field.key] ?? '';
     const error = shownErrors[field.key];
     const active = focused === field.key;
-    const accent = error ? '#B42318' : active ? theme.primary : theme.textMuted;
-    const label = (
-      <View style={styles.labelWrap}>
-        <Text style={[styles.label, { color: accent }, field.required && styles.labelRequired]}>{field.label}</Text>
-        {aiFilled[field.key] ? <Ionicons name="sparkles" size={11} color={theme.primary} /> : null}
-      </View>
+    const stacked = field.kind === 'select' || field.kind === 'photo' || field.kind === 'textarea';
+    // Jev writes quietly: the eyebrow turns blue; tapping it asks again.
+    const filled = Boolean(aiFilled[field.key]);
+    const labelText = (
+      <Text style={[styles.label, { color: error ? '#B42318' : active || filled ? theme.primary : theme.textSecondary }]} numberOfLines={1}>{field.label.toUpperCase()}</Text>
     );
+    const label = filled ? (
+      <TouchableOpacity accessibilityRole="button" accessibilityLabel={`Ask Jev for ${field.label}`} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={() => { aiRequested.current = false; void maybeDraft(values['name'] ?? ''); }}>
+        {labelText}
+      </TouchableOpacity>
+    ) : labelText;
+
     let control: React.ReactNode;
-    if (field.kind === 'money' || field.kind === 'percent') {
+    if (field.kind === 'select' && field.options?.length) {
+      control = (
+        <View style={styles.chips}>
+          {field.options.map((option) => {
+            const selected = value === option;
+            return (
+              <TouchableOpacity
+                key={option}
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
+                onPress={() => set(field.key, option)}
+                style={[styles.chip, { backgroundColor: selected ? theme.primary : theme.backgroundElement }]}
+              >
+                <Text style={[styles.chipText, { color: selected ? '#fff' : theme.text }]}>{titleCase(option)}</Text>
+              </TouchableOpacity>
+            );
+          })}
+          {value && !field.options.includes(value) ? (
+            <TouchableOpacity accessibilityRole="button" accessibilityState={{ selected: true }} style={[styles.chip, { backgroundColor: theme.primary }]} onPress={() => set(field.key, '')}>
+              <Text style={[styles.chipText, { color: '#fff' }]}>{titleCase(value)}</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      );
+    } else if (field.kind === 'money' || field.kind === 'percent') {
       const affix = field.kind === 'money' ? '₹' : '%';
       const affixFirst = field.kind === 'money';
       control = (
         <View style={styles.valueRow}>
-          {affixFirst ? <Text style={[styles.affix, { color: active ? theme.primary : theme.textMuted }]}>{affix}</Text> : null}
+          {affixFirst ? <Text style={[styles.affix, { color: active ? theme.primary : theme.textSecondary }]}>{affix}</Text> : null}
           <TextInput
-            style={[styles.input, { color: theme.text }]}
+            style={[styles.moneyInput, { color: error ? '#B42318' : theme.text }]}
             value={value}
             onChangeText={(text) => set(field.key, text)}
             onFocus={() => setFocused(field.key)}
             onBlur={() => setFocused(null)}
             keyboardType="decimal-pad"
-            placeholder="0.00"            placeholderTextColor={theme.textMuted}
+            placeholder="0.00"
+            placeholderTextColor={theme.textMuted}
           />
-          {!affixFirst ? <Text style={[styles.affix, { color: active ? theme.primary : theme.textMuted }]}>{affix}</Text> : null}
+          {!affixFirst ? <Text style={[styles.affix, { color: active ? theme.primary : theme.textSecondary }]}>{affix}</Text> : null}
         </View>
       );
     } else if (field.kind === 'photo') {
       control = (
-        <View style={styles.valueRow}>
+        <View style={styles.photoRow}>
           {value ? <Image source={{ uri: value }} style={styles.photoThumb} /> : null}
           {uploading === field.key ? (
             <ActivityIndicator style={styles.photoProgress} />
           ) : (
-            <View style={styles.optionWrap}>
-              <TouchableOpacity accessibilityRole="button" style={styles.option} onPress={() => void pickPhoto(field, true)}>
-                <Ionicons name="camera-outline" size={15} color={theme.primary} />
-                <Text style={[styles.optionText, styles.optionSelected, { color: theme.primary }]}>{value ? 'Retake' : 'Camera'}</Text>
+            <View style={styles.photoActions}>
+              <TouchableOpacity accessibilityRole="button" style={[styles.photoButton, { backgroundColor: theme.backgroundElement }]} onPress={() => void pickPhoto(field, true)}>
+                <Ionicons name="camera-outline" size={16} color={theme.primary} />
+                <Text style={[styles.photoButtonText, { color: theme.primary }]}>{value ? 'Retake' : 'Camera'}</Text>
               </TouchableOpacity>
-              <TouchableOpacity accessibilityRole="button" style={styles.option} onPress={() => void pickPhoto(field, false)}>
-                <Ionicons name="images-outline" size={15} color={theme.primary} />
-                <Text style={[styles.optionText, styles.optionSelected, { color: theme.primary }]}>Gallery</Text>
+              <TouchableOpacity accessibilityRole="button" style={[styles.photoButton, { backgroundColor: theme.backgroundElement }]} onPress={() => void pickPhoto(field, false)}>
+                <Ionicons name="images-outline" size={16} color={theme.primary} />
+                <Text style={[styles.photoButtonText, { color: theme.primary }]}>Gallery</Text>
               </TouchableOpacity>
               {value ? (
-                <TouchableOpacity accessibilityRole="button" style={styles.option} onPress={() => set(field.key, '')}>
-                  <Ionicons name="trash-outline" size={15} color="#B42318" />
-                  <Text style={[styles.optionText, styles.optionSelected, { color: '#B42318' }]}>Remove</Text>
+                <TouchableOpacity accessibilityRole="button" style={[styles.photoButton, { backgroundColor: theme.backgroundElement }]} onPress={() => set(field.key, '')}>
+                  <Ionicons name="trash-outline" size={16} color="#B42318" />
+                  <Text style={[styles.photoButtonText, { color: '#B42318' }]}>Remove</Text>
                 </TouchableOpacity>
               ) : null}
             </View>
@@ -205,9 +230,9 @@ export function ActionSheet({
       );
     } else {
       control = (
-        <View style={styles.row}>
+        <View style={styles.valueRow}>
           <TextInput
-            style={[styles.input, styles.inputGrow, { color: theme.text }, field.kind === 'textarea' ? styles.inputTall : null]}
+            style={[styles.input, { color: error ? '#B42318' : theme.text }, field.kind === 'textarea' ? styles.inputTall : null]}
             value={value}
             onChangeText={(text) => set(field.key, text)}
             onFocus={() => setFocused(field.key)}
@@ -216,19 +241,20 @@ export function ActionSheet({
             autoCapitalize={field.kind === 'email' ? 'none' : 'sentences'}
             autoCorrect={false}
             multiline={field.kind === 'textarea'}
+            placeholder={field.required ? 'Required' : 'Optional'}
+            placeholderTextColor={theme.textMuted}
           />
-          {field.key === 'name' ? (
-            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Fill with AI" style={styles.aiButton} onPress={() => { aiRequested.current = false; void maybeDraft(value); }}>
-              <Ionicons name="sparkles" size={17} color={theme.primary} />
-            </TouchableOpacity>
-          ) : null}
         </View>
       );
     }
+
     return (
       <View key={field.key} style={[styles.row, { borderBottomColor: theme.border }]}>
-        <View style={styles.labelCell}>{label}</View>
-        <View style={styles.valueCell}>{control}</View>
+        <View style={stacked ? styles.stackTop : styles.lineTop}>
+          {stacked ? label : <View style={styles.labelCell}>{label}</View>}
+          <View style={[styles.valueCell, stacked ? styles.valueCellStacked : null]}>{control}</View>
+        </View>
+        {error ? <Text style={styles.error}>{error}</Text> : null}
       </View>
     );
   };
@@ -239,41 +265,29 @@ export function ActionSheet({
         <View style={[styles.header, { paddingTop: insets.top + 8, borderBottomColor: theme.border }]}>
           <View style={styles.side}>
             <TouchableOpacity accessibilityRole="button" onPress={onClose} accessibilityLabel="Cancel">
-              <Text style={{ color: theme.primary, fontSize: 17 }}>Cancel</Text>
+              <Text style={{ color: theme.primary, fontSize: 16, fontWeight: '600' }}>Cancel</Text>
             </TouchableOpacity>
           </View>
           <Text style={[styles.title, { color: theme.text }]} numberOfLines={1}>{title}</Text>
           <View style={styles.side} />
         </View>
         <ScrollView contentContainerStyle={styles.form} keyboardShouldPersistTaps="handled">
-          {groups.length > 1 ? (
-            <View style={styles.tabRow}>
-              {groups.map((group, index) => (
-                <TouchableOpacity
-                  key={index}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: tab === index }}
-                  style={styles.tab}
-                  onPress={() => setTab(index)}
-                >
-                  <Text style={[styles.tabText, { color: tab === index ? theme.primary : theme.textMuted }, tab === index ? styles.tabTextOn : null]}>{GROUP_NAMES[index] ?? `Set ${index + 1}`}</Text>
-                  <View style={[styles.tabUnderline, tab === index ? { backgroundColor: theme.primary } : null]} />
-                </TouchableOpacity>
-              ))}
-            </View>
+          <View>{core.map(renderField)}</View>
+          {more.length ? (
+            <>
+              <Text style={[styles.section, { color: theme.textSecondary }]}>MORE DETAILS</Text>
+              <View>{more.map(renderField)}</View>
+            </>
           ) : null}
-          <View style={[styles.list, { borderColor: theme.border }]}>
-            {(groups[tab] ?? []).map(renderField)}
-          </View>
         </ScrollView>
         <View style={[styles.actions, { paddingBottom: insets.bottom + 12, borderTopColor: theme.border }]}>
           <TouchableOpacity
             accessibilityRole="button"
-            style={[styles.ok, { backgroundColor: theme.primary, opacity: uploading ? 0.4 : 1 }]}
+            style={[styles.ok, { backgroundColor: canSave ? theme.primary : theme.backgroundSelected }]}
             onPress={() => void submit()}
             disabled={Boolean(uploading)}
           >
-            <Text style={{ color: '#fff', fontWeight: '800' }}>Save</Text>
+            {uploading ? <ActivityIndicator color="#fff" /> : <Text style={{ color: canSave ? '#fff' : theme.textSecondary, fontSize: 16, fontWeight: '800' }}>Save</Text>}
           </TouchableOpacity>
         </View>
       </View>
@@ -283,34 +297,33 @@ export function ActionSheet({
 
 const styles = StyleSheet.create({
   page: { flex: 1 },
-  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingBottom: 10, borderBottomWidth: StyleSheet.hairlineWidth },
+  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingBottom: 12, borderBottomWidth: StyleSheet.hairlineWidth },
   side: { minWidth: 70, alignItems: 'flex-start' },
-  title: { fontSize: 17, fontWeight: '600', flex: 1, textAlign: 'center' },
-  form: { paddingHorizontal: 20, paddingBottom: 24 },
-  tabRow: { flexDirection: 'row', gap: 26, marginTop: 10 },
-  tab: { paddingVertical: 8 },
-  tabText: { fontSize: 13, fontWeight: '400' },
-  tabTextOn: { fontWeight: '700' },
-  tabUnderline: { height: 2, marginTop: 5, borderRadius: 1 },
-  list: { borderTopWidth: StyleSheet.hairlineWidth },
-  row: { flexDirection: 'row', alignItems: 'center', borderBottomWidth: StyleSheet.hairlineWidth, minHeight: 50, paddingVertical: 6 },
-  labelCell: { width: 108, alignItems: 'flex-start' },
-  labelWrap: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  label: { fontSize: 13, fontWeight: '400' },
-  labelRequired: { fontWeight: '600' },
+  title: { fontSize: 17, fontWeight: '700', flex: 1, textAlign: 'center', letterSpacing: -0.2 },
+  form: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 24 },
+  section: { fontSize: 11, fontWeight: '800', letterSpacing: 1, marginTop: 24, marginBottom: 2 },
+  row: { borderBottomWidth: StyleSheet.hairlineWidth },
+  lineTop: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 54, paddingVertical: 8 },
+  stackTop: { paddingTop: 12 },
+  labelCell: { width: 104, alignItems: 'flex-start' },
+  label: { fontSize: 11, fontWeight: '800', letterSpacing: 0.8 },
   valueCell: { flex: 1 },
+  valueCellStacked: { paddingTop: 8 },
   valueRow: { flexDirection: 'row', alignItems: 'center' },
-  input: { flex: 1, fontSize: 15, paddingVertical: 12 },
-  inputGrow: { flex: 1 },
-  inputTall: { minHeight: 72, textAlignVertical: 'top' },
-  affix: { fontSize: 15, fontWeight: '600', marginRight: 8 },
-  optionWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, alignItems: 'center', paddingVertical: 8 },
-  option: { flexDirection: 'row', alignItems: 'center', gap: 3 },
-  optionText: { fontSize: 13 },
-  optionSelected: { fontWeight: '700' },
-  photoThumb: { width: 44, height: 44, borderRadius: 4, marginRight: 10 },
+  input: { flex: 1, fontSize: 16, paddingVertical: 10 },
+  inputTall: { minHeight: 80, textAlignVertical: 'top' },
+  moneyInput: { flex: 1, fontSize: 19, fontWeight: '700', paddingVertical: 8, letterSpacing: -0.3 },
+  affix: { fontSize: 15, fontWeight: '600', marginRight: 6 },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  chip: { borderRadius: 4, height: 34, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center' },
+  chipText: { fontSize: 13, fontWeight: '600' },
+  photoRow: { flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
+  photoActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  photoButton: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 4, height: 34, paddingHorizontal: 10 },
+  photoButtonText: { fontSize: 13, fontWeight: '600' },
+  photoThumb: { width: 56, height: 56, borderRadius: 4 },
   photoProgress: { marginHorizontal: 8 },
-  aiButton: { paddingLeft: 10, paddingVertical: 6 },
+  error: { color: '#B42318', fontSize: 12, paddingBottom: 8 },
   actions: { borderTopWidth: StyleSheet.hairlineWidth, paddingHorizontal: 16, paddingTop: 12 },
-  ok: { borderRadius: 8, paddingVertical: 14, alignItems: 'center' },
+  ok: { borderRadius: 4, height: 52, alignItems: 'center', justifyContent: 'center' },
 });
