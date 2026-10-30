@@ -42,7 +42,6 @@ export const interfaceCatalog = [
   { key: 'item', version: 1, title: 'Catalog item', presentation: 'screen', submitLabel: 'Save & Publish' },
   { key: 'form', version: 1, title: 'Form', presentation: 'screen', submitLabel: 'Save' },
   { key: 'confirmation', version: 1, title: 'Confirmation', presentation: 'sheet', submitLabel: 'Confirm' },
-  { key: 'flow', version: 1, title: 'Flow', presentation: 'flow', submitLabel: 'Start' },
 ] as const satisfies readonly InterfaceContract[];
 
 export const actionCatalog = [
@@ -170,24 +169,6 @@ export const actionCatalog = [
     output: ['taskId', 'state'], roles: ['owner', 'admin', 'member'], effects: ['record_update', 'run_resume'],
   },
   {
-    id: 'flow.start', version: 1, type: 'app', title: 'Start flow',
-    description: 'Start a published process and save its progress.', interfaceKey: 'flow',
-    fields: [
-      { key: 'flowId', label: 'Flow', kind: 'text', required: true, hidden: true },
-      { key: 'recordId', label: 'Related record', kind: 'record' },
-    ],
-    output: ['run'], roles: ['owner', 'admin', 'member'], effects: ['run_create'],
-  },
-  {
-    id: 'flow.advance', version: 1, type: 'app', title: 'Continue Flow Book',
-    description: 'Complete the current registered step and save Flow Book progress.', interfaceKey: 'confirmation',
-    fields: [
-      { key: 'runId', label: 'Run', kind: 'text', required: true, hidden: true },
-      { key: 'actionId', label: 'Action', kind: 'text', required: true, hidden: true },
-    ],
-    output: ['run', 'result'], roles: ['owner', 'admin', 'member'], effects: ['run_advance'],
-  },
-  {
     id: 'site.generate', version: 1, type: 'agent', title: 'Generate site draft',
     description: 'Build a storefront draft from what the business is and the facts on record. Lists accept comma-separated values.', interfaceKey: 'form',
     fields: [
@@ -217,105 +198,6 @@ export const actionCatalog = [
     output: ['siteId', 'version', 'site', 'preview', 'gate', 'missing'], roles: ['owner', 'admin'], effects: ['record_create'],
   },
   {
-    id: 'site.designs', version: 1, type: 'app', title: 'Read designs',
-    description: 'Read the reviewed design library the merchant can choose from, with the sections the store model needs, the layouts each section offers, their settings, and the site’s current overrides.', interfaceKey: 'confirmation',
-    fields: [
-      { key: 'siteId', label: 'Site', kind: 'record', required: false },
-      { key: 'models', label: 'Commerce models', kind: 'text', required: false },
-    ],
-    output: ['designs', 'default', 'models', 'sections', 'recipes', 'settings', 'defaults', 'overrides'], roles: ['owner', 'admin'], effects: [],
-  },
-  {
-    id: 'site.scout', version: 1, type: 'agent', title: 'Scout the site',
-    description: 'Run declared checks over the site, repair unambiguous drift as a draft revision, and place one review item in Space. Never publishes.', interfaceKey: 'form',
-    fields: [
-      { key: 'siteId', label: 'Site', kind: 'record', required: true },
-    ],
-    output: ['siteId', 'revision', 'findings', 'taskId'], roles: ['owner', 'admin'], effects: ['record_update', 'inbox'],
-  },
-  {
-    id: 'site.edit', version: 1, type: 'app', title: 'Edit site patch',
-    description: 'Apply a reviewed, typed patch to the site draft with revision checks and locks.', interfaceKey: 'form',
-    fields: [
-      { key: 'siteId', label: 'Site', kind: 'record', required: true },
-      { key: 'base', label: 'Revision', kind: 'number', required: true },
-    ],
-    output: ['siteId', 'version', 'revision', 'diff'], roles: ['owner', 'admin'], effects: ['record_update'],
-  },
-  {
-    id: 'site.ask', version: 1, type: 'agent', title: 'Ask for a site change',
-    description: 'Resolve a plain-language change into a reviewable patch. Nothing is applied here.', interfaceKey: 'form',
-    fields: [
-      { key: 'siteId', label: 'Site', kind: 'record', required: true },
-      { key: 'command', label: 'Change', kind: 'textarea', required: true },
-    ],
-    output: ['target', 'operations', 'summary', 'questions'], roles: ['owner', 'admin'], effects: ['model_inference'],
-  },
-  {
-    id: 'site.undo', version: 1, type: 'app', title: 'Undo site change',
-    description: 'Restore an earlier revision by writing a new revision.', interfaceKey: 'confirmation',
-    fields: [
-      { key: 'siteId', label: 'Site', kind: 'record', required: true },
-    ],
-    output: ['siteId', 'version', 'revision', 'diff'], roles: ['owner', 'admin'], effects: ['record_update'],
-  },
-  {
-    id: 'site.brief.add', version: 1, type: 'app', title: 'Add brief bullet',
-    description: 'Add a merchant brief bullet to steer the site generation.', interfaceKey: 'form',
-    fields: [
-      { key: 'siteId', label: 'Site', kind: 'record', required: true },
-      { key: 'bullet', label: 'Brief bullet', kind: 'text', required: true },
-    ],
-    output: ['siteId', 'version', 'site', 'blueprint'], roles: ['owner', 'admin'], effects: ['record_update'],
-  },
-  {
-    id: 'site.brief.remove', version: 1, type: 'app', title: 'Remove brief bullet',
-    description: 'Remove a merchant brief bullet from site steering.', interfaceKey: 'form',
-    fields: [
-      { key: 'siteId', label: 'Site', kind: 'record', required: true },
-      { key: 'bullet', label: 'Brief bullet', kind: 'text', required: true },
-    ],
-    output: ['siteId', 'version', 'site', 'blueprint'], roles: ['owner', 'admin'], effects: ['record_update'],
-  },
-  {
-    id: 'site.notice.set', version: 1, type: 'app', title: 'Set notice banner',
-    description: 'Update the urgent announcement banner on the storefront with zero AI call.', interfaceKey: 'form',
-    fields: [
-      { key: 'siteId', label: 'Site', kind: 'record', required: true },
-      { key: 'notice', label: 'Notice text', kind: 'text', required: false },
-    ],
-    output: ['siteId', 'version', 'site', 'notice'], roles: ['owner', 'admin'], effects: ['record_update'],
-  },
-  {
-    id: 'site.sections.set', version: 1, type: 'app', title: 'Configure storefront sections',
-    description: 'Reorder or toggle visibility of storefront sections. The choice is stored as an override, so it survives regeneration.', interfaceKey: 'form',
-    fields: [
-      { key: 'siteId', label: 'Site', kind: 'record', required: true },
-      { key: 'order', label: 'Section order', kind: 'text', required: false },
-      { key: 'hidden', label: 'Hidden sections', kind: 'text', required: false },
-      { key: 'shown', label: 'Sections turned on', kind: 'text', required: false },
-      { key: 'ordering', label: 'Take orders online (on or off)', kind: 'text', required: false },
-    ],
-    output: ['siteId', 'version', 'state', 'site', 'preview', 'blueprint', 'gate', 'missing'], roles: ['owner', 'admin'], effects: ['record_update', 'model_inference'],
-  },
-  {
-    id: 'site.checks', version: 1, type: 'app', title: 'Read site checks',
-    description: 'Read the deterministic checks stored with a compiled candidate.', interfaceKey: 'confirmation',
-    fields: [
-      { key: 'siteId', label: 'Site', kind: 'record', required: true },
-    ],
-    output: ['releaseId', 'checks'], roles: ['owner', 'admin'], effects: [],
-  },
-  {
-    id: 'site.design.import', version: 1, type: 'app', title: 'Import design.md',
-    description: 'Parse a readable design reference into the typed design with recorded decisions.', interfaceKey: 'form',
-    fields: [
-      { key: 'siteId', label: 'Site', kind: 'record', required: true },
-      { key: 'markdown', label: 'Design reference', kind: 'textarea', required: true },
-    ],
-    output: ['siteId', 'revision', 'design', 'decisions', 'designMarkdown'], roles: ['owner', 'admin'], effects: ['record_update'],
-  },
-  {
     id: 'site.asset.upload', version: 1, type: 'app', title: 'Upload site asset',
     description: 'Store a media asset with provenance and rights before it can be published.', interfaceKey: 'form',
     fields: [
@@ -326,29 +208,12 @@ export const actionCatalog = [
     output: ['siteId', 'revision', 'assets'], roles: ['owner', 'admin'], effects: ['record_update'],
   },
   {
-    id: 'site.asset.generate', version: 1, type: 'agent', title: 'Generate site illustration',
-    description: 'Generate an illustrative image. Generated media never evidences product facts.', interfaceKey: 'form',
-    fields: [
-      { key: 'siteId', label: 'Site', kind: 'record', required: true },
-      { key: 'prompt', label: 'Illustration', kind: 'text', required: true },
-    ],
-    output: ['siteId', 'revision', 'assets'], roles: ['owner', 'admin'], effects: ['model_inference', 'record_update'],
-  },
-  {
     id: 'site.assets', version: 1, type: 'app', title: 'List site assets',
     description: 'List site assets with rights, usage and publication URL.', interfaceKey: 'confirmation',
     fields: [
       { key: 'siteId', label: 'Site', kind: 'record', required: true },
     ],
     output: ['siteId', 'revision', 'assets'], roles: ['owner', 'admin'], effects: [],
-  },
-  {
-    id: 'site.releases', version: 1, type: 'app', title: 'List site releases',
-    description: 'List retained immutable releases available for rollback.', interfaceKey: 'confirmation',
-    fields: [
-      { key: 'siteId', label: 'Site', kind: 'record', required: true },
-    ],
-    output: ['siteId', 'revision', 'releases'], roles: ['owner', 'admin'], effects: [],
   },
   {
     id: 'site.compile', version: 2, type: 'app', title: 'Compile site candidate',

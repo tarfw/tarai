@@ -10,20 +10,15 @@ import type { AccessContext, RecordItem } from './types.ts';
 import { actionCatalog, findAction, interfaceCatalog } from './registry/catalog.ts';
 import { serveSitePreview } from './site/preview.ts';
 import { placeOrder, resolvePublicSite } from './site/checkout.ts';
-import { readDocument } from './site/adapt.ts';
-import { buildSite, defaultSite } from './site/build.ts';
-import { defaultBlueprint } from './site/blueprint.ts';
-import { exportDesign } from './site/design.ts';
-import { compileDocument } from './site/compile.ts';
-import { siteRegenerate } from './site/store.ts';
+import { defaultSite, previewSite, readSite, siteRegenerate } from './site/store.ts';
 import { canExecute, canReadRecord, canRunFlowStep, canRunSkill, managesMembers, memberTools } from './access.ts';
 import { inviteMember, listMembers, updateMember } from './team.ts';
 import { searchContacts } from './contacts/search.ts';
 import { PERSONAL_CANDIDATES, TOOL_IDS, cardDeck, dealDeck, deckStatement, findTool, firstInboxSeed, nextDeck, normalizeDeck, readCardStack, readDeck, toolForAction } from './tools/registry.ts';
 import { isNature, onboardingPlan } from './onboarding/plan.ts';
-import { probeGroq } from './site/model.ts';
-import { ask, confirmSkill, findSkill, listSkills, shapeOf, validatePlan, type Draft } from './skill/engine.ts';
-import { proposePlan } from './skill/propose.ts';
+import { confirmSkill, dropSkill, findSkill, listSkills, type Draft } from './skill/engine.ts';
+import { planCardChange } from './skill/plan.ts';
+import { proposePlan, type Turn } from './skill/propose.ts';
 import { advanceRun, listRuns, startRun } from './skill/run.ts';
 import { birthMoment, cardMoment, hireMoment, importMoment } from './brain/moments.ts';
 import { askSystemOne, choiceOf } from './brain/systemone.ts';
@@ -32,7 +27,7 @@ import { sendPush, tokensFor } from './push/expo.ts';
 import { deriveGate, mayExecute, missingFields } from './truth/gate.ts';
 import { currentStatement, inboxStatement, lastMoveId, readInbox } from './truth/write.ts';
 
-type RuntimeEnv = Env & { readonly TURSO_PLATFORM_TOKEN?: string; readonly TAR_SESSION_SECRET?: string; readonly TELEGRAM_BOT_TOKEN?: string; readonly EXPO_ACCESS_TOKEN?: string; readonly TAR_MONTHLY_WRITE_CEILING?: string; readonly TYPESAFE_API_KEY?: string; readonly GROQ_API_KEY?: string; readonly GROQ_MODEL?: string; readonly PEXELS_API_KEY?: string; readonly SITE_BASE_DOMAIN?: string; readonly SITE_WORKER_ORIGIN?: string; readonly SITE_MODEL?: string };
+type RuntimeEnv = Env & { readonly TURSO_PLATFORM_TOKEN?: string; readonly TAR_SESSION_SECRET?: string; readonly TELEGRAM_BOT_TOKEN?: string; readonly EXPO_ACCESS_TOKEN?: string; readonly TAR_MONTHLY_WRITE_CEILING?: string; readonly TYPESAFE_API_KEY?: string; readonly GROQ_API_KEY?: string; readonly GROQ_MODEL?: string; readonly SITE_BASE_DOMAIN?: string; readonly SITE_WORKER_ORIGIN?: string };
 const jsonHeaders = { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' };
 const corsHeaders = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'Authorization, Content-Type, Idempotency-Key', 'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS' };
 const now = () => Date.now();
@@ -121,36 +116,6 @@ async function withWorkspace<A>(env: RuntimeEnv, current: AccessContext, work: (
   try { return await work(client); } finally { client.close(); }
 }
 
-// The scout audits a published site at most once a day. CONTROL holds the last
-// audit time so the background fan-out never opens a workspace database that is
-// not due; the run only drafts a revision, never publishes.
-const SCOUT_INTERVAL = 24 * 60 * 60_000;
-async function scoutPublishedSites(env: RuntimeEnv): Promise<void> {
-  if (!env.SITE_RELEASES) return;
-  const due = await env.CONTROL.prepare("SELECT s.workspace,s.site,s.scouted,w.name,w.slug,w.database_name,w.database_host,w.owner_id FROM sites s JOIN workspaces w ON w.id=s.workspace WHERE s.status='active' AND s.release<>'' AND w.state='active' AND w.database_host IS NOT NULL AND s.scouted<? ORDER BY s.scouted LIMIT 20")
-    .bind(now() - SCOUT_INTERVAL).all<{ workspace: string; site: string; scouted: number; name: string; slug: string; database_name: string; database_host: string; owner_id: string }>();
-  for (const item of due.results) {
-    // Claim the slot first so overlapping crons never scout the same site twice.
-    const claim = await env.CONTROL.prepare('UPDATE sites SET scouted=? WHERE workspace=? AND scouted=?').bind(now(), item.workspace, item.scouted).run();
-    if (claim.meta.changes !== 1) continue;
-    const context: AccessContext = {
-      identity: { id: item.owner_id, email: '', name: 'Site scout' },
-      workspace: { id: item.workspace, name: item.name, slug: item.slug, mode: 'work', databaseName: item.database_name, databaseHost: item.database_host, state: 'active' },
-      member: { workspaceId: item.workspace, userId: item.owner_id, role: 'owner', state: 'active' },
-    };
-    try {
-      const client = await Effect.runPromise(openWorkspaceDatabase(tursoEnv(env), item.database_name, item.database_host));
-      try {
-        await Effect.runPromise(executeGateway(client, context, {
-          actionId: 'site.scout', idempotencyKey: `scout-${item.site}-${now()}`, input: { siteId: item.site },
-        }, { typesafe: env.TYPESAFE_API_KEY, publication: env.CONTROL }));
-      } finally { client.close(); }
-    } catch (cause) {
-      console.error(JSON.stringify({ event: 'site.scout.failed', workspace: item.workspace, error: cause instanceof Error ? cause.message : String(cause) }));
-    }
-  }
-}
-
 // The sweep re-reads what the owner has since recorded and rebuilds the draft when that state
 // moved. It never publishes: a live store keeps serving its release until its owner taps
 // Publish, and a draft a hand edit owns is left alone.
@@ -173,7 +138,6 @@ async function regenerateDriftedSites(env: RuntimeEnv): Promise<void> {
       try {
         const result = await siteRegenerate(client, context, {
           control: env.CONTROL, domain: env.SITE_WORKER_ORIGIN || env.SITE_BASE_DOMAIN, releases: env.SITE_RELEASES, content: env.PRODUCT_CONTENT,
-          ai: env.AI, typesafe: env.TYPESAFE_API_KEY, model: env.SITE_MODEL, groqApiKey: env.GROQ_API_KEY, pexelsApiKey: env.PEXELS_API_KEY,
         }, item.site);
         if (result.rebuilt || result.held) console.error(JSON.stringify({ event: 'site.regen', workspace: item.workspace, site: item.site, rebuilt: Boolean(result.rebuilt), held: result.held || '', missing: (result.missing as unknown[] | undefined)?.length ?? 0 }));
       } finally { client.close(); }
@@ -369,7 +333,7 @@ async function handle(request: Request, env: RuntimeEnv, ctx: ExecutionContext):
     const ceiling = Number(env.TAR_MONTHLY_WRITE_CEILING || 10_000);
     if (writesThisMonth >= ceiling) throw unavailable(`This workspace reached its monthly write ceiling (${ceiling}). Reads keep working; writes resume next month.`);
     const result = await withWorkspace(env, current, (client) =>
-      Effect.runPromise(executeGateway(client, current, { actionId: registered.id as GatewayRequest['actionId'], idempotencyKey: key, input }, { productContent: env.PRODUCT_CONTENT, siteReleases: env.SITE_RELEASES, publication: env.CONTROL, siteDomain: env.SITE_WORKER_ORIGIN || env.SITE_BASE_DOMAIN, ai: env.AI, typesafe: env.TYPESAFE_API_KEY, siteModel: env.SITE_MODEL, groqApiKey: env.GROQ_API_KEY, pexelsApiKey: env.PEXELS_API_KEY, telegramBotToken: env.TELEGRAM_BOT_TOKEN })));
+      Effect.runPromise(executeGateway(client, current, { actionId: registered.id as GatewayRequest['actionId'], idempotencyKey: key, input }, { productContent: env.PRODUCT_CONTENT, siteReleases: env.SITE_RELEASES, publication: env.CONTROL, siteDomain: env.SITE_WORKER_ORIGIN || env.SITE_BASE_DOMAIN, typesafe: env.TYPESAFE_API_KEY, telegramBotToken: env.TELEGRAM_BOT_TOKEN })));
     const client = await Effect.runPromise(openWorkspaceDatabase(tursoEnv(env), current.workspace.databaseName, current.workspace.databaseHost!));
     try {
       const version = await lastMoveId(client);
@@ -393,11 +357,8 @@ async function handle(request: Request, env: RuntimeEnv, ctx: ExecutionContext):
     return response({ jev: outcome.ok ? 'ok' : outcome.failure.kind, model: outcome.ok ? outcome.value.model : undefined });
   }
   if (request.method === 'GET' && path === '/v1/health/model') {
-    const [jev, groq] = await Promise.all([
-      askSystemOne(env.TYPESAFE_API_KEY, { state: { name: 'health ping' }, questions: { ping: { type: 'choice', instructions: 'Health check. Choose the only option.', criteria: ['ok'] } }, timeout: 6_000 }),
-      probeGroq(env.GROQ_API_KEY, env.GROQ_MODEL),
-    ]);
-    return response({ jev: jev.ok ? 'ok' : jev.failure.kind, groq: groq.status, model: groq.model });
+    const jev = await askSystemOne(env.TYPESAFE_API_KEY, { state: { name: 'health ping' }, questions: { ping: { type: 'choice', instructions: 'Health check. Choose the only option.', criteria: ['ok'] } }, timeout: 6_000 });
+    return response({ jev: jev.ok ? 'ok' : jev.failure.kind, model: jev.ok ? jev.value.model : undefined });
   }
   if (request.method === 'POST' && path === '/v1/workspaces/media') {
     const body = await Effect.runPromise(parseJson(request, 900_000));
@@ -710,76 +671,24 @@ async function handle(request: Request, env: RuntimeEnv, ctx: ExecutionContext):
       return response({ reset: true, siteId, site: initialDoc });
     }
     if (request.method === 'GET' && nested === 'site') {
-      let siteRows = await Effect.runPromise(query<Record<string, unknown>>(client, { sql: "SELECT * FROM records WHERE type='site' AND archived IS NULL ORDER BY updated DESC LIMIT 1" }));
-      if (siteRows.length) {
-        const candidate = object(typeof siteRows[0].data === 'string' ? JSON.parse(String(siteRows[0].data)) : siteRows[0].data);
-        const legacyPurposes = new Set(['chrome', 'introduction', 'categories', 'collection', 'recommendations', 'press', 'action']);
-        const hasLegacy = !candidate.blueprint || (Array.isArray(candidate.pages) && candidate.pages.some((p: any) => Array.isArray(p.sections) && p.sections.some((s: any) => legacyPurposes.has(String(s.purpose)))));
-        if (hasLegacy) {
-          await client.batch([
-            { sql: "DELETE FROM records WHERE type='site'" },
-          ], 'write');
-          siteRows = [];
-        }
-      }
-      if (!siteRows.length) {
-        const briefRow = await Effect.runPromise(query<Record<string, unknown>>(client, {
-          sql: "SELECT data FROM records WHERE id='brief' AND type='brief' AND archived IS NULL LIMIT 1",
-        }));
-        let inheritedBrief: string[] = [];
-        let inheritedTrade = '';
-        if (briefRow.length && briefRow[0].data) {
-          try {
-            const td = object(typeof briefRow[0].data === 'string' ? JSON.parse(String(briefRow[0].data)) : briefRow[0].data);
-            if (Array.isArray(td.brief)) inheritedBrief = td.brief.map(String).filter(Boolean).slice(0, 20);
-            if (typeof td.trade === 'string') inheritedTrade = td.trade.trim();
-          } catch { /* ignore */ }
-        }
-
-        const tradeLower = inheritedTrade.toLowerCase();
-        const isService = tradeLower.includes('service') || tradeLower.includes('consulting') || tradeLower.includes('tailor') || tradeLower.includes('clinic') || tradeLower.includes('salon');
-        const isFood = tradeLower.includes('food') || tradeLower.includes('beverage') || tradeLower.includes('bakery') || tradeLower.includes('restaurant') || tradeLower.includes('cafe');
-        const models = isFood ? ['food' as const] : isService ? ['booking' as const, 'quote' as const] : ['products' as const];
-
-        const blueprint = defaultBlueprint(models);
-        const built = buildSite({
-          title: current.workspace.name,
-          brief: { goal: `${current.workspace.name} online`, audience: inheritedTrade, tone: '' },
-          facts: {},
-          blueprint,
-          assets: [],
-        });
-        const initialDoc = built.doc;
-        if (inheritedBrief.length) {
-          initialDoc.brief = { ...initialDoc.brief, bullets: inheritedBrief, accepted: inheritedBrief };
-        }
-
+      let rows = await Effect.runPromise(query<Record<string, unknown>>(client, { sql: "SELECT * FROM records WHERE type='site' AND archived IS NULL ORDER BY updated DESC LIMIT 1" }));
+      const stored = rows.length ? object(typeof rows[0].data === 'string' ? JSON.parse(String(rows[0].data)) : rows[0].data) : null;
+      if (!stored || !readSite(stored)) {
+        // A draft from an older shape is rebuilt, never migrated.
+        await client.batch([{ sql: "DELETE FROM records WHERE type='site'" }], 'write');
+        const doc = defaultSite(current.workspace.name);
         const siteId = `site_${crypto.randomUUID()}`;
         const at = Date.now();
-        await client.batch([
-          { sql: "INSERT INTO records(id,type,title,state,data,owner,version,created,updated) VALUES(?,'site',?,'draft',?,?,1,?,?)", args: [siteId, current.workspace.name, JSON.stringify(initialDoc), current.identity.id, at, at] },
-        ], 'write');
-        siteRows = await Effect.runPromise(query<Record<string, unknown>>(client, { sql: "SELECT * FROM records WHERE id=? LIMIT 1", args: [siteId] }));
+        await client.batch([{ sql: "INSERT INTO records(id,type,title,state,data,owner,version,created,updated) VALUES(?,'site',?,'draft',?,?,1,?,?)", args: [siteId, doc.title, JSON.stringify(doc), current.identity.id, at, at] }], 'write');
+        rows = await Effect.runPromise(query<Record<string, unknown>>(client, { sql: "SELECT * FROM records WHERE id=? LIMIT 1", args: [siteId] }));
       }
-      const row = siteRows[0];
+      const row = rows[0];
       const publication = await env.CONTROL.withSession('first-primary').prepare('SELECT domain,mode,release,status FROM sites WHERE workspace=? AND site=?')
         .bind(current.workspace.id, String(row.id)).first<{ domain: string; mode: string; release: string; status: string }>();
-      const stored = object(typeof row.data === 'string' ? JSON.parse(String(row.data)) : row.data);
-      const { doc } = readDocument(stored);
-      const history = Array.isArray((stored as { history?: unknown[] }).history) ? (stored as { history: unknown[] }).history : [];
-      const designMarkdown = exportDesign(doc.design);
-      let previewHtml = '';
-      try {
-        const compiled = await compileDocument(doc);
-        const html = String(compiled.files.find((f) => f.path === '/index.html')?.body || '');
-        const css = String(compiled.files.find((f) => f.path === '/style.css')?.body || '');
-        previewHtml = html.replace('</head>', `<style>${css}</style></head>`);
-      } catch { /* fallback */ }
-      return response({ site: { id: String(row.id), version: Number(row.version), state: String(row.state), data: doc },
-        schema: '2.0.0',
-        history,
-        designMarkdown,
-        html: previewHtml,
+      const doc = readSite(object(typeof row.data === 'string' ? JSON.parse(String(row.data)) : row.data));
+      let html = '';
+      try { if (doc) html = await previewSite(client, doc); } catch { /* the preview is best effort */ }
+      return response({ site: { id: String(row.id), version: Number(row.version), state: String(row.state), data: doc }, html,
         publicUrl: publication?.status === 'active' ? `https://${publication.domain}${publication.mode === 'path' ? `/${slug}` : ''}` : null,
         liveRelease: publication?.status === 'active' ? publication.release : null,
         publicationState: publication?.status || null });
@@ -836,37 +745,36 @@ async function handle(request: Request, env: RuntimeEnv, ctx: ExecutionContext):
       return response({ consents: rows.map((item) => ({ id: String(item.id), contact: String(item.contact), channel: String(item.channel), purpose: String(item.purpose), state: String(item.state), source: String(item.source), actor: String(item.actor), created: Number(item.created) })) });
     }
     if (request.method === 'GET' && nested === 'skills') return response({ skills: await listSkills(client) });
+    // A custom card is removed by hiding it: the row stays, the Canvas forgets it.
+    const dropMatch = /^skills\/([A-Za-z0-9_-]+)\/drop$/.exec(nested);
+    if (request.method === 'POST' && dropMatch) {
+      if (!managesMembers(current.member)) throw forbidden();
+      await dropSkill(client, dropMatch[1], current.member.userId, request.headers.get('Idempotency-Key') || `drop-${dropMatch[1]}-${crypto.randomUUID()}`);
+      return response({ ok: true });
+    }
     // Cards are Jev's stack: the owner names a job, Jev types the change, code
     // applies it after one confirm. A custom card is a confirmed skill.
     if (request.method === 'POST' && nested === 'cards/plan') {
       if (!managesMembers(current.member)) throw forbidden();
       const body = await Effect.runPromise(parseJson(request));
       const words = typeof body.words === 'string' ? body.words.replace(/\s+/g, ' ').trim().slice(0, 300) : '';
-      if (words.length < 3) throw badRequest('Name the card or the job in a few words.');
+      // the conversation so far: a question from TAR is answered on the next turn
+      const history: Turn[] = (Array.isArray(body.history) ? body.history : [])
+        .slice(-6)
+        .map((turn) => object(turn))
+        .filter((turn) => (turn.who === 'you' || turn.who === 'tar') && typeof turn.text === 'string')
+        .map((turn) => ({ who: turn.who as Turn['who'], text: String(turn.text).replace(/\s+/g, ' ').trim().slice(0, 300) }))
+        .filter((turn) => turn.text.length > 0);
+      // a short reply ("10", "Tea") is a whole answer once TAR has asked something
+      if (!words || (!history.length && words.length < 3)) throw badRequest('Name the card or the job in a few words.');
       const deck = await readDeck(client);
       const mode = current.workspace.mode === 'personal' ? 'personal' : 'work';
-      const verdict = await cardMoment(env.TYPESAFE_API_KEY, words, deck, mode);
-      if (verdict.add.length || verdict.remove.length) {
-        return response({
-          kind: 'card',
-          add: verdict.add,
-          remove: verdict.remove,
-          changes: [
-            ...verdict.add.map((id) => `+ ${findTool(id)?.card.title ?? id}`),
-            ...verdict.remove.map((id) => `− ${findTool(id)?.card.title ?? id}`),
-          ],
-          confidence: verdict.confidence,
-        });
-      }
-      // No core card fits: the same process proposes a custom card from the registry.
-      try {
-        const proposal = await proposePlan(env.AI, words);
-        const validated = validatePlan(proposal.steps);
-        const draft = { ...proposal, steps: validated, words, shape: await shapeOf(proposal.trigger, validated) };
-        return response({ kind: 'skill', draft });
-      } catch {
-        return response({ kind: 'none' });
-      }
+      const outcome = await planCardChange({
+        words, history, deck, mode,
+        moment: () => cardMoment(env.TYPESAFE_API_KEY, words, deck, mode),
+        propose: (said, turns) => proposePlan({ ai: env.AI, groqApiKey: env.GROQ_API_KEY, groqModel: env.GROQ_MODEL, words: said, history: turns }),
+      });
+      return response(outcome);
     }
     if (request.method === 'POST' && nested === 'cards/confirm') {
       if (!managesMembers(current.member)) throw forbidden();
@@ -912,13 +820,13 @@ async function handle(request: Request, env: RuntimeEnv, ctx: ExecutionContext):
     const runPost = /^runs\/([A-Za-z0-9_-]+)\/advance$/.exec(nested);
     if (request.method === 'POST' && runPost) {
       const body = await Effect.runPromise(parseJson(request));
-      const skill = await findSkill(client, runPost[1]);
+      const skill = await findSkill(client, runPost[1], true);
       if (skill) {
         const run = await startRun(client, current, skill, request.headers.get('Idempotency-Key') || `run-${crypto.randomUUID()}`);
         return response({ run }, 201);
       }
       const view = await advanceRun(client, current, runPost[1], {
-        execute: async (actionId, input, key) => Effect.runPromise(executeGateway(client, current, { actionId: actionId as GatewayRequest['actionId'], idempotencyKey: key, input }, { productContent: env.PRODUCT_CONTENT, siteReleases: env.SITE_RELEASES, publication: env.CONTROL, siteDomain: env.SITE_WORKER_ORIGIN || env.SITE_BASE_DOMAIN, ai: env.AI, typesafe: env.TYPESAFE_API_KEY, siteModel: env.SITE_MODEL, groqApiKey: env.GROQ_API_KEY, pexelsApiKey: env.PEXELS_API_KEY })),
+        execute: async (actionId, input, key) => Effect.runPromise(executeGateway(client, current, { actionId: actionId as GatewayRequest['actionId'], idempotencyKey: key, input }, { productContent: env.PRODUCT_CONTENT, siteReleases: env.SITE_RELEASES, publication: env.CONTROL, siteDomain: env.SITE_WORKER_ORIGIN || env.SITE_BASE_DOMAIN, typesafe: env.TYPESAFE_API_KEY })),
       }, object(body.input), body.confirmed === true);
       return response({ run: view });
     }
@@ -928,7 +836,7 @@ async function handle(request: Request, env: RuntimeEnv, ctx: ExecutionContext):
       const registered = findAction(actionMatch[1]);
       const actionId = (registered?.id || actionMatch[1]) as GatewayRequest['actionId'];
       const action = { actionId, idempotencyKey: key, input };
-      const result = await Effect.runPromise(executeGateway(client, current, action, { productContent: env.PRODUCT_CONTENT, siteReleases: env.SITE_RELEASES, publication: env.CONTROL, siteDomain: env.SITE_WORKER_ORIGIN || env.SITE_BASE_DOMAIN, ai: env.AI, typesafe: env.TYPESAFE_API_KEY, siteModel: env.SITE_MODEL, groqApiKey: env.GROQ_API_KEY, pexelsApiKey: env.PEXELS_API_KEY }));
+      const result = await Effect.runPromise(executeGateway(client, current, action, { productContent: env.PRODUCT_CONTENT, siteReleases: env.SITE_RELEASES, publication: env.CONTROL, siteDomain: env.SITE_WORKER_ORIGIN || env.SITE_BASE_DOMAIN, typesafe: env.TYPESAFE_API_KEY }));
       return response(result, 201);
     }
     throw notFound('Route not found.');
@@ -960,7 +868,6 @@ export default {
         }
       }
     }
-    await scoutPublishedSites(env);
     await regenerateDriftedSites(env);
     await env.CONTROL.prepare('DELETE FROM previews WHERE expires<=?').bind(Date.now()).run();
   },

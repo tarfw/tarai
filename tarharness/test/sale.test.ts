@@ -49,7 +49,7 @@ describe('the counter sale, end to end', () => {
     expect(stock.onhand).toBe(8);
     // the card numbers moved with the sale
     const pos = JSON.parse(String((await client.execute("SELECT data FROM current WHERE kind='card' AND key='pos'")).rows[0][0]));
-    expect(pos.salesToday).toBe('Rs. 21');
+    expect(pos.salesToday).toBe(2100);
     expect(pos.billsToday).toBe('1');
     // no drawer is open in this test, so the register card tells the truth
     const register = JSON.parse(String((await client.execute("SELECT data FROM current WHERE kind='card' AND key='register'")).rows[0][0]));

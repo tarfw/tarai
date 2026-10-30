@@ -47,7 +47,8 @@ async function workspace(slug: string) {
   await client.execute("INSERT INTO records(id,type,title,state,data,owner,version,created,updated) VALUES('capability','capability','Capabilities','active','{\"site\":true}','owner',1,1,1)");
   // A real published record: the storefront shows what the owner sells, never a stand-in.
   await client.execute("INSERT INTO records(id,type,title,state,data,owner,version,created,updated) VALUES('store','pos.settings','Store','active','{\"currency\":\"INR\"}','owner',1,1,1)");
-  await client.execute("INSERT INTO records(id,type,title,state,data,owner,version,created,updated) VALUES('loaves','pos.product','Sourdough Loaf','active','{\"price\":25000,\"shortDescription\":\"Wood fired daily\"}','owner',1,1,1)");
+  await client.execute("INSERT INTO records(id,type,title,state,data,owner,version,created,updated) VALUES('loaves','variant','Sourdough Loaf','active','{\"description\":\"Wood fired daily\"}','owner',1,1,1)");
+  await client.execute("INSERT INTO records(id,type,title,state,data,owner,version,created,updated) VALUES('loaves-price','price','Loaf price','active','{\"variant\":\"loaves\",\"channel\":\"default\",\"amount\":25000,\"currency\":\"INR\",\"starts\":1}','owner',1,1,1)");
   const run = (actionId: Parameters<typeof executeGateway>[2]['actionId'], key: string, input: Record<string, unknown>, domain = origin) =>
     Effect.runPromise(executeGateway(client, context, { actionId, idempotencyKey: key, input }, {
       publication: control, siteReleases: bucket, siteDomain: domain,
@@ -78,7 +79,8 @@ it('publishes, isolates, unpublishes and restores two real D1/R2 releases', asyn
   expect((await alpha.client.execute({ sql: 'SELECT state FROM records WHERE id=?', args: [alpha.siteId] })).rows[0].state).toBe('live');
   // A collection bound to a live product publishes; archiving that product makes
   // the retained facts differ, so restoring the old release is refused.
-  await alpha.client.execute("INSERT INTO records(id,type,title,state,data,owner,version,created,updated) VALUES('product','pos.product','Approved product','active','{\"price\":100}','owner',1,1,1)");
+  await alpha.client.execute("INSERT INTO records(id,type,title,state,data,owner,version,created,updated) VALUES('product','variant','Approved product','active','{}','owner',1,1,1)");
+  await alpha.client.execute("INSERT INTO records(id,type,title,state,data,owner,version,created,updated) VALUES('product-price','price','Approved price','active','{\"variant\":\"product\",\"channel\":\"default\",\"amount\":4200,\"currency\":\"INR\",\"starts\":1}','owner',1,1,1)");
   await alpha.run('site.generate', 'alpha-catalog', { title: 'alpha', prompt: 'A supplied business description', records: ['product'] });
   const checked = await alpha.run('site.compile', 'alpha-recompile', { siteId: alpha.siteId });
   await alpha.run('site.publish', 'alpha-republish', { siteId: alpha.siteId, releaseId: checked.releaseId, hash: checked.hash });

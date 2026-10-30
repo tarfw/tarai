@@ -10,25 +10,6 @@ const COMMERCE_INDEXES = [
   "CREATE UNIQUE INDEX IF NOT EXISTS orderdraft ON records(owner,json_extract(data,'$.draftKey')) WHERE type='pos.order' AND json_extract(data,'$.draftKey') IS NOT NULL",
 ];
 
-export const INBOX_SCHEMA = [
-  `CREATE TABLE IF NOT EXISTS run (
-    id TEXT PRIMARY KEY, skill TEXT NOT NULL, step INTEGER NOT NULL,
-    status TEXT NOT NULL, key TEXT NOT NULL UNIQUE, input TEXT NOT NULL CHECK(json_valid(input)),
-    created INTEGER NOT NULL
-  )`,
-  `CREATE TABLE IF NOT EXISTS inbox (
-    id TEXT PRIMARY KEY, source TEXT NOT NULL, target TEXT NOT NULL,
-    kind TEXT NOT NULL, role TEXT NOT NULL, lane TEXT NOT NULL,
-    title TEXT NOT NULL, parent TEXT, quantity INTEGER, state TEXT NOT NULL,
-    due INTEGER, ordinal INTEGER NOT NULL, version INTEGER NOT NULL, action TEXT, input TEXT NOT NULL CHECK(json_valid(input)),
-    updated INTEGER NOT NULL
-  )`,
-  `CREATE TABLE IF NOT EXISTS projection (
-    source TEXT PRIMARY KEY, updated INTEGER NOT NULL, authority TEXT NOT NULL DEFAULT ''
-  )`,
-  'CREATE INDEX IF NOT EXISTS priority ON inbox(due,source,id)',
-] as const;
-
 /** Complete, idempotent schema for a fresh TAR workspace. */
 export const WORKSPACE_SCHEMA = [
   `CREATE TABLE IF NOT EXISTS records (

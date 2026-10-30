@@ -5,6 +5,7 @@
 
 import type { Client } from '@libsql/client/web';
 import { badRequest } from '../errors.ts';
+import { formatMoney } from '../money.ts';
 
 export const TOOL_IDS = ['pos', 'order', 'invoice', 'payment', 'register', 'catalog', 'stock', 'purchase', 'expense', 'contact', 'member', 'site', 'task', 'channel'] as const;
 export type ToolId = typeof TOOL_IDS[number];
@@ -45,31 +46,31 @@ export interface ToolDefinition {
 const card = (title: string, owner: string, member: string, label: string, action: string | null = null): ToolCard => ({ title, number: { owner, member }, tap: { action, label } });
 
 export const TOOLS: readonly ToolDefinition[] = [
-  { id: 'pos', reach: 'money', shape: 'sale', rowType: 'order', card: card('Counter Sales', 'salesToday', 'billsToday', 'New Sale', 'sale.write'),
+  { id: 'pos', reach: 'money', shape: 'sale', rowType: 'order', card: card('Sales', 'salesToday', 'billsToday', 'New Sale', 'sale.write'),
     actions: ['sale.write'], natures: [] },
-  { id: 'order', reach: 'customer', shape: 'list', rowType: 'order', card: card('Orders and Dispatch', 'toPackValue', 'toPackCount', 'Open Queue', 'order.create'),
+  { id: 'order', reach: 'customer', shape: 'list', rowType: 'order', card: card('Orders', 'toPackValue', 'toPackCount', 'Open Queue', 'order.create'),
     actions: ['order.create', 'order.fulfill', 'order.cancel'], natures: [] },
-  { id: 'invoice', reach: 'money', shape: 'list', rowType: 'invoice', card: card('Billing and GST', 'receivable', 'billsIssued', 'Issue Bill', 'invoice.issue'),
+  { id: 'invoice', reach: 'money', shape: 'list', rowType: 'invoice', card: card('Billing', 'receivable', 'billsIssued', 'Issue Bill', 'invoice.issue'),
     actions: ['invoice.issue'], natures: [] },
-  { id: 'payment', reach: 'money', shape: 'list', rowType: 'payment', card: card('Payments and UPI', 'receivedToday', 'receiptsToday', 'Record Receipt', 'payment.record'),
+  { id: 'payment', reach: 'money', shape: 'list', rowType: 'payment', card: card('Payments', 'receivedToday', 'receiptsToday', 'Record Receipt', 'payment.record'),
     actions: ['payment.record', 'refund.record', 'purchase.pay'], natures: [] },
-  { id: 'register', reach: 'money', shape: 'list', rowType: 'register', card: card('Cash Drawer', 'cashOnHand', 'cashOnHand', 'Count Cash', 'register.count'),
+  { id: 'register', reach: 'money', shape: 'list', rowType: 'register', card: card('Cash', 'cashOnHand', 'cashOnHand', 'Count Cash', 'register.count'),
     actions: ['register.open', 'register.close', 'register.count'], natures: [] },
-  { id: 'catalog', reach: 'data', shape: 'list', rowType: 'item', card: card('Products and Prices', 'itemCount', 'itemCount', 'Add Item', 'catalog.item.save'),
+  { id: 'catalog', reach: 'data', shape: 'list', rowType: 'item', card: card('Products', 'itemCount', 'itemCount', 'Add Item', 'catalog.item.save'),
     actions: ['catalog.item.save', 'catalog.variant.save', 'price.set'], natures: [] },
-  { id: 'stock', reach: 'data', shape: 'list', rowType: 'stock', card: card('Inventory and Warehouse', 'lowStock', 'lowStock', 'Adjust Stock', 'stock.adjust'),
+  { id: 'stock', reach: 'data', shape: 'list', rowType: 'stock', card: card('Inventory', 'lowStock', 'lowStock', 'Adjust Stock', 'stock.adjust'),
     actions: ['stock.adjust'], natures: ['shop', 'general'] },
-  { id: 'purchase', reach: 'money', shape: 'list', rowType: 'purchase', card: card('Supplier POs and GRN', 'openPoValue', 'openPoCount', 'New PO', 'purchase.create'),
+  { id: 'purchase', reach: 'money', shape: 'list', rowType: 'purchase', card: card('Purchases', 'openPoValue', 'openPoCount', 'New PO', 'purchase.create'),
     actions: ['purchase.create', 'purchase.receive'], natures: ['shop', 'general'] },
-  { id: 'expense', reach: 'money', shape: 'list', rowType: 'expense', card: card('Daily Expenses', 'spentToday', 'spentToday', 'Log Expense', 'expense.record'),
+  { id: 'expense', reach: 'money', shape: 'list', rowType: 'expense', card: card('Expenses', 'spentToday', 'spentToday', 'Log Expense', 'expense.record'),
     actions: ['expense.record', 'expense.reverse'], natures: [] },
-  { id: 'contact', reach: 'customer', shape: 'list', rowType: 'person', card: card('Customers and Leads', 'contactCount', 'contactCount', 'Add Contact', 'contact.create'),
+  { id: 'contact', reach: 'customer', shape: 'list', rowType: 'person', card: card('Customers', 'contactCount', 'contactCount', 'Add Contact', 'contact.create'),
     actions: ['contact.create', 'organization.create', 'relationship.create', 'relationship.end', 'consent.record'], natures: [] },
-  { id: 'member', reach: 'data', shape: 'list', rowType: 'party', card: card('Team and Shifts', 'onDuty', 'onDuty', 'Manage Members'),
+  { id: 'member', reach: 'data', shape: 'list', rowType: 'party', card: card('Team', 'onDuty', 'onDuty', 'Manage Members'),
     actions: [], natures: [] },
-  { id: 'site', reach: 'customer', shape: 'site', rowType: 'site', card: card('Online Storefront', 'visitsToday', 'visitsToday', 'View Store'),
-    actions: ['site.generate', 'site.designs', 'site.scout', 'site.edit', 'site.ask', 'site.undo', 'site.brief.add', 'site.brief.remove', 'site.notice.set', 'site.sections.set', 'site.checks', 'site.releases', 'site.compile', 'site.publish', 'site.publishLatest', 'site.rollback', 'site.refresh', 'site.unpublish', 'site.design.import', 'site.asset.upload', 'site.asset.generate', 'site.assets'], natures: [] },
-  { id: 'task', reach: 'none', shape: 'list', rowType: 'task', card: card('Manual Tasks', 'openTasks', 'openTasks', 'Mark Done', 'task.complete'),
+  { id: 'site', reach: 'customer', shape: 'site', rowType: 'site', card: card('Storefront', 'visitsToday', 'visitsToday', 'View Store'),
+    actions: ['site.generate', 'site.compile', 'site.publish', 'site.publishLatest', 'site.rollback', 'site.refresh', 'site.unpublish', 'site.asset.upload', 'site.assets'], natures: [] },
+  { id: 'task', reach: 'none', shape: 'list', rowType: 'task', card: card('Tasks', 'openTasks', 'openTasks', 'Mark Done', 'task.complete'),
     actions: ['task.create', 'task.complete', 'record.create', 'record.update'], natures: [] },
   { id: 'channel', reach: 'customer', shape: 'chat', rowType: 'channel.message', card: card('Messages', 'pendingChats', 'pendingChats', 'Open Chat', 'channel.send'),
     actions: ['channel.log', 'channel.send'], natures: [] },
@@ -190,7 +191,7 @@ export async function readCardStack(client: Client, role: 'owner' | 'admin' | 'm
     const raw = entry ? entry[field] : undefined;
     views.push({
       tool: tool.id, title: tool.card.title, reach: tool.reach, shape: tool.shape, tap: tool.card.tap,
-      number: raw === undefined || raw === null ? null : String(raw),
+      number: raw === undefined || raw === null ? null : typeof raw === 'number' ? formatMoney(raw) : String(raw),
       pendingLine: entry && typeof entry.pending === 'string' && entry.pending ? String(entry.pending) : null,
     });
   }

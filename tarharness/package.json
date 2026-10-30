@@ -8,10 +8,8 @@
     "deploy": "wrangler deploy",
     "types": "wrangler types",
     "check": "npm run types && tsc --noEmit",
-    "designs": "vite-node scripts/designdigest.ts",
-    "recipes": "vite-node scripts/recipedigest.ts",
     "test": "vitest run",
-    "verify": "npm run check && npm run test && npm run designs -- --check && npm run recipes -- --check && wrangler deploy --dry-run"
+    "verify": "npm run check && npm run test && wrangler deploy --dry-run"
   },
   "dependencies": {
     "@libsql/client": "^0.15.15",

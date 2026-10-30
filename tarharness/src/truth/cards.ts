@@ -6,6 +6,7 @@
 import type { Client } from '@libsql/client/web';
 import type { AccessContext } from '../types.ts';
 import { TOOL_IDS, findTool, type ToolId } from '../tools/registry.ts';
+import { formatMoney } from '../money.ts';
 import { commitWrite, currentStatement, inboxStatement } from './write.ts';
 
 type Row = unknown[];
@@ -17,17 +18,12 @@ async function scalar(client: Client, sql: string, args: (string | number | null
 
 const startOfToday = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); };
 
-/** INR display for now; locale arrives with birth (Tile 8). Paise only when they exist. */
-export function money(minor: number): string {
-  const whole = Math.trunc(minor / 100);
-  const paise = Math.abs(minor % 100);
-  const base = whole.toLocaleString('en-IN');
-  return paise === 0 ? `Rs. ${base}` : `Rs. ${base}.${String(paise).padStart(2, '0')}`;
-}
-
 const count = (n: number) => String(n);
+const minor = (n: number) => Math.round(n);
 
-interface CardMetrics { [field: string]: string }
+/** Money fields hold minor units (integers); counts hold text. The card view
+ * formats the number for display, never the store. */
+interface CardMetrics { [field: string]: string | number }
 
 /** One metric set per tool. Both roles' fields are computed and stored. */
 export async function computeCard(client: Client, tool: ToolId): Promise<CardMetrics> {
@@ -36,22 +32,22 @@ export async function computeCard(client: Client, tool: ToolId): Promise<CardMet
       const sod = startOfToday();
       const sales = await scalar(client, "SELECT COALESCE(SUM(json_extract(data,'$.amount')),0) FROM records WHERE type='payment' AND json_extract(data,'$.invoice') IS NOT NULL AND created>=?", [sod]);
       const bills = await scalar(client, "SELECT COUNT(*) FROM records WHERE type='invoice' AND created>=?", [sod]);
-      return { salesToday: money(sales), billsToday: count(bills) };
+      return { salesToday: minor(sales), billsToday: count(bills) };
     }
     case 'order': {
       const toPack = await scalar(client, "SELECT COUNT(*) FROM records WHERE type='order' AND state='open'");
       const value = await scalar(client, "SELECT COALESCE(SUM(json_extract(data,'$.total')),0) FROM records WHERE type='order' AND state='open'");
-      return { toPackCount: count(toPack), toPackValue: money(value) };
+      return { toPackCount: count(toPack), toPackValue: minor(value) };
     }
     case 'invoice': {
       const receivable = await scalar(client, "SELECT COALESCE(SUM(json_extract(data,'$.net')-json_extract(data,'$.paid')-json_extract(data,'$.refunded')),0) FROM records WHERE type='invoice' AND state IN ('issued','partial')");
       const issued = await scalar(client, "SELECT COUNT(*) FROM records WHERE type='invoice' AND created>=?", [startOfToday()]);
-      return { receivable: money(receivable), billsIssued: count(issued) };
+      return { receivable: minor(receivable), billsIssued: count(issued) };
     }
     case 'payment': {
       const received = await scalar(client, "SELECT COALESCE(SUM(json_extract(data,'$.amount')),0) FROM records WHERE type='payment' AND json_extract(data,'$.invoice') IS NOT NULL AND created>=?", [startOfToday()]);
       const receipts = await scalar(client, "SELECT COUNT(*) FROM records WHERE type='payment' AND json_extract(data,'$.invoice') IS NOT NULL AND created>=?", [startOfToday()]);
-      return { receivedToday: money(received), receiptsToday: count(receipts) };
+      return { receivedToday: minor(received), receiptsToday: count(receipts) };
     }
     case 'register': {
       const open = await client.execute("SELECT data FROM records WHERE type='register' AND state='open' AND archived IS NULL LIMIT 1");
@@ -62,7 +58,7 @@ export async function computeCard(client: Client, tool: ToolId): Promise<CardMet
       const since = Number(opened.rows[0]?.[0] ?? 0);
       const cashIn = await scalar(client, "SELECT COALESCE(SUM(json_extract(data,'$.amount')),0) FROM records WHERE type='payment' AND json_extract(data,'$.method')='cash' AND json_extract(data,'$.invoice') IS NOT NULL AND created>=?", [since]);
       const cashOut = await scalar(client, "SELECT COALESCE(SUM(json_extract(data,'$.amount')),0) FROM records WHERE ((type='refund' AND json_extract(data,'$.method')='cash') OR (type='expense' AND state='recorded')) AND created>=? AND archived IS NULL", [since]);
-      return { cashOnHand: money(Number(data.opening || 0) + cashIn - cashOut) };
+      return { cashOnHand: minor(Number(data.opening || 0) + cashIn - cashOut) };
     }
     case 'catalog': {
       const items = await scalar(client, "SELECT COUNT(*) FROM records WHERE type='item' AND state='active' AND archived IS NULL");
@@ -75,11 +71,11 @@ export async function computeCard(client: Client, tool: ToolId): Promise<CardMet
     case 'purchase': {
       const open = await scalar(client, "SELECT COUNT(*) FROM records WHERE type='purchase' AND state IN ('ordered','partial')");
       const value = await scalar(client, "SELECT COALESCE(SUM(json_extract(data,'$.total')),0) FROM records WHERE type='purchase' AND state IN ('ordered','partial')");
-      return { openPoCount: count(open), openPoValue: money(value) };
+      return { openPoCount: count(open), openPoValue: minor(value) };
     }
     case 'expense': {
       const spent = await scalar(client, "SELECT COALESCE(SUM(json_extract(data,'$.amount')),0) FROM records WHERE type='expense' AND state='recorded' AND created>=?", [startOfToday()]);
-      return { spentToday: money(spent) };
+      return { spentToday: minor(spent) };
     }
     case 'contact': {
       const contacts = await scalar(client, "SELECT COUNT(*) FROM records WHERE type IN ('person','organization') AND archived IS NULL");
@@ -143,7 +139,7 @@ export async function seedInbox(client: Client, context: AccessContext, actionId
   if (actionId === 'register.close' || actionId === 'register.count') {
     const register = result.register as { variance?: number } | undefined;
     if (register && Number(register.variance ?? 0) !== 0) {
-      statements.push(inboxStatement({ member: ownerOf(context), tool: 'register', reach: 'money', title: `Cash drawer out ${money(Math.abs(Number(register.variance)))}`, urgent: true }));
+      statements.push(inboxStatement({ member: ownerOf(context), tool: 'register', reach: 'money', title: `Cash drawer out ${formatMoney(Math.abs(Number(register.variance)))}`, urgent: true }));
     }
   }
   if (statements.length) await commitWrite(client, statements);

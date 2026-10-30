@@ -19,7 +19,7 @@ wrangler deploy
 | `TYPESAFE_API_KEY` | Jev System One | birth/import/hire fall back to deterministic heuristics |
 
 Vars already in wrangler.jsonc: `TURSO_ORG`, `TURSO_GROUP`, `SITE_WORKER_ORIGIN`,
-`SITE_MODEL`, OIDC (Google) audience. `TAR_MONTHLY_WRITE_CEILING` (default 10000)
+OIDC (Google) audience. `TAR_MONTHLY_WRITE_CEILING` (default 10000)
 caps writes per workspace per month; reads never stop.
 
 ## The laws this build enforces

@@ -4,11 +4,10 @@ import { badRequest, conflict, forbidden, notFound, unavailable } from '../error
 import { query } from '../db/turso.ts';
 import type { AccessContext, FlowDefinition, FlowRun, RecordItem } from '../types.ts';
 import { findAction, type ActionId } from '../registry/catalog.ts';
-import { canExecute, canReadRecord, canRunFlowStep } from '../access.ts';
-import { executeSiteGenerate, executeSiteDesigns, executeSiteScout, executeSiteCompile, executeSitePublish, executeSitePublishLatest, executeSiteRollback, executeSiteRefresh, executeSiteUnpublish, executeSiteChecks, executeSiteReleases, executeSiteBriefAdd, executeSiteBriefRemove, executeSiteNoticeSet, executeSiteSectionsSet } from '../site/store.ts';
-import { executeSiteAsk, executeSiteDesignImport, executeSiteEdit, executeSiteUndo } from '../site/edit.ts';
-import { executeSiteAssetGenerate, executeSiteAssetUpload, executeSiteAssets } from '../site/asset.ts';
-import { appendEvent, eventStatement, findReplay, fingerprint, runStatement, stamp, stepStatement } from './commit.ts';
+import { canExecute, canReadRecord } from '../access.ts';
+import { executeSiteGenerate, executeSiteCompile, executeSitePublish, executeSitePublishLatest, executeSiteRollback, executeSiteRefresh, executeSiteUnpublish, executeSiteAssets } from '../site/store.ts';
+import { executeSiteAssetUpload } from '../site/asset.ts';
+import { eventStatement, findReplay, fingerprint, stamp } from './commit.ts';
 import { commerceActionIds } from '../commerce/catalog.ts';
 import { executeCommerce } from '../commerce/store.ts';
 import { refreshCards, seedInbox, settleInbox, toolsTouchedBy } from '../truth/cards.ts';
@@ -16,7 +15,7 @@ import { executeChannelLog, executeChannelSend } from '../channel/adapters.ts';
 
 type GatewayError = ReturnType<typeof badRequest> | ReturnType<typeof conflict> | ReturnType<typeof forbidden> | ReturnType<typeof notFound> | ReturnType<typeof unavailable>;
 export interface GatewayRequest { readonly idempotencyKey: string; readonly actionId: ActionId; readonly input: Record<string, unknown>; }
-export interface GatewayServices { readonly productContent?: R2Bucket; readonly telegramBotToken?: string; readonly siteReleases?: R2Bucket; readonly publication?: D1Database; readonly siteDomain?: string; readonly ai?: Ai; readonly tinyfish?: string; readonly typesafe?: string; readonly siteModel?: string; readonly groqApiKey?: string; readonly pexelsApiKey?: string }
+export interface GatewayServices { readonly productContent?: R2Bucket; readonly telegramBotToken?: string; readonly siteReleases?: R2Bucket; readonly publication?: D1Database; readonly siteDomain?: string; readonly tinyfish?: string; readonly typesafe?: string }
 
 const object = (value: unknown): Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 const text = (value: unknown, max = 200): string => typeof value === 'string' ? value.trim().slice(0, max) : '';
@@ -106,31 +105,17 @@ export function executeGateway(client: Client, context: AccessContext, request: 
         return result;
       }
       if (commerceActionIds.has(request.actionId)) return executeCommerce(client, context, request.actionId, request.input, request.idempotencyKey, hash, services.typesafe);
-      if (request.actionId === 'site.generate') return executeSiteGenerate(client, context, request.input, request.idempotencyKey, hash, services.typesafe, services.ai, services.publication, services.siteModel, services.groqApiKey, services.productContent, services.pexelsApiKey);
-      if (request.actionId === 'site.edit') return executeSiteEdit(client, context, request.input, request.idempotencyKey, hash, services.siteReleases);
-      if (request.actionId === 'site.ask') return executeSiteAsk(client, context, request.input, services.typesafe, services.publication, services.ai, services.siteModel, services.groqApiKey);
-      if (request.actionId === 'site.scout') return executeSiteScout(client, context, request.input, request.idempotencyKey, hash, services.typesafe, services.publication);
-      if (request.actionId === 'site.undo') return executeSiteUndo(client, context, request.input, request.idempotencyKey, hash, services.siteReleases);
-      if (request.actionId === 'site.design.import') return executeSiteDesignImport(client, context, request.input, request.idempotencyKey, hash, services.siteReleases);
+      if (request.actionId === 'site.generate') return executeSiteGenerate(client, context, request.input, request.idempotencyKey, hash);
       if (request.actionId === 'site.asset.upload') return executeSiteAssetUpload(client, services.productContent, context, request.input, request.idempotencyKey, hash);
-      if (request.actionId === 'site.asset.generate') return executeSiteAssetGenerate(client, services.productContent, services.ai, context, request.input, request.idempotencyKey, hash);
       if (request.actionId === 'site.assets') return executeSiteAssets(client, context, request.input);
-      if (request.actionId === 'site.checks') return executeSiteChecks(client, services.siteReleases, context, request.input);
-      if (request.actionId === 'site.releases') return executeSiteReleases(client, context, request.input);
-      if (request.actionId === 'site.designs') return executeSiteDesigns(client, context, request.input);
       if (request.actionId === 'site.compile') return executeSiteCompile(client, services.siteReleases, context, request.input, request.idempotencyKey, hash, services.publication, services.siteDomain, services.productContent);
       if (request.actionId === 'site.publish') return executeSitePublish(client, services.siteReleases, context, request.input, request.idempotencyKey, hash, services.publication, services.siteDomain, services.productContent);
       if (request.actionId === 'site.publishLatest') return executeSitePublishLatest(client, context, request.input, request.idempotencyKey, hash, {
         control: services.publication, domain: services.siteDomain, releases: services.siteReleases, content: services.productContent,
-        ai: services.ai, typesafe: services.typesafe, model: services.siteModel, groqApiKey: services.groqApiKey, pexelsApiKey: services.pexelsApiKey,
       });
       if (request.actionId === 'site.rollback') return executeSiteRollback(client, context, request.input, request.idempotencyKey, hash, services.publication, services.siteDomain, services.siteReleases, services.productContent);
       if (request.actionId === 'site.refresh') return executeSiteRefresh(client, services.siteReleases, context, request.input, request.idempotencyKey, hash, services.publication, services.siteDomain, services.productContent);
       if (request.actionId === 'site.unpublish') return executeSiteUnpublish(client, context, request.input, request.idempotencyKey, hash, services.publication);
-      if (request.actionId === 'site.brief.add') return executeSiteBriefAdd(client, context, request.input, request.idempotencyKey, hash, services.typesafe, services.publication);
-      if (request.actionId === 'site.brief.remove') return executeSiteBriefRemove(client, context, request.input, request.idempotencyKey, hash, services.typesafe, services.publication);
-      if (request.actionId === 'site.notice.set') return executeSiteNoticeSet(client, context, request.input, request.idempotencyKey, hash);
-      if (request.actionId === 'site.sections.set') return executeSiteSectionsSet(client, context, request.input, request.idempotencyKey, hash, services.typesafe, services.ai, services.publication, services.siteModel, services.groqApiKey, services.productContent, services.pexelsApiKey);
       if (request.actionId === 'record.create' || request.actionId === 'task.create' || request.actionId === 'contact.create' || request.actionId === 'organization.create') {
         const type = request.actionId === 'task.create' ? 'task' : request.actionId === 'contact.create' ? 'person' : request.actionId === 'organization.create' ? 'organization' : text(request.input.type, 80);
         const title = text(request.actionId === 'contact.create' || request.actionId === 'organization.create' ? request.input.name : request.input.title, 240);

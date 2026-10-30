@@ -9,10 +9,11 @@
 // refused, never guessed.
 
 import type { Client } from '@libsql/client/web';
-import { badRequest } from '../errors.ts';
+import { badRequest, notFound } from '../errors.ts';
 import { findAction } from '../registry/catalog.ts';
-import { commitWrite } from '../truth/write.ts';
+import { commitWrite, moveStatement } from '../truth/write.ts';
 import { fingerprint } from '../gateway/commit.ts';
+import { assertCard } from './cards.ts';
 
 export interface SkillStep {
   readonly action: string;
@@ -110,6 +111,8 @@ export async function ask(client: Client, words: string, propose: (words: string
 /** The one confirm: the draft becomes a confirmed skill. Idempotent on the confirm key. */
 export async function confirmSkill(client: Client, member: string, draft: Draft, key: string): Promise<SkillRecord> {
   const steps = validatePlan(draft.steps);
+  // the floor: a custom card is never a core tap wearing another name
+  assertCard({ ...draft, steps });
   const existing = await selectSkills(client, 'WHERE shape=? AND confirmed=1', [draft.shape]);
   if (existing[0]) return existing[0];
   const id = `skill_${crypto.randomUUID()}`;
@@ -120,12 +123,23 @@ export async function confirmSkill(client: Client, member: string, draft: Draft,
   return { id, title: draft.title, shape: draft.shape, trigger: draft.trigger, steps, confirmed: true, words: draft.words };
 }
 
+/** Removing a custom card hides it for good; the row stays, so it can never
+ *  come back by accident. A move keeps the slice version honest. */
+export async function dropSkill(client: Client, id: string, actor: string, key: string): Promise<void> {
+  const found = await selectSkills(client, 'WHERE id=? AND confirmed=1', [id]);
+  if (!found[0]) throw notFound('That card is not on the canvas.');
+  await commitWrite(client, [
+    { sql: 'UPDATE skill SET confirmed=0 WHERE id=?', args: [id] },
+    moveStatement({ kind: 'skill.drop', actor, key, hash: await fingerprint({ skill: id, drop: true }), result: { skill: id } }),
+  ]);
+}
+
 /** The member's confirmed skills, newest first. */
 export async function listSkills(client: Client): Promise<SkillRecord[]> {
   return selectSkills(client, 'WHERE confirmed=1 ORDER BY created DESC');
 }
 
-export async function findSkill(client: Client, id: string): Promise<SkillRecord | null> {
-  const found = await selectSkills(client, 'WHERE id=?', [id]);
+export async function findSkill(client: Client, id: string, confirmedOnly = false): Promise<SkillRecord | null> {
+  const found = await selectSkills(client, confirmedOnly ? 'WHERE id=? AND confirmed=1' : 'WHERE id=?', [id]);
   return found[0] ?? null;
 }

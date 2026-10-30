@@ -1,9 +1,6 @@
 # TAR Harness
 
-Cloudflare Worker for TAR's identity, workspace isolation, Action Gateway,
-commerce kernel, Canvas projection and per-user sync, durable flows, sites
-and channel ingress. The current product goal is [tarfw.md](tarfw.md),
-with [parai.md](../parai.md) as the linked store contract.
+Cloudflare Worker for TAR's identity, workspace isolation, the action gateway, the commerce kernel, Canvas projection and per-user sync, and sites. The current product goal is [tarfw.md](tarfw.md), with [parai.md](../parai.md) as the linked store contract.
 
 ## Local checks
 
@@ -19,34 +16,18 @@ npx wrangler deploy --dry-run
 | Binding | Resource |
 | --- | --- |
 | `CONTROL` | D1 control database; apply migrations in order (`0001_control.sql`, `0002_roles.sql`, `0003_context.sql`) |
-| `OUTBOX` | queue for verified channel work and Inbox source-event projection |
-| `FLOWS` | durable Flow Book workflow |
 | `PRODUCT_CONTENT` | private catalog content bucket |
 | `SITE_RELEASES` | immutable site release bucket |
 | `AI` | optional Cloudflare Workers AI binding |
 
-Required Worker secrets include Turso provisioning credentials. Jev, search and
-chat provider secrets are optional; their related Actions are unavailable until
-configured. Never put server secrets in Expo variables.
+## Architecture in one paragraph
 
-The complete workspace schema is applied when a workspace database is provisioned.
-Each person has a separate Now Turso database containing only `inbox` and
-`projection`. The app receives a short-lived, read-only token for that database.
-Committed workspace Actions enqueue projection updates for active members. `GET /v1/inbox`
-reads that projection, refreshes sources older than one minute, and preserves known
-rows with a partial cue when a source fails. Opening a row reads the authorized
-source again; its Gateway checks the version and permission at commit. Optional
-Jev scoring marks one Next only among equally due existing actions. A change to
-membership authority hides rows from the old projection until that source refreshes.
+Every workspace is its own Turso database behind the TAR API. The phone holds one session, reads one slice (kilobytes), and sends intents — never data, never a database token. A single write is one transaction: record + move + current + inbox. The event feed is a view over `move`; the inbox is a property of cards, and the badge opens the flat list of them. Freshness is ETag-driven: 304 means nothing changed, nearly free at any scale. Published sites live in R2 behind `*.tar.site` and the release is an immutable repoint.
 
-Turso database tokens are reused briefly per warm Worker instance; a failed token
-request is retried on the next request. Workspace failures are logged with
-`workspace.open.failed` or `workspace.query.failed` and a safe diagnostic code
-is returned to the app.
+Turso database tokens are reused briefly per warm Worker instance; a failed token request is retried on the next request. Workspace failures are logged with `workspace.open.failed` or `workspace.query.failed` and a safe diagnostic code is returned to the app.
 
 ```sh
 npm run deploy
 ```
 
-The Worker exposes health at `/health`, authenticated product APIs under `/v1`,
-and published sites under `/v1/sites/:slug/*`.
+The Worker exposes health at `/health`, authenticated product APIs under `/v1`, and published sites under `/v1/sites/:slug/*`.

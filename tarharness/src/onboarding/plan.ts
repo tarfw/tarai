@@ -6,7 +6,7 @@
 
 import { NATURES, planMoment, type Nature } from '../brain/moments.ts';
 import { TOOLS } from '../tools/registry.ts';
-import { ModelRunner, ONBOARDING_MODEL_DEFAULT, bestGroqModel } from '../site/model.ts';
+import { ModelRunner, ONBOARDING_MODEL_DEFAULT, bestGroqModel } from '../model.ts';
 
 export interface OnboardingPlan {
   readonly name: string;

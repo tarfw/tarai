@@ -11,7 +11,6 @@
     "TURSO_ORG": "tarapp",
     "TURSO_GROUP": "default",
     "SITE_WORKER_ORIGIN": "https://tar-sites.tar-54d.workers.dev",
-    "SITE_MODEL": "qwen/qwen3.8-27b",
     "GROQ_MODEL": "qwen/qwen3.8-27b"
   },
   "workers_dev": true,
