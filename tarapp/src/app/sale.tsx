@@ -84,7 +84,7 @@ export default function SaleScreen() {
       <SearchField flush value={q} onChangeText={setQ} />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 24, gap: 8 }}>
         {loading && !items.length ? <ActivityIndicator color={theme.primary} style={{ paddingTop: 30 }} /> : null}
-        {!loading && !items.length ? <Text style={{ color: theme.textSecondary, textAlign: 'center', paddingTop: 30 }}>Add items in Products and Prices first.</Text> : null}
+        {!loading && !items.length ? <Text style={{ color: theme.textSecondary, textAlign: 'center', paddingTop: 30 }}>Add items in Products first.</Text> : null}
         {items.map((item) => (
           <TouchableOpacity key={item.id} accessibilityRole="button" style={[styles.itemRow, { backgroundColor: theme.backgroundElement }]} onPress={() => add(item.id, 1)}>
             <View style={{ flexShrink: 1, gap: 2 }}>

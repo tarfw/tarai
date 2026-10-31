@@ -1,42 +1,23 @@
-// Canvas: one screen, every member. The header ends in a hairline; the bell
-// opens the flat inbox; the name opens the flat workspaces sheet; the bottom
-// bar is Ask. NEXT is the top row; urgent rows carry !.
+// Canvas: one screen, every member. The header ends in a hairline; the tray
+// opens the flat inbox and fills when something waits; the name opens the flat
+// workspaces sheet; the bottom bar is Ask. NEXT is the top row; urgent rows carry !.
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, AppState, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, AppState, Modal, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRouter } from 'expo-router';
 import { useTheme } from '@/hooks/use-theme';
 import { useWorkspace } from '@/state/Workspace';
 import { Card } from '@/components/Card';
-import { ActionSheet, type FieldConfig } from '@/components/ActionSheet';
-import { confirmRequest, pendingCount, resolveConfirm, subscribe } from '@/lib/queue';
-import { actionCatalogs, advanceSkill, slice, startSkill, type CardView, type InboxRow, type RunView, type SkillView } from '@/lib/tar';
+import { confirmRequest, enqueue, pendingCount, resolveConfirm, subscribe } from '@/lib/queue';
+import { advanceSkill, dropSkill, slice, startSkill, type CardView, type InboxRow, type RunView, type SkillView } from '@/lib/tar';
 import { saveSlice } from '@/lib/slicecache';
 import { registerPush } from '@/lib/push';
 import { getCurrentUser } from '@/lib/auth';
 import { Onboarding } from '@/components/Onboarding';
 import { Terms } from '@/components/Terms';
 import { acceptedTerms, acceptTerms } from '@/lib/terms';
-
-const FALLBACK_FIELDS: Record<string, FieldConfig[]> = {
-  'catalog.item.save': [
-    { key: 'name', label: 'Name', kind: 'text', required: true, core: true },
-    { key: 'category', label: 'Category', kind: 'select', core: true, options: ['Grocery', 'Snacks', 'Beverages', 'Dairy', 'Personal care', 'Household', 'Electronics', 'Apparel'] },
-    { key: 'price', label: 'Price', kind: 'money', core: true },
-    { key: 'stock', label: 'Stock', kind: 'number', core: true },
-    { key: 'unit', label: 'Unit', kind: 'select', options: ['each', 'kg', 'g', 'L', 'mL', 'pack', 'box', 'dozen', 'm'], defaultValue: 'each' },
-    { key: 'tax', label: 'Tax', kind: 'percent', defaultValue: '0' },
-  ],
-  'expense.record': [{ key: 'payee', label: 'Payee or vendor', kind: 'text', required: true }, { key: 'category', label: 'Category', kind: 'text', required: true }, { key: 'amount', label: 'Amount', kind: 'money', required: true }],
-  'contact.create': [{ key: 'name', label: 'Name', kind: 'text', required: true }, { key: 'phone', label: 'Phone', kind: 'text' }],
-  'task.create': [{ key: 'title', label: 'What needs doing?', kind: 'text', required: true }],
-  'payment.record': [{ key: 'invoice', label: 'Invoice ID', kind: 'text', required: true }, { key: 'amount', label: 'Amount', kind: 'money', required: true }, { key: 'method', label: 'Method', kind: 'text', required: true }],
-  'invoice.issue': [{ key: 'order', label: 'Order ID', kind: 'text', required: true }],
-  'order.create': [{ key: 'lines', label: 'Lines as JSON', kind: 'text', required: true }],
-  default: [],
-};
 
 export default function Canvas() {
   const theme = useTheme();
@@ -46,7 +27,6 @@ export default function Canvas() {
   const [sheet, setSheet] = useState<'none' | 'inbox' | 'many'>('none');
   const [confirm, setConfirm] = useState<{ key: string; label: string } | null>(null);
   const [queueBadge, setQueueBadge] = useState(0);
-  const [action, setAction] = useState<{ action: string; title: string; fields: FieldConfig[] } | null>(null);
   // one look at the terms per account, before any workspace work
   const [gate, setGate] = useState<'checking' | 'terms' | 'ready'>('checking');
 
@@ -131,6 +111,8 @@ export default function Canvas() {
     }
   }, [run, current]);
 
+  // one meaning per tap: every card opens its section. Creating lives inside
+  // the section's own +, so the canvas stays titles and numbers.
   const openTap = useCallback(async (card: CardView) => {
     if (!current) return;
     if (card.tool.startsWith('skill:')) {
@@ -139,23 +121,50 @@ export default function Canvas() {
       return;
     }
     if (card.shape === 'sale') { router.push('/sale'); return; }
-    if (card.tool === 'order' || card.tool === 'contact' || card.tool === 'member' || card.tool === 'stock' || card.tool === 'purchase' || card.tool === 'expense' || card.tool === 'invoice' || card.tool === 'payment' || card.tool === 'task') {
-      router.push(`/tool/${card.tool}`);
-      return;
-    }
-    if (!card.tap.action) { router.push(`/tool/${card.tool}`); return; }
-    let fields: FieldConfig[] = FALLBACK_FIELDS[card.tap.action] ?? FALLBACK_FIELDS.default;
-    try {
-      const catalog = await actionCatalogs(current.slug);
-      const registered = (catalog.actions as { id: string; fields: FieldConfig[] }[]).find((entry) => entry.id === card.tap.action);
-      if (registered?.fields?.length) fields = registered.fields.filter((field) => !field.hidden);
-    } catch { /* fallback fields stand */ }
-    setAction({ action: card.tap.action!, title: card.tap.label, fields });
+    router.push(`/tool/${card.tool}`);
   }, [current, router, data, runSkillCard]);
+
+  // a custom card is yours to keep or drop; the row stays behind, hidden
+  const removeSkill = useCallback((skill: SkillView) => {
+    if (!current) return;
+    Alert.alert('Remove card?', skill.title, [
+      { text: 'Keep', style: 'cancel' },
+      {
+        text: 'Remove', style: 'destructive',
+        onPress: async () => {
+          try {
+            await dropSkill(current.slug, skill.id);
+            await refreshSlice();
+          } catch {
+            Alert.alert(skill.title, 'That card could not be removed.');
+          }
+        },
+      },
+    ]);
+  }, [current, refreshSlice]);
 
   const inboxRows: InboxRow[] = useMemo(() => data?.inbox ?? [], [data]);
   const next = data?.next ?? null;
   const cards = useMemo(() => data?.cards ?? [], [data]);
+  const [rowBusy, setRowBusy] = useState<string | null>(null);
+
+  // a waiting row is an intent: run it (the queue keeps its confirm), or open
+  // the section it belongs to. No row is dead text.
+  const openInbox = useCallback(async (row: InboxRow) => {
+    if (!current || rowBusy) return;
+    setSheet('none');
+    if (row.action) {
+      setRowBusy(row.id);
+      try {
+        await enqueue({ ws: current.slug, action: row.action, label: row.title, key: `inbox-${row.id}-${Date.now()}`, input: row.input });
+        setTimeout(() => void refreshSlice(), 900);
+      } finally { setRowBusy(null); }
+      return;
+    }
+    if (row.tool === 'channel') router.push('/chat');
+    else router.push(`/tool/${row.tool}`);
+  }, [current, rowBusy, refreshSlice, router]);
+
   const skillCards: CardView[] = useMemo(() => (data?.skills ?? []).map((skill) => ({
     tool: `skill:${skill.id}`,
     title: skill.title,
@@ -189,29 +198,55 @@ export default function Canvas() {
   return (
     <View style={[styles.page, { backgroundColor: theme.background }]}>
       <View style={[styles.header, { paddingTop: insets.top + 10, borderBottomColor: theme.border }]}>
-        <TouchableOpacity accessibilityRole="button" style={styles.badgeWrap} onPress={() => setSheet('inbox')} accessibilityLabel="Inbox">
-          <Ionicons name="notifications-outline" size={24} color={theme.text} />
-          {inboxRows.length > 0 ? (
-            <View style={[styles.badgeDot, { backgroundColor: theme.primary }]}>
-              <Text style={styles.badgeText}>{inboxRows.length > 9 ? '9+' : inboxRows.length}</Text>
-            </View>
-          ) : null}
-        </TouchableOpacity>
         <TouchableOpacity accessibilityRole="button" style={styles.heading} onPress={() => setSheet('many')} accessibilityLabel="Switch workspace">
           <Text style={[styles.wsName, { color: theme.text }]} numberOfLines={1}>{current.mode === 'personal' ? 'Personal' : current.name}</Text>
         </TouchableOpacity>
         {roleLabel ? <Text style={[styles.roleText, { color: theme.textSecondary }]}>{roleLabel}</Text> : null}
+        <TouchableOpacity accessibilityRole="button" style={styles.badgeWrap} onPress={() => setSheet('inbox')} accessibilityLabel="Inbox">
+          <Ionicons name={inboxRows.length > 0 ? 'file-tray-full-outline' : 'file-tray-outline'} size={24} color={theme.text} />
+        </TouchableOpacity>
       </View>
 
       <ScrollView contentContainerStyle={[styles.stack, { paddingBottom: insets.bottom + 96 }]}>
         {next ? (
-          <View style={[styles.next, { backgroundColor: theme.backgroundElement }]}>
+          <TouchableOpacity accessibilityRole="button" activeOpacity={0.7} onPress={() => void openInbox(next)} style={[styles.next, { backgroundColor: theme.backgroundElement }]}>
             <Text style={[styles.nextLabel, { color: next.urgent ? '#B42318' : theme.textSecondary }]}>{next.urgent ? '! NEXT' : 'NEXT'}</Text>
             <Text style={[styles.nextTitle, { color: theme.text }]} numberOfLines={2}>{next.title}</Text>
-          </View>
+          </TouchableOpacity>
         ) : null}
         {cards.map((card) => <Card key={card.tool} card={card} onTap={(tapped) => void openTap(tapped)} />)}
-        {skillCards.map((card) => <Card key={card.tool} card={card} onTap={(tapped) => void openTap(tapped)} />)}
+        {skillCards.length ? (
+          // custom cards are the console list: full-bleed white rows parted by
+          // hairlines, no outer border, so they read apart from the dealt stack.
+          <View style={[styles.skillGroup, { borderTopColor: theme.border }]}>
+            {skillCards.map((card) => (
+              <Pressable
+                key={card.tool}
+                accessibilityRole="button"
+                accessibilityLabel={card.title}
+                accessibilityHint="Hold to remove this card"
+                onPress={() => void openTap(card)}
+                onLongPress={() => {
+                  const skill = data?.skills.find((entry) => `skill:${entry.id}` === card.tool);
+                  if (skill) removeSkill(skill);
+                }}
+                delayLongPress={400}
+                style={({ pressed }) => [
+                  styles.skillRow,
+                  { backgroundColor: theme.background, borderBottomColor: theme.border },
+                  pressed ? { backgroundColor: theme.backgroundSelected } : null,
+                ]}
+              >
+                <Text style={[styles.skillTitle, { color: theme.text }]} numberOfLines={1}>{card.title}</Text>
+                {card.number || card.pendingLine ? (
+                  <Text style={[styles.skillMeta, { color: theme.textSecondary }]} numberOfLines={1}>
+                    {[card.number, card.pendingLine].filter(Boolean).join(' · ')}
+                  </Text>
+                ) : null}
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
       </ScrollView>
 
       <View style={[styles.askFooter, { backgroundColor: theme.background, borderTopColor: theme.border, paddingBottom: insets.bottom + 12 }]}>
@@ -226,13 +261,22 @@ export default function Canvas() {
         </TouchableOpacity>
       </View>
 
-      <Sheet title="Inbox" visible={sheet === 'inbox'} onClose={() => setSheet('none')}>
+      <Sheet title="Inbox" gap visible={sheet === 'inbox'} onClose={() => setSheet('none')}>
         {inboxRows.length === 0 ? <Text style={[styles.empty, { color: theme.textSecondary }]}>Nothing waiting.</Text> : null}
         {inboxRows.map((row) => (
-          <View key={row.id} style={[styles.sheetRow, { borderBottomColor: theme.border }]}>
-            <Text style={{ color: row.urgent ? '#B42318' : theme.textSecondary, fontWeight: '800' }}>{row.urgent ? '!' : '·'}</Text>
-            <Text style={[styles.sheetRowText, { color: theme.text }]}>{row.title}</Text>
-          </View>
+          <TouchableOpacity
+            key={row.id}
+            accessibilityRole="button"
+            activeOpacity={0.7}
+            disabled={rowBusy === row.id}
+            onPress={() => void openInbox(row)}
+            style={[styles.inboxRow, { backgroundColor: theme.backgroundElement }]}
+          >
+            <View style={styles.inboxDotWrap}>
+              {row.urgent ? <View style={styles.inboxDot} /> : null}
+            </View>
+            <Text style={[styles.inboxText, { color: theme.text }]} numberOfLines={2}>{row.title}</Text>
+          </TouchableOpacity>
         ))}
       </Sheet>
 
@@ -262,17 +306,6 @@ export default function Canvas() {
         <ConfirmCard label={confirm.label} onResolve={async (yes) => { await resolveConfirm(confirm.key, yes); setConfirm(null); void refreshSlice(); }} />
       ) : null}
 
-      {action ? (
-        <ActionSheet
-          visible
-          onClose={() => setAction(null)}
-          ws={current.slug}
-          action={action.action}
-          title={action.title}
-          fields={action.fields}
-          onQueued={() => void refreshSlice()}
-        />
-      ) : null}
     </View>
   );
 }
@@ -283,10 +316,12 @@ function Sheet({ title, visible, gap, onClose, children }: { title: string; visi
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={sheetStyles.backdrop}>
+        {/* the dimmed area above the drawer is the way out: a tap closes it */}
+        <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={onClose} style={{ flex: 1 }} />
         <View style={[sheetStyles.sheet, { backgroundColor: theme.background, paddingBottom: insets.bottom + 16 }]}>
+          <View style={[sheetStyles.grabber, { backgroundColor: theme.border }]} />
           <View style={sheetStyles.head}>
             <Text style={[sheetStyles.title, { color: theme.text }]}>{title}</Text>
-            <TouchableOpacity accessibilityRole="button" onPress={onClose} accessibilityLabel="Close"><Ionicons name="close" size={22} color={theme.textSecondary} /></TouchableOpacity>
           </View>
           <ScrollView contentContainerStyle={gap ? { gap: 8, paddingBottom: 4 } : undefined}>{children}</ScrollView>
         </View>
@@ -336,8 +371,6 @@ const styles = StyleSheet.create({
   page: { flex: 1 },
   header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingBottom: 10, borderBottomWidth: StyleSheet.hairlineWidth },
   badgeWrap: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
-  badgeDot: { position: 'absolute', top: 1, right: 1, minWidth: 16, height: 16, borderRadius: 8, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center' },
-  badgeText: { color: '#fff', fontSize: 10, fontWeight: '800' },
   heading: { flex: 1 },
   wsName: { fontSize: 22, fontWeight: '800', letterSpacing: -0.5 },
   roleText: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' },
@@ -345,23 +378,30 @@ const styles = StyleSheet.create({
   next: { borderRadius: 4, minHeight: 108, paddingHorizontal: 18, paddingVertical: 16, gap: 6, justifyContent: 'space-between' },
   nextLabel: { fontSize: 11, fontWeight: '800', letterSpacing: 1 },
   nextTitle: { fontSize: 16, fontWeight: '600' },
+  skillGroup: { marginHorizontal: -16, borderTopWidth: StyleSheet.hairlineWidth },
+  skillRow: { minHeight: 64, paddingHorizontal: 16, paddingVertical: 16, gap: 4, justifyContent: 'center', borderBottomWidth: StyleSheet.hairlineWidth },
+  skillTitle: { fontSize: 16, fontWeight: '500' },
+  skillMeta: { fontSize: 15 },
   askFooter: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 16, paddingTop: 10, borderTopWidth: StyleSheet.hairlineWidth },
   askBar: { height: 52, borderRadius: 4, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16 },
   askBarText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   askBarBadge: { marginLeft: 'auto', minWidth: 22, height: 22, borderRadius: 11, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 },
   askBarBadgeText: { fontSize: 11, fontWeight: '800' },
-  sheetRow: { flexDirection: 'row', gap: 10, paddingVertical: 14, paddingHorizontal: 4, borderBottomWidth: StyleSheet.hairlineWidth, alignItems: 'center', justifyContent: 'space-between' },
-  sheetRowText: { fontSize: 15, flexShrink: 1 },
+  inboxRow: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 4, paddingHorizontal: 14, minHeight: 52, paddingVertical: 12 },
+  inboxDotWrap: { width: 8, alignItems: 'center' },
+  inboxDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#B42318' },
+  inboxText: { flex: 1, fontSize: 15, lineHeight: 21 },
+  empty: { paddingVertical: 24, textAlign: 'center' },
   wsRow: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 56, paddingHorizontal: 14, paddingVertical: 12, borderRadius: 4 },
   wsRowName: { fontSize: 16, fontWeight: '700' },
   wsRowMeta: { fontSize: 12, paddingTop: 2, textTransform: 'capitalize' },
-  empty: { paddingVertical: 20, textAlign: 'center' },
 });
 
 const sheetStyles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
-  sheet: { borderTopLeftRadius: 4, borderTopRightRadius: 4, paddingHorizontal: 16, paddingTop: 16, maxHeight: '75%' },
-  head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 12 },
+  sheet: { borderTopLeftRadius: 4, borderTopRightRadius: 4, paddingHorizontal: 16, paddingTop: 10, maxHeight: '62%' },
+  grabber: { alignSelf: 'center', width: 36, height: 4, borderRadius: 2, marginBottom: 14 },
+  head: { flexDirection: 'row', alignItems: 'center', paddingBottom: 12 },
   title: { fontSize: 18, fontWeight: '800', letterSpacing: -0.4 },
   confirm: { borderRadius: 4, padding: 20, width: '86%' },
 });

@@ -129,18 +129,39 @@ export interface CardChanges {
 
 export interface CustomCard {
   kind: 'skill';
-  draft: { title: string; words: string; trigger: Record<string, unknown>; steps: { action: string; input: Record<string, unknown>; auto?: boolean }[]; shape: string };
+  draft: { title: string; words: string; trigger: Record<string, unknown>; steps: { action: string; input: Record<string, unknown>; auto?: boolean }[]; shape: string; preview?: string[] };
 }
 
-export type CardPlan = CardChanges | CustomCard | { kind: 'none' };
+/** The card is already on the canvas: say so, add nothing. */
+export interface KnownCard {
+  kind: 'known';
+  tools: string[];
+  titles: string[];
+  message: string;
+}
 
-/** The owner names a job; Jev types the change or proposes a custom card. */
-export async function planCard(ws: string, words: string): Promise<CardPlan> {
-  return request('POST', `/v1/workspaces/${ws}/cards/plan`, { words }) as Promise<CardPlan>;
+/** One plain question; the answer comes back as the next turn. */
+export interface CardQuestion {
+  kind: 'question';
+  text: string;
+}
+
+export type CardPlan = CardChanges | CustomCard | KnownCard | CardQuestion | { kind: 'none'; reason?: string };
+
+export interface PlanTurn { who: 'you' | 'tar'; text: string }
+
+/** The owner names a job; Jev types the change, or TAR asks one question. */
+export async function planCard(ws: string, words: string, history: PlanTurn[] = []): Promise<CardPlan> {
+  return request('POST', `/v1/workspaces/${ws}/cards/plan`, { words, history }) as Promise<CardPlan>;
 }
 
 export async function confirmCard(ws: string, plan: { add?: string[]; remove?: string[] } | { draft: CustomCard['draft'] }) {
   return request('POST', `/v1/workspaces/${ws}/cards/confirm`, plan);
+}
+
+/** A custom card is hidden for good; the row stays. */
+export async function dropSkill(ws: string, id: string) {
+  return request('POST', `/v1/workspaces/${ws}/skills/${id}/drop`, {});
 }
 
 export type RunStatus = 'ready' | 'waiting' | 'done' | 'failed';
@@ -192,14 +213,6 @@ export async function draftItem(ws: string, name: string): Promise<{ category?: 
 }
 
 // --- ask / skills ---
-
-export async function ask(ws: string, words: string): Promise<{ ladder: string; skill: SkillView | null; draft: { title: string; words: string; trigger: Record<string, unknown>; steps: { action: string; input: Record<string, unknown>; auto?: boolean }[]; shape: string } | null }> {
-  return request('POST', `/v1/workspaces/${ws}/ask`, { words }) as ReturnType<typeof ask>;
-}
-
-export async function confirmSkill(ws: string, draft: Record<string, unknown>) {
-  return request('POST', `/v1/workspaces/${ws}/skill/confirm`, { draft });
-}
 
 export async function importRows(ws: string, rows: { name: string; price?: unknown }[]) {
   return request('POST', `/v1/workspaces/${ws}/import`, { rows });

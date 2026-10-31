@@ -1,7 +1,7 @@
 // ToolList: one route, twelve tools. Flat rows: title, one line, the number.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -9,16 +9,29 @@ import { useTheme } from '@/hooks/use-theme';
 import { useWorkspace } from '@/state/Workspace';
 import { NavBar } from '@/components/NavBar';
 import { SearchField } from '@/components/SearchField';
-import { hire, importImage, toolRows } from '@/lib/tar';
+import { actionCatalogs, hire, importImage, toolRows } from '@/lib/tar';
+import { ActionSheet, type FieldConfig } from '@/components/ActionSheet';
 import { enqueue } from '@/lib/queue';
 import * as ImagePicker from 'expo-image-picker';
 
 interface Row { id: string; type: string; title: string; state: string; data: Record<string, unknown>; version: number; updatedAt: number }
 
 const TOOL_TITLES: Record<string, string> = {
-  catalog: 'Products and prices', stock: 'Inventory', purchase: 'Purchase orders', expense: 'Expenses',
+  pos: 'Sales', catalog: 'Products', stock: 'Inventory', purchase: 'Purchases', expense: 'Expenses',
   contact: 'Customers', member: 'Team', site: 'Storefront', task: 'Tasks', channel: 'Messages',
-  invoice: 'Invoices', payment: 'Payments', order: 'Orders', settings: 'Settings',
+  invoice: 'Billing', payment: 'Payments', order: 'Orders', register: 'Cash', settings: 'Settings',
+};
+
+// The section's one +: its create action and the form's title.
+const ADD_ACTIONS: Record<string, { action: string; title: string }> = {
+  catalog: { action: 'catalog.item.save', title: 'New item' },
+  expense: { action: 'expense.record', title: 'New expense' },
+  contact: { action: 'contact.create', title: 'New contact' },
+  purchase: { action: 'purchase.create', title: 'New purchase' },
+  task: { action: 'task.create', title: 'New task' },
+  stock: { action: 'stock.adjust', title: 'Adjust stock' },
+  payment: { action: 'payment.record', title: 'Record payment' },
+  invoice: { action: 'invoice.issue', title: 'Issue bill' },
 };
 
 export default function ToolListScreen() {
@@ -35,8 +48,11 @@ export default function ToolListScreen() {
   const [growWords, setGrowWords] = useState('');
   const [growEmail, setGrowEmail] = useState('');
   const [growing, setGrowing] = useState(false);
+  const [adding, setAdding] = useState<{ action: string; title: string; fields: FieldConfig[] } | null>(null);
+  const [opening, setOpening] = useState(false);
   const seq = useRef(0);
   const title = TOOL_TITLES[String(toolId ?? '')] ?? String(toolId ?? '');
+  const addAction = ADD_ACTIONS[String(toolId ?? '')];
 
   const load = useCallback(async () => {
     if (!current || !toolId) return;
@@ -53,6 +69,20 @@ export default function ToolListScreen() {
     const timer = setTimeout(() => void load(), q ? 300 : 0);
     return () => clearTimeout(timer);
   }, [load, q]);
+
+  // one + in the section header; the form is the item-style ActionSheet
+  const openAdd = async () => {
+    if (!current || !addAction || opening) return;
+    setOpening(true);
+    try {
+      const catalog = await actionCatalogs(current.slug);
+      const registered = (catalog.actions as { id: string; fields: FieldConfig[] }[]).find((entry) => entry.id === addAction.action);
+      if (!registered) throw new Error('missing');
+      setAdding({ ...addAction, fields: registered.fields.filter((field) => !field.hidden) });
+    } catch {
+      Alert.alert(title, 'Could not open the form. Try again.');
+    } finally { setOpening(false); }
+  };
 
   const importPhoto = async () => {
     if (!current) return;
@@ -124,7 +154,15 @@ export default function ToolListScreen() {
           </View>
         </View>
       </Modal>
-      <NavBar title={title} onBack={() => router.back()} />
+      <NavBar
+        title={title}
+        onBack={() => router.back()}
+        trailing={addAction ? (
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel={`Add to ${title}`} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }} disabled={opening} onPress={() => void openAdd()}>
+            <Ionicons name="add" size={26} color={theme.primary} />
+          </TouchableOpacity>
+        ) : undefined}
+      />
       <SearchField flush value={q} onChangeText={setQ} />
       {toolId === 'catalog' ? (
         <TouchableOpacity accessibilityRole="button" style={[styles.importRow, { borderBottomColor: theme.border }]} onPress={() => void importPhoto()} disabled={importing} accessibilityLabel="Import a price list photo">
@@ -158,6 +196,9 @@ export default function ToolListScreen() {
         ) : null}
         ListEmptyComponent={!loading ? <Text style={{ color: theme.textSecondary, textAlign: 'center', paddingTop: 40 }}>Nothing here yet.</Text> : null}
       />
+      {adding && current ? (
+        <ActionSheet visible onClose={() => setAdding(null)} ws={current.slug} action={adding.action} title={adding.title} fields={adding.fields} onQueued={() => void load()} />
+      ) : null}
     </View>
   );
 }
