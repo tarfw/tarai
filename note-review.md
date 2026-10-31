@@ -1,15 +1,11 @@
 # Note Review — later
 
-## Inbox: unclutter (2026-10-27)
+## Drawers: frosted backdrop (2026-10-29)
 
-Verdict: mildly overengineered — half the row is never consumed.
+Deferred: needs a native module, so it waits for the next dev-client APK build.
 
-Consumed: member, status, title, urgent, due, action, created.
-Dead end-to-end: `move`, `tool`, `reach`, `assigned`, `input` (client uses id/title/urgent only). `completeInboxStatement` is dead code; 'done' history written, never read.
-
-Plan when picked up:
-1. Trim row to the 7 live fields (5 call sites + `readInbox` + app `InboxRow` type).
-2. Delete `completeInboxStatement` (superseded by `settleInbox`).
-3. Make rows with an `action` tappable in the inbox sheet (today: dead text).
-
-Keep: stored rows (not derived) — "Pack the new order" must survive refresh and target another member.
+Wanted: `BlurView` above the inbox/workspaces drawer instead of the flat 40% dim.
+- `npx expo install expo-blur` (installed and removed once already; package.json must not keep it until the APK carries it).
+- In `Sheet` (tarapp/src/app/canvas.tsx): `BlurView intensity={55} tint={resolvedScheme === 'dark' ? 'dark' : 'light'} blurMethod="dimezisBlurView" style={StyleSheet.absoluteFill}`, then a `pointerEvents="none"` veil `rgba(0,0,0,0.18)` over it.
+- Backdrop keeps the full-size `Pressable` so a tap closes the drawer; Android hardware back already closes it through `onRequestClose`.
+- Do not remove the dim fallback, so the sheet still reads if blur is unavailable.

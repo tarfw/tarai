@@ -1,480 +1,283 @@
-# TAR - Tools, Flows, Cards
+# TAR - One Live Room
 
 ## Concept
 
 ```
-TAR         = Architecture + Tools + Cards
+TAR          = one live room + 3 tables + 5 cards + skills
 
-Architecture = Turso (records) + R2 (files) + Action Registry
-             + Events + Gates + Inbox engine + Adapters
-             invisible. nobody taps a database.
+Room         = one workspace = one actor = one SQLite.
+               every member connects to the same instance.
+               a tap commits in 0.7 ms; everyone sees it in under 1 ms.
+User         = starts in a personal room. one tap switches rooms.
+               no auto-switch, no merged view, no cross-room joins.
+Member       = owner, admin, staff. the room is members only.
+Customer     = storefront or channel only. never in the room.
 
-User         = a member of a workspace. the app is members only.
-Workspace    = owner + admin + cashier + ...   -> one business boundary
-Merchant     = the owner. the first member.
-Customer     = storefront only. never a member.
+Truth        = a room holds exactly three things:
+               item   what exists (catalog, contacts, members, config)
+               move   what happened or waits to (sale, bill, receipt,
+                      count, adjust, PO, expense, task, approval)
+               skill  how it repeats
 
-Many         = one user, many workspaces. each life keeps
-               its own boundary. the switch is the list:
-               a badge per row, one tap. no auto-switch,
-               no merged inbox, no join.
+Pending      = a move with state pending. not a place.
+               it is the line on its card, and a row in the badge.
+               a tap sets it done; it leaves every screen at once.
+Done         = a move with state done. the ledger and the numbers.
+               a number is a sum over done moves, held in the actor's RAM.
 
-Tool         = one merchant verb = a cluster of registered actions + reads
-Action       = the only thing that writes. belongs to exactly one tool.
-Card         = Tool x Role x Usefulness        -> what a member sees and taps
-Flow         = Step + Step + ...               -> max 12
-               composes existing actions only. a card shape, never a tool.
-               its library lives behind the card.
-Step         = Read + Action + Gate
-
-Catalog      = Product + Service + Commodity   -> one tool, a `nature` field.
-                                               rules differ, the tool does not.
-Channel      = WhatsApp + Telegram + ...       -> one tool, adapters inside.
-Stage        = a tag over tools (Business Manager). never a tool.
-
-Card rule    = title, one number, one tap, right-aligned. at most one
-               pending line.
-               no chips, no second number, no url, no status.
-               the number is chosen by role: money for the owner,
-               counts for the member. everything else is a detail.
-Card core    = the 14 basic tool cards, one per tool. the only
-               menu. at birth Jev names the nature and code
-               deals the cards. after, (+ Add a Card) browses
-               it, zero model calls. every path writes the
-               same one catalog record. nothing outside.
-NEXT         = the top inbox row. urgent rows carry !.
-               there is no alert strip. an alert is just the top row.
-Inbox        = a property of every card, not a place. rows typed by tool.
-               the badge opens the flat view of them all. never a tool.
+Card         = title, one number, at most one pending line, one tap.
+               the number is money on a card that moves money and a
+               count elsewhere; the role picks which. no chips,
+               no second number, no url, no status.
+               everything else is a detail screen.
+Core         = five cards, one per domain. the only menu.
+               a room is dealt 2 to 5 at birth by its nature.
+               a confirmed tap skill is pinned as one more card.
+               a canvas holds at most six.
 Surface      = one screen, no tabs. Canvas is the app.
-               circle badge = the flat inbox.
-               avatar = a big plain circle. it is You.
-               the header ends in a hairline. header type is one step
-               smaller and muted. chrome, never a card. cards stay on
-               paper, separated by whitespace only.
-               the floating (+) = the agent, fullscreen.
-               every other screen is a detail of a card.
-Ask          = the personal agent, fullscreen. one long conversation.
-               yours alone: it sees only what your grants allow.
-               in personal it is open to all your own data.
-               words -> plan -> one confirm -> skill -> card.
-               it proposes plans from registered actions only. never
-               freelances. money or customer always asks first.
-               cards can be made here: your own on one confirm.
-               another member's only if you are the owner or admin.
-
-Integration  = adapter -> registered action -> one of the 14 tools
-               built and reviewed at build time, never found at runtime.
-               no model on run. (the one law Memory, Site, and Onboard inherit)
-
-Network      = phase 2. a member's agent orders from other workspaces:
-               taxi, food, grocery. the order enters the merchant the
-               same way as the web store: action + gate. each side keeps
-               its own records. routing lives in control, never a join.
-               the customer law holds across workspaces.
-               settlement across workspaces is the one new design.
-
-Site         = one tool, two modes, one door.
-
-               Mode 1  CURATED   describe once -> Jev picks design + recipes.
-               Mode 2  SANDBOX   member prompts -> LLM writes Astro code.
-                                 built in an isolated box.          (later)
-
-               ONE sites worker serves *.tar.site
-               subdomain -> workspace -> release in R2
-               gate -> publish = an immutable release. rollback repoints.
-
-               the LLM writes looks. never checkout, payment, tax, price, stock.
-               the workspace owns the URL. the mode can change, the URL does not.
-               sandbox, builder, releases = architecture.
+               avatar = you, and the room switch.
+               circle badge = every pending move, flat.
+               floating (+) = Ask, fullscreen.
+NEXT         = gone. every card carries its own pending line and
+               floats to the top while it has one. no banner, no strip.
 ```
 
-## Data
+## Cards (5)
+
+| # | Card | owner number | member number | one tap | holds |
+| :-: | :--- | :--- | :--- | :--- | :--- |
+| 1 | Sell | Rs. revenue today | to pack | New Sale | pos, gst bill, order queue |
+| 2 | Money | Rs. net cash + bank | receipts today | Log Money | receipts, upi, drawer, expenses, payouts |
+| 3 | Stock | Rs. inventory value | low items | Adjust | catalog, stock, POs, GRN |
+| 4 | Reach | leads this week | unread | Open Chat | contacts, whatsapp, telegram, tar.site |
+| 5 | Work | pending tasks | my tasks today | New Task | team, roles, shifts, tasks |
 
 ```
-Memory       = skills. describe once -> run forever, free.
-               L0 literal -> L1 shape -> L2 prose -> confirmed skill.
-               vector = one column on skill. added only when L1 misses climb.
+the 14 old tools are kinds under the five:
+  sell    pos, invoice, order
+  money   payment, register, expense, purchase payment
+  stock   catalog, stock, purchase
+  reach   contact, channel, site
+  work    member, task
 
-Control (D1, platform-wide)
-               who exists, who belongs where. columns in Schema.
-
-Truth (one Turso DB per workspace)
-  record      every fact. versioned, archived.
-  move        every change ever. append-only. the event
-              feed is a view over it: inbox + every canvas.
-  current     the number now. derived, not duplicate. rebuildable.
-  skill       memory of flow.
-  run         one execution. a log, never a resume.
-  inbox       each member's rows, typed by their tool.
-  columns live in the Schema table below.
-
-Bytes (R2)
-              media, papers, sites, archive, closes
-              DB = numbers, states, links. R2 = bytes.
-              never only in R2: price, stock, totals, payment state.
-
-Cost guard
-              one write = record + move + current + inbox. one transaction.
-              hot window 90 days -> monthly close, hash-sealed to R2 -> archive.
-              current = close + bounded move.
-              writes and models share the monthly ceiling.
-
-Kernel        the commerce floor, inherited from the harness:
-              posting   every money move writes a balanced pair,
-                        checked before commit. unbalanced writes
-                        nothing.
-              stock     available = onhand - reserved, never
-                        negative. a write that would cross zero
-                        is refused.
-              undo      every owner money tap has one-tap undo.
-                        undo writes the opposite move.
-              gate      auto when inputs are known and reach is
-                        none or data. ask when an input is
-                        missing. approve for money and customer.
-                        auto + money becomes approve. the floor
-                        is code, never a model.
-
-Device       a window, never a copy. one door: the TAR API.
-              the phone never touches a database. no sync, no
-              mirror, no local-first, no database token.
-              login   = one TAR session. the only credential
-                        a phone ever holds.
-              read    = GET /me: my workspaces + badge counts.
-                        GET slice: my inbox rows + my cards'
-                        numbers. kilobytes. a detail screen is
-                        one more read, on tap.
-              cache   = the last slice on disk. stale offline
-                        is fine. the slice is disposable.
-              write   = tap -> queue (idempotency key) ->
-                        action -> gate. the phone sends
-                        intent, never data.
-              offline = reads: the cached slice. writes: taps
-                        wait in the local queue, replay in
-                        order. a badge tells the truth.
-              grant   = the server grants the slice. the
-                        phone never picks its own.
-                        the size of the slice is trust.
-                        the road for writes is one.
-
-Realtime     freshness in layers. the bell is never the data.
-              own tap = the answer returns the fresh slice.
-              open app = a 20s version check: if-none-match
-              on the last move id. 304 = nothing changed.
-              nearly free at any scale.
-              closed phone = OS push (FCM / APNs). the only
-              bell that reaches a pocket. the driver's road.
-              instant = later. a CF websocket hub, opened on
-              demand. the poll is the floor.
-
-Plug         the DB is a plug behind the API. today Turso.
-              if bills ever grow: our servers + SQLite
-              files. laws unchanged. files copy.
+a kind is a row in the registry. a card is a lens over kinds.
+a solo shop starts with sell, money, stock. a full one uses all five.
 ```
 
-## Schema (10 tables, the floor)
-
-| DB | Table | Columns | Holds |
-| :--- | :--- | :--- | :--- |
-| D1 | user | id, email, name | who exists |
-| D1 | workspace | id, name, slug, mode, db, host, state | one business boundary |
-| D1 | member | workspace, user, role, state | who belongs where |
-| D1 | invite | workspace, email, role, state | pending members |
-| Turso | record | id, type, data, version, owner, created, archived | every fact. data under 2KB |
-| Turso | move | id, kind, record, key, amount, why, source, created | every change. append-only. events are a view over it |
-| Turso | current | kind, key, data | the number now. key = kind + key |
-| Turso | skill | id, shape, trigger, steps, score, confirmed | memory of flow. embedding later |
-| Turso | run | id, skill, step, status, key, input | one execution. same key never twice |
-| Turso | inbox | id, member, move, tool, reach, due, assigned, status | each member's rows, typed by tool |
-
-One schema, two modes: `workspace.mode = personal | work`. Personal is a workspace of one; its slice is the whole DB. It graduates to work in place. Ten tables is the floor; each has exactly one job.
-
-## Tool list (14)
-
-A tool with no core flow (sell, buy, close day) is deferred, not built.
-
-| # | Tool | Card | Reach | One tap |
-| :-: | :--- | :--- | :--- | :--- |
-| 1 | pos | Counter Sales | money | New Sale |
-| 2 | order | Orders and Dispatch | customer | Open Queue |
-| 3 | invoice | Billing and GST | money | Issue Bill |
-| 4 | payment | Payments and UPI | money | Record Receipt |
-| 5 | register | Cash Drawer | money | Count Cash |
-| 6 | catalog | Products and Prices | data | Add Item |
-| 7 | stock | Inventory and Warehouse | data | Adjust Stock |
-| 8 | purchase | Supplier POs and GRN | money | New PO |
-| 9 | expense | Daily Expenses | money | Log Expense |
-| 10 | contact | Customers and Leads | customer | Add Contact |
-| 11 | member | Team and Shifts | data | Manage Members |
-| 12 | site | Online Storefront | customer | View Store |
-| 13 | task | Manual Tasks | none | Mark Done |
-| 14 | channel | Messages | customer | Open Chat |
-
-## Shapes - the detail behind a card
+## Shapes - four, and one read view
 
 ```
-Shape        = four, not fourteen. the tool is a row in the
-               registry, never a file.
+list      one route: queue, bills, receipts, cash, items, stock,
+          POs, expenses, contacts, members, tasks.
+sale      one route: pos. a gst bill is sale in tax mode.
+chat      one route: channel.
+sheet     one form, many configs: receipt, cash, item, stock,
+          po, expense, contact.
+detail    a row tap: one move or one item. read + one tap.
+          a view, not a shape.
 
-               list      one route. queue, bills, receipts,
-                         cash, items, stock, po, pos,
-                         expenses, contacts, members, tasks.
-                         rows + the number + the one tap.
-               sale      one route. pos. invoice is sale in
-                         gst mode.
-               chat      one route. channel. the one shape
-                         earned, never assumed.
-               sheet     one form, many configs. receipt,
-                         cash, item, stock, po, expense,
-                         contact. fields from the registry.
-               site      no screen. view store is a url.
+a new kind is an entry in the registry, never a screen.
+a new screen is earned by a new shape, and only that.
+```
 
-               row tap   one record detail. any tool. read +
-                         status. the fourth shape.
+## Gate - the code floor, no model
 
-               a new tool is an entry, not a screen. a new
-               screen is earned by a new shape, and only
-               that. the branch lives in data, never code.
+```
+idempotent  move.id is the client key. the same key never lands twice.
+durable     durable async is a move row, never a queue message.
+            a queue drops a message when it is received and never
+            retries it. a move retries by its own id.
+shutdown    in-flight actions are not awaited on sleep. push and
+            adapter work rides waitUntil. an action has 60 s.
+posting     a money move is two rows sharing one pair id and
+            naming their account. both pending, or both done.
+            a pair that does not sum to zero writes nothing.
+stock       available = onhand - reserved, never below zero.
+            a crossing write is refused and posts one urgent
+            pending move on Stock: ! shortage, audit.
+reach       a human writes inside their grant: commits at once.
+            above the grant, they wait like a skill: one pending
+            move on the owner's card. a skill that moves money or
+            messages a customer always waits. the gate is on the
+            writer, never on the person.
+customer    a storefront or channel writes orders, never money.
+            an order lands pending to pack; selling needs no
+            approval. a capture from a payment adapter is done and
+            undoable; money out of a skill waits.
+undo        every owner money tap has one-tap undo. undo writes
+            the opposite pair, with reverses = the pair it undoes.
+            a pair already reversed is never reversed again.
+```
 
- the files (six routes, one sheet, one registry):
+## Data - 3 tables
 
- src/
-   screens/
-     Canvas.tsx        the app
-     Ask.tsx           the agent
-     ToolList.tsx      /tool/:toolId        12 tools
-     Sale.tsx          pos + invoice        gst mode
-     Chat.tsx          channel
-     RecordDetail.tsx  /record/:id          any row tap
-   components/
-     ActionSheet.tsx   one form sheet, config-driven
-     Card.tsx
-   tools/
-     registry.ts       the file that makes 14 = 4
+| table | columns | job |
+| :--- | :--- | :--- |
+| item | id, type, data, version, archived | nouns. data under 2KB or an R2 url |
+| move | id, kind, tool, item, qty, amount, account, pair, state, reverses, by, at | verbs + queue + ledger |
+| skill | id, name, trigger, recipe, params, role, next_run | how it repeats |
+
+```
+no inbox     pending is a state.
+no current   sums over done, in RAM, rebuildable.
+no run       the move id is the run key.
+no chat      Ask turns live in the actor, as items.
+
+Close        no pruning. Rivet keeps hot data on local disk and
+             offloads the rest to S3 by itself. old rows stay
+             readable, nothing is deleted, no retention rule.
+             keep one thing: a monthly close row. a card number is
+             close + moves after it, never a full-ledger scan.
+Bytes        R2. media, papers, releases.
+             a phone uploads straight to R2 and sends the url.
+             never only in R2: price, stock, totals, payment state.
+```
+
+## Ask & Skills - describe once, run free
+
+```
+Ask          = one conversation. words, photos, exports.
+               LLM drafts -> Jev types -> one confirm -> a skill,
+               a record, or a card. money or customers wait for the owner.
+               a draft slower than 60 s is a background run, pushed
+               when ready.
+Skill        = trigger + recipe + params. confirmed once, runs free.
+               tap    pinned as a card
+               event  right after a matching move, same transaction
+               time   an actor schedule. durable, wakes a sleeping
+                      room, utc by default, so the zone is a param.
+               msg    a channel adapter
+               recipe code shipped in the registry. the model picks
+               a recipe and fills params. it never writes SQL or code.
+Memory       = L0 literal -> L1 shape -> L2 prose -> confirmed skill.
+               a miss climbs one step. nothing runs unconfirmed.
+```
+
+## The 3 brains
+
+```
+words / photos / exports -> LLM drafts -> JEV types -> one confirm -> room
+
+LLM     proposes only. never writes.
+JEV     four verdicts, in parallel, no prose:
+        nature  which 2 to 5 cards | role | sanity of rows | risk
+GATE    the code floor above.
+
+no model on run. models speak at birth, import, hire, site and ask.
+Integration = adapter -> recipe -> one of the five cards.
+              built and reviewed at build time, never found at runtime.
 ```
 
 ## Canvas - one screen, every member (concept)
 
 ```
-   OWNER - alerts, money, site           MEMBER - own tools, own tasks
+   OWNER - money, stock, store         MEMBER - own work, own shift
  +----------------------------------+  +----------------------------------+
- | 9:41                         94%|  | 16:12                          76%|
- +----------------------------------+  +----------------------------------+
- | (3) Aambal Neyvagam           (o)|  | (2) Aambal Neyvagam          (o) |
+ | (3) Aambal Neyvagam          (o) |  | (2) Aambal Neyvagam          (o) |
  | Owner                            |  | Cashier - Shift 14               |
  +----------------------------------+  +----------------------------------+
- | ! NEXT  Cash drawer out Rs. 350  |  | NEXT  Pack parcel, 2 items       |
- |                         [ Audit ]|  |                      [ Complete ]|
+ | ! MONEY              Rs. 18,450  |  | SELL                  9 bills    |
+ | Cash drawer out Rs. 350  [Audit] |  | 2 orders to pack       [ Pack ]  |
  +----------------------------------+  +----------------------------------+
- | COUNTER SALES                    |  | COUNTER SALES                    |
- | Rs. 18,450 today                 |  | 9 bills today                    |
- |                      [ New Sale ]|  |                      [ New Sale ]|
+ | SELL                 Rs. 12,200  |  | WORK                   2 tasks   |
+ | 2 orders to pack       [ Pack ]  |  | my tasks today      [ New Task ] |
  +----------------------------------+  +----------------------------------+
- | ORDERS                           |  | ORDER PACKING                    |
- | 3 to pack                        |  | 2 to pack                        |
- |                    [ Open Queue ]|  |                 [ Start Packing ]|
+ | STOCK                Rs. 45,000  |  | STOCK                  4 low     |
+ | 4 low items          [ Adjust ]  |  | 4 low items          [ Adjust ]  |
  +----------------------------------+  +----------------------------------+
- | ONLINE STORE                     |  | SHIFT HANDOVER                   |
- | 142 visits today                 |  | 16:00                            |
- |                    [ View Store ]|  |                [ Start Handover ]|
- +----------------------------------+  |                                  |
- |                 [ + Add a Card ] |  |                                  |
- +----------------------------------+  |                                  |
+ | REACH             142 visits     |  | REACH                  3 unread  |
+ |                     [ Open Chat ]|  |                      [ Open Chat ]|
+ +----------------------------------+  +----------------------------------+
+ | WORK                 3 pending   |  |                                  |
+ |                     [ New Task ] |  |                                  |
+ +----------------------------------+  +----------------------------------+
  |                              (+) |  |                              (+) |
  +----------------------------------+  +----------------------------------+
-
-   ASK - words become skills (the (+), fullscreen)
- +----------------------------------+
- | < TAR                            |
- +----------------------------------+
- | You                              |
- | every day 10am send me the       |
- | sales report                     |
- | TAR                              |
- | PLAN   Daily Sales Report        |
- | 1. read sales at 10:00           |
- | 2. send it to you on WhatsApp    |
- | every day. confirm once and it   |
- | runs free forever.               |
- |       [ Confirm ]   [ Change ]   |
- | You                              |
- | confirm                          |
- | TAR                              |
- | saved as a skill. the card is    |
- | on your Canvas. first run        |
- | tomorrow 10:00.                  |
- |                                  |
- |                                  |
- |                                  |
- |                                  |
- |  ask TAR anything...      [send] |
- +----------------------------------+
-```
-
-Three screens, one app: the owner's Canvas, the member's Canvas, the agent.
-Same screen for every member - grants change the stack, not the layout.
-The laws live in Concept: Card rule, NEXT, Surface, Ask.
-
-## Onboarding - create, join, manage on one surface (concept)
-
-```
- THE WAY IN - three cases, one confirm, one surface
-
-   CREATE a sentence . JOIN an invite . GROW a fact
-                        |
-                        v
-                  [ ASK ] --- one confirm ---> [ CANVAS ]
-
-   before the first card, Ask is the app. after one
-   confirm, Canvas is. words change the plan.
-   the confirm stays one.
-
-   CREATE  words. Jev names the nature, code deals
-           the cards. Site Mode 1's law.
-   JOIN    one card, one tap, zero model calls. one
-           member row. grants choose the stack.
-   GROW    a mode change, not a migration. code sees
-           the fact, code proposes. no LLM. never silent.
-
- THE SPLIT - the LLM proposes. Jev types. the action writes.
-
-   words . photos . exports
-        |
-        v
-      LLM --draft--> JEV --plan--> ACTION + gate
-
-   LLM     proposes only, never writes. words, any
-           language. photos, excel, pos exports.
-   JEV     types only, never prose. one call, many
-           verdicts, in parallel.
-   ACTION  writes it, behind a gate.
-
-   no model after birth. the stack runs free.
-
- THE VERDICTS - one Jev call, four answers, in parallel
-
-   nature   choice   food 0.92 | shop 0.05 | service 0.02
-                     the spread deals the cards: top
-                     natures take their recipes.
-   role     choice   owner | admin | cashier, straight
-                     from the owner's words.
-   rows     noul     one per row: price sane? code valid?
-   risk     noul     test? abuse? the create gate.
-
-   Jev speaks three times: at birth (nature + risk),
-   at import (rows), at hire (role). nowhere else.
-   a noul near one half is doubt, not a middle answer.
-   doubt escalates to the one confirm.
-
- BIRTH - one confirm, one control action, idempotent
-
-   [ the one confirm ]
-        |
-        v
-   D1       workspace + owner
-   TURSO    10 tables, nothing else
-   R2       an empty layout
-
-   a draft lives in the conversation, never in control.
-   a failed or abandoned birth leaves nothing.
-   not a tool: control actions, same registry, same
-   gate. 14 tools stay 14. no new tables.
-   slug from the name, collisions get a number.
-   locale gives currency, tax, words.
-   the recipe seeds the first inbox. birth ends on
-   a Canvas with a NEXT, never a blank.
-
- MANAGE - a conversation, not a settings screen
-
-   members, roles, shifts   ->  the member card
-   name, mode, url, danger  ->  ASK
-
-   the owner is the gate. archive and transfer ask
-   twice. archived is a state: records are never
-   deleted. workspaces never merge.
 ```
 
 ```
- 1  FIRST - the empty door.            2  INVITED - the invite card.
- +----------------------------------+  +----------------------------------+
- |  TAR                             |  |  TAR                             |
- |                                  |  |                                  |
- |  tell TAR about your business    |  |  Aambal Neyvagam                 |
- |  in one line                     |  |  invites you as                  |
- |                                  |  |  Cashier                         |
- |   [ I have a price list ]        |  |                                  |
- |   [ I have an invite ]           |  |                                  |
- |                                  |  |                     [ Join ]     |
- +----------------------------------+  +----------------------------------+
-
- 3  PLAN - one sentence, a typed plan.  4  THE PICK - the menu, marked.
- +----------------------------------+  +----------------------------------+
- |  < TAR                           |  |                                  |
- +----------------------------------+  |  CARD CORE                  14   |
- | You                              |  |                                  |
- | tea shop. snacks to go. just me. |  |  [*] Counter Sales        money  |
- | TAR                              |  |  [*] Products + Prices    data   |
- | PLAN    Create workspace         |  |  [*] Daily Expenses       money  |
- | name    Aambal Tea Stall         |  |  [ ] Orders and Dispatch  cust   |
- | nature  food counter      jev .92|  |  [ ] Online Storefront    cust   |
- | cards   3 of 14, from the core   |  |  [ ] 9 more deferred             |
- | money   Rs . GST 5% . UPI        |  |                                  |
- | site    aambal-tea.tar.site      |  |                                  |
- |       [ Confirm ]   [ Change ]   |  |                                  |
- +----------------------------------+  +----------------------------------+
-   the recipe marked 3. tap any card to toggle it.
-
- 5  FIRST CANVAS - what one sentence bought.
- +----------------------------------+
- | (1) Aambal Tea Stall            o|
- | Owner                            |
- +----------------------------------+
- | NEXT  add your first item        |
- |                    [ Add Item ]  |
- +----------------------------------+
- | COUNTER SALES                    |
- | Rs. 0 today                      |
- |                      [ New Sale ]|
- +----------------------------------+
- | PRODUCTS AND PRICES              |
- | 0 items                          |
- |                      [ Add Item ]|
- +----------------------------------+
- | DAILY EXPENSES                   |
- | Rs. 0 today                      |
- |                   [ Log Expense ]|
- +----------------------------------+
- |                 [ + Add a Card ] |
- +----------------------------------+
- |                              (+) |
- +----------------------------------+
-
- 6  IMPORT - a photo becomes rows.     7  GROW - a hire is a fact.
- +----------------------------------+  +----------------------------------+
- |  < TAR                           |  |  < TAR                           |
- +----------------------------------+  +----------------------------------+
- | You                              |  | You (owner)                      |
- | (photo of a price list)          |  | hire Ravi for the morning counter|
- | TAR                              |  | TAR                              |
- | DRAFT   14 rows from the photo   |  | PLAN    Add member               |
- |   1  chai            Rs. 10 .98  |  | Ravi    cashier . shift 6 to 10  |
- |   2  filter coffee  Rs. 15 .98   |  | more    a second member makes    |
- |   3  samosa ?       Rs. ?? .51   |  |         this work mode           |
- | row 3 is doubt. fix or post 13.  |  |       [ Confirm ]   [ Change ]   |
- |    [ Fix row 3 ]  [ Post 13 ]    |  |                                  |
- +----------------------------------+  +----------------------------------+
-
- 8  MANY - one user, many boundaries.
- +----------------------------------+
- |  TAR                             |
- |                                  |
- |  Personal              you       |
- |  Aambal Neyvagam       Cashier   |
- |  Home Foods            Admin     |
- |                                  |
- +----------------------------------+
+a card with ! floats to the top. the rest keep their order.
+the badge counts every pending move. tapping it opens one flat list.
 ```
 
-Five maps hold the laws, eight screens walk them.
-one surface the whole way: no workspace to first sale.
+## Birth, join, grow
 
+```
+CREATE   one sentence -> nature -> cards 2..5 -> [ confirm ]
+         -> actor wakes, 3 tables, first pending move, Canvas ready.
+JOIN     one invite code -> one role -> [ join ] -> a member item and
+         a pending link move. the link retries into the personal room
+         until done. the room is authority; the link is a cache.
+GROW     an import, or a new line of work -> [ confirm ].
+         personal -> work is a mode change, not a migration.
+
+the confirm is always one. a draft never lands until it is tapped.
+a failed or abandoned birth leaves nothing.
+```
+
+## Site
+
+```
+one card (Reach), two modes, one url: *.tar.site
+
+curated  jev recipe -> a release in R2.
+custom   an ephemeral sandbox actor writes astro. visuals only.
+         price, tax, stock and checkout call the room's gate.
+release  immutable. publish and rollback repoint a row.
+         the room owns the url. the mode can change, the url does not.
+```
+
+## Network - phase 2
+
+```
+room -> room over actor rpc. a buyer's order enters the seller's gate
+as one pending move on their Sell card. each room keeps its own SQLite.
+routing lives in the order, never a join. an rpc is not durable,
+so a failed order retries by its move id. settlement across rooms
+is the one new design.
+```
+
+## Device - a window, never a copy
+
+```
+socket   one connection to the active room, live while it is awake.
+         a room sleeps after 30 s idle and drops every socket.
+slice    pending rows + card numbers + badge, role-filtered, ~200B.
+         pushed on every commit.
+open     reconnect wakes the room and returns the slice. the slice,
+         not the socket, is the truth.
+offline  the last slice on disk is fine. taps wait in a queue with
+         move ids and replay in order. a queued tap is sent, not
+         done; the badge shows server truth, never the queue.
+         a tap carries intent and inputs, never price, stock or
+         totals; the room re-reads them at commit. a tap the gate
+         would pend lands pending, and only the owner can approve
+         it, only online.
+closed   FCM / APNs, from the actor. a device item holds the token.
+grant    the server grants the slice. the phone never picks its own.
+```
+
+## Deploy - Rivet 3.0 (preview, 2026-10-26)
+
+```
+runtime  one Rivet binary. one container is enough.
+         actors sleep and wake in 6.9 ms, write in 0.69 ms,
+         read in 0.20 ms (WarpDrive: 3 AZ, S3 behind).
+         three nodes across AZs is HA, not a minimum. or Rivet Cloud.
+         Apache 2.0.
+auth     getParams sends the google token on every connect.
+         onBeforeConnect verifies it and checks the member item;
+         throwing rejects the socket. that hook is the acl.
+         no control database, no gateway on the data path.
+         keys are arrays, ["room", slug], never a joined string.
+         the personal room keeps a link; the room is authority.
+limits   as of 3.0 preview: no built-in acls (onBeforeConnect is
+         ours), no multi-region, no serverless. cost is nodes + S3,
+         not per room.
+
+backend/  workspace.ts   one actor: 3 tables, gate, skills, alarms, slice
+          sandbox.ts     site mode 2
+          registry.ts    5 cards, 14 kinds, recipes, adapters
+src/      Canvas, Ask, CardList, Sale, Chat, RecordDetail
+          ActionSheet, Card
+```
