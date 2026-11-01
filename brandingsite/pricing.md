@@ -27,7 +27,7 @@ Local on-device queries use 0 credits. Cloud DB syncs, agent actions, and resear
 Agent action / Operation	Credit Cost	At-Cost INR
 Workspace & Core (CRUD, Sync & Memory)
 Local on-device CRUD (cached SQLite reads & views)	0	₹0.00
-Cloud DB write, sync & search (Turso writes + bandwidth)	1 cr / 600 ops	~₹0.016 / 100 ops
+Workspace actor write, sync & search (SQLite + bandwidth)	1 cr / 600 ops	~₹0.016 / 100 ops
 Workspace answer or summary (Gemma-4)	0.02 cr	~₹0.002
 OCR document scan (DeepSeek-OCR 2 @ $0.03 / 1M)	0.05 cr / page	~₹0.0052 / page
 Bill audit (OCR scan + ledger check)	0.1 cr / bill	~₹0.01 / bill
@@ -80,9 +80,9 @@ $0.08 in / $0.18 out / 1M
 Autonomous Swarms	DeepSeek-V4 Swarm
 Multi-agent loop at raw API cost
 80k in / 30k out	12 cr / dossier	~₹1.20 / task	Comprehensive multi-source market research dossiers
-Edge Database & Sync	Turso SQLite + Bandwidth
+Workspace Database & Sync	Rivet actor SQLite + Bandwidth
 $1.00 / 1M writes · $0.09 / GB
-100 row writes + 1 MB sync	1 cr / 600 ops	~₹0.016 / 100 ops	Cloud CRUD mutations, vector search & edge sync
+100 row writes + 1 MB sync	1 cr / 600 ops	~₹0.016 / 100 ops	Workspace CRUD mutations, search & sync
 How ₹100 = 1,000 Credits is Calculated (Zero Profit Margin)
 1 Credit = ₹0.10 (10 Paise = ~$0.001156 USD). Here is what ₹100 (1,000 Credits) buys at exact pass-through provider cost:
 
@@ -94,14 +94,14 @@ Commercial Quotes & Proposals	DeepSeek-V4-Flash ($0.08 in / $0.18 out)	0.25 cr (
 In-Depth Tax & Analyst Reports	DeepSeek-V4-Flash ($0.08 in / $0.18 out)	1.00 cr (~₹0.10 / report)	1,000 comprehensive reports	9.0M tokens (6.0M in / 3.0M out)
 Full Website Component Drafts	DeepSeek-V4 Multi-Turn Swarm	3.00 cr (~₹0.30 / draft)	333 full site drafts	9.3M tokens (6.6M in / 2.7M out)
 Deep Market Research Dossiers	DeepSeek-V4 Autonomous Swarm	12.00 cr (~₹1.20 / task)	83 research dossiers	9.1M multi-agent loop tokens
-Cloud Database CRUD & Edge Sync	Turso SQLite + Transfer Bandwidth	1 cr / 600 ops (~₹0.016 / 100 ops)	625,000 database ops	625k row writes + 6.25 GB sync transfer
+Workspace Database CRUD & Sync	Rivet actor SQLite + Transfer Bandwidth	1 cr / 600 ops (~₹0.016 / 100 ops)	625,000 database ops	625k row writes + 6.25 GB sync transfer
 Active Owned Workspace Hosting	Edge SQLite DB & Folder Storage	100 cr / month (₹10.00 / mo)	10 months active workspace	Full dedicated SQLite cloud edge node
 Example Monthly Business Consumption
 How an active business consumes tokens & credits at direct provider cost:
 
 Activity	Underlying Model	Monthly Volume	Total Tokens Consumed	Credits	At-Cost INR
 Owned Workspace	Edge storage & SQLite sync reservation	1 workspace / mo	—	100 cr	₹10.00
-Cloud DB CRUD & Sync	Turso SQLite + Transfer Bandwidth	1,000 operations	1,000 row writes + 10 MB sync	1.6 cr	₹0.16
+Workspace DB CRUD & Sync	Rivet actor SQLite + Transfer Bandwidth	1,000 operations	1,000 row writes + 10 MB sync	1.6 cr	₹0.16
 WhatsApp Customer Replies	Gemma-4-E4B-it ($0.02 in / $0.10 out)	500 replies	150k in / 75k out	10 cr	₹1.00
 Invoice / Receipt OCR Scans	DeepSeek-OCR 2 ($0.03 in/out / 1M)	100 pages	140k vision in / 60k text out	5 cr	₹0.52
 Quotes & Commercial Proposals	DeepSeek-V4-Flash-0731	20 quotes	30k in / 16k out	5 cr	₹0.50

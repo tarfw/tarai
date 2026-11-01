@@ -26,7 +26,7 @@ No model on a view. Models run while a doc is drafted, never while a page is ser
  words                            words / screenshot
    |                              |
    v                              v
- Jev: style + stack               Pi harness in the room
+ Jev: style + stack               Pi run in the room
  DeepSeek: tagline, about         (state in SQLite)
    |                              |
    |                              +-- can say it --> edit doc
@@ -144,11 +144,11 @@ Per-store publish never runs a browser, which is why no sandbox sits in the path
 
 ## 10. Mode 2 - later
 
-Ask runs on Pi Durable: one harness per room, its state in the room's SQLite.
+Ask runs on Pi Durable: one run per room, its state in the room's SQLite.
 The same conversation builds the site. No second app, no second actor.
 
 ```
-prompt -> Pi harness in the room
+prompt -> Pi run in the room
        -> library can say it?  yes -> edit the doc -> publish
                               no  -> propose one new variant
                                      -> CI only: build + gate.ts
@@ -156,7 +156,7 @@ prompt -> Pi harness in the room
                                      -> the doc may use it -> publish
 ```
 
-- Pi's steps live in harness state, checkpointed, so a crash resumes mid-turn.
+- Pi's steps live in its state, checkpointed, so a crash resumes mid-turn.
 - `requestId` per turn; publish is idempotent by release id, only after confirm.
 - the ledger stays clean: one site item and one release move, never a step.
 - keys and the DB stay in the room; CI sees code, never keys or data.

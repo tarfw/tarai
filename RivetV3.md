@@ -52,9 +52,9 @@ You do **not** write code for every shop. You write your `.ts` file **once** as 
 * **Zero Wasted Memory:** 1 Million shops take up **0 extra megabytes** for code. All 1,000,000 shops share the exact same 50 KB compiled file.
 * **Instant 1-Second Global Updates:** If you add a new feature (like *"Calculate 18% GST"*), you deploy your `.ts` code once. **All 1,000,000 shops are instantly updated across the platform in 1 second**.
 
-#### The 3 Actor Blueprints in TAR (`tarfw.md` & `paraiv2.md`):
+#### The 3 Actor Blueprints in TAR (`tarfw.md` & `parfw.md`):
 1. **Workspace Actor (Millions):** 1 per shop running its isolated 10-table SQLite ledger, pos sales, and inventory.
-2. **Sandbox Actor (Ephemeral):** Spun up on-demand to safely isolate an AI coding agent generating website code (`paraiv2.md` Mode 2).
+2. **Sandbox Actor (Ephemeral):** Spun up on-demand to safely isolate an AI coding agent generating website code (`parfw.md` Mode 2).
 3. **Channel Actor (Thousands):** Manages live WhatsApp / Telegram customer support streams.
 
 ### B. What Runs Inside an Actor? (The 5 Things You Can Write)
@@ -107,14 +107,14 @@ Actors do **not** have heavy, hard-reserved CPU or RAM locked to them:
 * **RAM (Shared Dynamic):** While awake, an Actor uses **~1.5 to 2 MB** of working memory. When it hibernates, that RAM is completely freed.
 * **State & SQLite (100% Dedicated):** Every Actor has its own private, isolated SQLite database file. No other Actor can read or lock it.
 
-### B. Concurrent Writes (Rivet vs. Turso vs. Uber Model)
-* **Across Different Workspaces (100% Parallel):** In traditional central databases (e.g. Postgres or Turso), thousands of shops write to shared tables, creating lock contention. In Rivet, **each workspace has its own database**. 10,000 shops write simultaneously with zero waiting.
+### B. Concurrent Writes (Rivet vs. Central DB vs. Uber Model)
+* **Across Different Workspaces (100% Parallel):** In traditional central databases (e.g. Postgres), thousands of shops write to shared tables, creating lock contention. In Rivet, **each workspace has its own database**. 10,000 shops write simultaneously with zero waiting.
 * **Inside a Single Workspace (The Single Queue):** If a cashier, a WhatsApp order, and an AI agent write to the *same* shop at the exact same millisecond, the Actor queues them in memory and writes them in sequence. **Database deadlocks (`SQLITE_BUSY`) are physically impossible**.
 * **Throughput:** Because writes commit locally to NVMe SSD in **0.69 ms**, a single Actor comfortably processes **1,400+ consecutive writes/sec**.
 
-### C. Conflict Resolution: Turso (Lock & Reject) vs. Rivet + TAR (Queue & Merge)
+### C. Conflict Resolution: Central DB (Lock & Reject) vs. Rivet + TAR (Queue & Merge)
 
-| Conflict Scenario | Turso DB | Rivet 3.0 + TAR |
+| Conflict Scenario | Central DB | Rivet 3.0 + TAR |
 | :--- | :--- | :--- |
 | **1. Live Simultaneous Clicks** | Central DB locks; 2nd writer gets a **`SQLITE_BUSY` error** and must retry. | **In-memory queue (< 0.69 ms)**; actions process sequentially with zero errors. |
 | **2. Offline Reconnects** | Writes overwrite rows (`stock = 9`); earlier changes can be lost. | **Append-only `move` deltas** (`move: -1 chai`). All offline intents merge cleanly without overwriting. |
@@ -207,7 +207,7 @@ WarpDrive eliminates the tradeoff between SSD speed and cloud durability:
 
 ---
 
-## 6. Production Cost Comparison: Rivet Cloud vs. Cloudflare DO vs. Turso
+## 6. Production Cost Comparison: Rivet Cloud vs. Cloudflare DO vs. Central DB
 
 ### The Cloudflare DO Trap
 Cloudflare DO charges **$12.50 per million GB-seconds** (128 MB per DO). When agents run continuous loops, background timers, or active collaboration sessions that prevent sleep, compute duration escalates rapidly into thousands of dollars. Rivet uses flat node pricing with **no per-second wake penalty**.
@@ -215,15 +215,15 @@ Cloudflare DO charges **$12.50 per million GB-seconds** (128 MB per DO). When ag
 | Workload Scenario | Platform | Total Cost USD | Total Cost INR | Per-User / Workspace Cost |
 | :--- | :--- | :--- | :--- | :--- |
 | **Small (500 Users)** <br>5 GB data, light traffic | **Rivet Cloud + R2** *(Hobby + 1 Node)* | **$14.20** | **₹1,207** | **$0.028 (₹2.41) / user** |
-| | **Turso DB + Server** *($4.99 DB + $7 server)* | **$12.00** | **₹1,020** | **$0.024 (₹2.04) / user** |
+| | **Central DB + Server** *($4.99 DB + $7 server)* | **$12.00** | **₹1,020** | **$0.024 (₹2.04) / user** |
 | | **Cloudflare DO** *(Base + 970k GB-seconds)* | **$17.00** | **₹1,445** | **$0.034 (₹2.89) / user** |
 | | | | | |
 | **Medium (5,000 Users)** <br>100 GB data, 40M writes | **Rivet Cloud + R2** *(Hobby + 4GB Node + R2)* | **$28.15** | **₹2,393** | **$0.0056 (₹0.48) / user** *(48 paise)* |
-| | **Turso DB + Server** *(Scaler + storage overage)* | **$87.00** | **₹7,395** | **$0.0174 (₹1.48) / user** |
+| | **Central DB + Server** *(Scaler + storage overage)* | **$87.00** | **₹7,395** | **$0.0174 (₹1.48) / user** |
 | | **Cloudflare DO** *(Storage + 16.6M GB-seconds)* | **$232.00** | **₹19,720** | **$0.0464 (₹3.94) / user** |
 | | | | | |
 | **Scale (25,000 Users)** <br>1 TB data, 200M writes | **Rivet Cloud + R2** *(Team + 2 Nodes + 1 TB R2)* | **$189.60** | **₹16,116** | **$0.0076 (₹0.64) / user** *(64 paise)* |
-| | **Turso DB + Server** *(Pro + storage/write overage)* | **$990.00** | **₹84,150** | **$0.0396 (₹3.37) / user** |
+| | **Central DB + Server** *(Pro + storage/write overage)* | **$990.00** | **₹84,150** | **$0.0396 (₹3.37) / user** |
 | | **Cloudflare DO** *(Duration + storage + write penalties)* | **$2,880.00** | **₹2,44,800** | **$0.1152 (₹9.79) / user** |
 
 ---
@@ -257,34 +257,24 @@ Cloudflare DO charges **$12.50 per million GB-seconds** (128 MB per DO). When ag
 
 ---
 
-## 8. Direct Integration with TAR (`tarfw.md` & `paraiv2.md`)
+## 8. Direct Integration with TAR (`tarfw.md` & `parfw.md`)
 
 ```
-CURRENT ARCHITECTURE (tarfw.md):
-Canvas / Phone ──► API ──► Turso (Hosted DB) + R2 (Files) + CF Worker (Future WS)
-
-WITH RIVET 3.0:
-Canvas / Phone ──► Rivet Actor (Code + Local SQLite + WebSockets) ──► Cloudflare R2
+Canvas / Phone ──► Rivet Actor (HTTP + WebSockets + local SQLite) ──► Cloudflare R2
 ```
 
-### A. Core Platform Replacements
-1. **Eliminates Cloudflare Worker (`tarharness`):** No separate API gateway or routing worker needed. The Rivet Actor directly handles HTTP endpoints, request routing, authentication, and WebSocket connections in one unified process.
-2. **Replaces Turso DB:** Each workspace is one 72 KB Rivet Actor holding its own 10-table SQLite schema. Eliminates network hops to an external database (< 1 ms queries) and cuts recurring database bills.
-3. **Replaces External Realtime Hubs:** Real-time synchronization between the merchant Canvas and the Ask agent is handled natively by the Actor over persistent, hibernating WebSockets with zero connection fees.
-4. **Powers `paraiv2.md` Mode 2 (Custom Site Builder):** Provides the isolated ephemeral sandbox required to run coding agents, compile Astro sections, and run Playwright verification (`gate.ts`).
-5. **Infinite Agent Memory for `Ask`:** All agent conversation turns, skills, and audit logs are safely preserved in R2 at $0.015/GB (₹1.28/GB) without database size limits.
+### A. Platform Fit
+1. **One process:** The Rivet Actor handles HTTP endpoints, routing, authentication, and WebSocket connections.
+2. **One workspace, one database:** Each workspace is one actor holding its own SQLite schema. No network hop to an external database.
+3. **Native realtime:** Merchant Canvas, team, and Ask share the actor over hibernating WebSockets.
+4. **Isolated sandbox:** `parfw.md` Mode 2 runs coding agents, compiles Astro sections, and verifies with Playwright (`gate.ts`).
+5. **Agent memory:** Agent turns, skills, and audit logs are preserved in R2 at $0.015/GB (₹1.28/GB).
 
-### B. Cloudflare Worker (tarharness) vs. Rivet Actor Comparison
-
-| Feature / Cost Metric | Cloudflare Worker + Turso (`tarharness`) | Rivet Actor (Unified All-in-One) |
-| :--- | :--- | :--- |
-| **API Gateway / Routing** | Workers Paid ($5.00/mo base + $0.30/M requests) | **$0.00** (Native HTTP routing in Actor Node) |
-| **Database Tier (Turso)** | $4.99/mo base + row read/write/storage overages | **$0.00** (Local SQLite embedded on NVMe SSD) |
-| **WebSockets (Real-time)** | Durable Objects ($12.50/M GB-s) or Pusher ($99/mo) | **$0.00** (Zero connection fee, 100 GB egress free) |
-| **Database Latency** | 20 ms – 150 ms (remote network HTTP roundtrips) | **< 0.69 ms** (committed locally to NVMe SSD) |
-| **Scheduled Tasks / Alarms** | Cloudflare Cron Triggers (external wake calls) | Built-in Actor alarms (`ctx.storage.setAlarm`) |
-| **Architecture Complexity** | 3 separate moving parts (Worker + Turso DB + R2) | **1 single system** (`.ts` Actor + R2 cold store) |
-| **Total Monthly Cost (5k users)** | **$92.00 – $237.00** (₹7,820 – ₹20,145) | **$8.40 – $28.15** (₹714 – ₹2,393) |
+### B. One Workspace, One Actor
+- No separate API gateway or routing layer.
+- No external database, queue, or realtime hub.
+- Actor alarms handle schedules; R2 holds media and cold content.
+- This keeps the runtime to **one actor + R2**.
 
 ### C. Real-Time Collaboration (Team, Agents & Cross-Shop)
 * **Single Shared Room:** Cashier (RN App), Owner (Web Dashboard), and AI Agent all connect to the **same Actor instance** over open WebSockets.
@@ -335,7 +325,7 @@ The customer scans the QR code on Table 4 and taps **"Order 2 Bun Parotta (₹12
 * The Actor wakes up in **6.9 ms** (if sleeping).
 * Runs business rules: *Checks if Parotta dough is in stock*.
 * Writes the order directly into its embedded SQLite table in **< 0.69 ms**.
-* Because it writes locally to NVMe SSD, **there is zero network wait time** (no slow round-trip to an external database like Supabase or Turso).
+* Because it writes locally to NVMe SSD, **there is zero network wait time** (no slow round-trip to an external database).
 
 #### 3. Instant Kitchen & Cashier Broadcast ($0 cost)
 The Actor is holding persistent WebSockets with the devices in the shop:

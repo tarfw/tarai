@@ -1,283 +1,418 @@
-# TAR - One Live Room
+# TAR = One Live Workspace
 
-## Concept
+## Idea
 
-```
-TAR          = one live room + 3 tables + 5 cards + skills
+```text
+TAR = workspace platform for commerce + business + personal
 
-Room         = one workspace = one actor = one SQLite.
-               every member connects to the same instance.
-               a tap commits in 0.7 ms; everyone sees it in under 1 ms.
-User         = starts in a personal room. one tap switches rooms.
-               no auto-switch, no merged view, no cross-room joins.
-Member       = owner, admin, staff. the room is members only.
-Customer     = storefront or channel only. never in the room.
+Workspace = any SME business (store / delivery / taxi / service / ...)
+          + personal (health, tasks, plans)
+          open to all — Jev types the business from description
 
-Truth        = a room holds exactly three things:
-               item   what exists (catalog, contacts, members, config)
-               move   what happened or waits to (sale, bill, receipt,
-                      count, adjust, PO, expense, task, approval)
-               skill  how it repeats
-
-Pending      = a move with state pending. not a place.
-               it is the line on its card, and a row in the badge.
-               a tap sets it done; it leaves every screen at once.
-Done         = a move with state done. the ledger and the numbers.
-               a number is a sum over done moves, held in the actor's RAM.
-
-Card         = title, one number, at most one pending line, one tap.
-               the number is money on a card that moves money and a
-               count elsewhere; the role picks which. no chips,
-               no second number, no url, no status.
-               everything else is a detail screen.
-Core         = five cards, one per domain. the only menu.
-               a room is dealt 2 to 5 at birth by its nature.
-               a confirmed tap skill is pinned as one more card.
-               a canvas holds at most six.
-Surface      = one screen, no tabs. Canvas is the app.
-               avatar = you, and the room switch.
-               circle badge = every pending move, flat.
-               floating (+) = Ask, fullscreen.
-NEXT         = gone. every card carries its own pending line and
-               floats to the top while it has one. no banner, no strip.
+1 workspace = 1 Rivet actor + 1 SQLite
+Members     → private workspace    Customers → store / channels
+Phone       → online + offline     Files     → R2
 ```
 
-## Cards (5)
+One person can create, join and switch workspaces. Each workspace stays separate.
+An owner of one workspace can be a member of another (e.g. chef in a restaurant
+workspace, driver in a taxi workspace). AI helps; normal work never depends on it.
+Design for cheap phones + slow internet.
 
-| # | Card | owner number | member number | one tap | holds |
-| :-: | :--- | :--- | :--- | :--- | :--- |
-| 1 | Sell | Rs. revenue today | to pack | New Sale | pos, gst bill, order queue |
-| 2 | Money | Rs. net cash + bank | receipts today | Log Money | receipts, upi, drawer, expenses, payouts |
-| 3 | Stock | Rs. inventory value | low items | Adjust | catalog, stock, POs, GRN |
-| 4 | Reach | leads this week | unread | Open Chat | contacts, whatsapp, telegram, tar.site |
-| 5 | Work | pending tasks | my tasks today | New Task | team, roles, shifts, tasks |
+## App = one home
 
-```
-the 14 old tools are kinds under the five:
-  sell    pos, invoice, order
-  money   payment, register, expense, purchase payment
-  stock   catalog, stock, purchase
-  reach   contact, channel, site
-  work    member, task
+```text
+Sign in → Create / join workspace → HOME (canvas)
 
-a kind is a row in the registry. a card is a lens over kinds.
-a solo shop starts with sell, money, stock. a full one uses all five.
+HOME
+ ├─ header: workspace name → switch   |   tray → Inbox
+ ├─ NEXT: top urgent item
+ ├─ work cards: from recipe (Sell · Stock · Money · Reach · People)
+ │     tap card → section → back to HOME
+ ├─ automations: user-saved from Ask (tap / schedule / event)
+ └─ bottom bar: Ask TAR
 ```
 
-## Shapes - four, and one read view
+No tab bar. One home, one level of sections.
+The workspace sheet groups: OWN section + MEMBER section.
 
-```
-list      one route: queue, bills, receipts, cash, items, stock,
-          POs, expenses, contacts, members, tasks.
-sale      one route: pos. a gst bill is sale in tax mode.
-chat      one route: channel.
-sheet     one form, many configs: receipt, cash, item, stock,
-          po, expense, contact.
-detail    a row tap: one move or one item. read + one tap.
-          a view, not a shape.
+| Screen | Purpose |
+| --- | --- |
+| Home (canvas) | Cards with a number + one line each; NEXT; Ask TAR |
+| Section | Lists + forms for one card (e.g. Sell, Stock) |
+| Detail | One record + its relevant actions |
+| Ask | Questions, actions, create automations |
+| Settings | Workspace + permissions + integrations + account |
 
-a new kind is an entry in the registry, never a screen.
-a new screen is earned by a new shape, and only that.
-```
+Enable only the features a workspace needs. Reuse lists, forms and details;
+give POS or chat its own layout when useful. POS adapts layout from a config
+set at onboarding (table#, course grouping for restaurant; barcode/weight for
+grocery; meter fare for taxi). No screen per record type.
+Role = only permitted information + actions.
 
-## Gate - the code floor, no model
+## Home by business type
 
-```
-idempotent  move.id is the client key. the same key never lands twice.
-durable     durable async is a move row, never a queue message.
-            a queue drops a message when it is received and never
-            retries it. a move retries by its own id.
-shutdown    in-flight actions are not awaited on sleep. push and
-            adapter work rides waitUntil. an action has 60 s.
-posting     a money move is two rows sharing one pair id and
-            naming their account. both pending, or both done.
-            a pair that does not sum to zero writes nothing.
-stock       available = onhand - reserved, never below zero.
-            a crossing write is refused and posts one urgent
-            pending move on Stock: ! shortage, audit.
-reach       a human writes inside their grant: commits at once.
-            above the grant, they wait like a skill: one pending
-            move on the owner's card. a skill that moves money or
-            messages a customer always waits. the gate is on the
-            writer, never on the person.
-customer    a storefront or channel writes orders, never money.
-            an order lands pending to pack; selling needs no
-            approval. a capture from a payment adapter is done and
-            undoable; money out of a skill waits.
-undo        every owner money tap has one-tap undo. undo writes
-            the opposite pair, with reverses = the pair it undoes.
-            a pair already reversed is never reversed again.
+One home for every workspace. Only the cards change, from a recipe. No new screens per type.
+Jev types the business from description; code picks a built-in recipe as floor.
+New recipes added when needed — no new screens.
+
+```text
+HOME = NEXT
+     + work cards   1–5, per recipe
+     + automations  user-saved from Ask (tap / schedule / event)
+     + Ask TAR      bottom bar
 ```
 
-## Data - 3 tables
+Each card = one number + one line → one section (list + forms).
 
-| table | columns | job |
-| :--- | :--- | :--- |
-| item | id, type, data, version, archived | nouns. data under 2KB or an R2 url |
-| move | id, kind, tool, item, qty, amount, account, pair, state, reverses, by, at | verbs + queue + ledger |
-| skill | id, name, trigger, recipe, params, role, next_run | how it repeats |
+| Workspace | Work cards |
+| --- | --- |
+| Store | Sell · Stock · Money · Reach · People |
+| Delivery | Deliveries · Stock · Money · People |
+| Taxi | Trips · Fares · Money · People |
+| Service / auto | Jobs · Stock · Money · People |
+| Personal | Tasks · Health · Plans |
 
-```
-no inbox     pending is a state.
-no current   sums over done, in RAM, rebuildable.
-no run       the move id is the run key.
-no chat      Ask turns live in the actor, as items.
+Money and People are always present for work workspaces. Personal has neither.
 
-Close        no pruning. Rivet keeps hot data on local disk and
-             offloads the rest to S3 by itself. old rows stay
-             readable, nothing is deleted, no retention rule.
-             keep one thing: a monthly close row. a card number is
-             close + moves after it, never a full-ledger scan.
-Bytes        R2. media, papers, releases.
-             a phone uploads straight to R2 and sends the url.
-             never only in R2: price, stock, totals, payment state.
-```
+One work shape for all kinds: `kind · status · assignee · customer · amount`.
 
-## Ask & Skills - describe once, run free
+| Kind | Status flow |
+| --- | --- |
+| order (store) | new → packed → done |
+| delivery | assigned → picked → delivered |
+| trip | requested → ongoing → done |
+| job | booked → in progress → done |
 
-```
-Ask          = one conversation. words, photos, exports.
-               LLM drafts -> Jev types -> one confirm -> a skill,
-               a record, or a card. money or customers wait for the owner.
-               a draft slower than 60 s is a background run, pushed
-               when ready.
-Skill        = trigger + recipe + params. confirmed once, runs free.
-               tap    pinned as a card
-               event  right after a matching move, same transaction
-               time   an actor schedule. durable, wakes a sleeping
-                      room, utc by default, so the zone is a param.
-               msg    a channel adapter
-               recipe code shipped in the registry. the model picks
-               a recipe and fills params. it never writes SQL or code.
-Memory       = L0 literal -> L1 shape -> L2 prose -> confirmed skill.
-               a miss climbs one step. nothing runs unconfirmed.
-```
+Role changes scope, not layout:
 
-## The 3 brains
+| Member | Home sees |
+| --- | --- |
+| Owner | all cards, all records |
+| Staff | granted cards, all records |
+| Driver (delivery / taxi) | Work card = "mine today"; Money = own collections; no People |
 
-```
-words / photos / exports -> LLM drafts -> JEV types -> one confirm -> room
+Customers are not members. They reach the business through Reach (link / WhatsApp) only.
 
-LLM     proposes only. never writes.
-JEV     four verdicts, in parallel, no prose:
-        nature  which 2 to 5 cards | role | sanity of rows | risk
-GATE    the code floor above.
+### Automations
 
-no model on run. models speak at birth, import, hire, site and ask.
-Integration = adapter -> recipe -> one of the five cards.
-              built and reviewed at build time, never found at runtime.
+Users create automations from Ask. One trigger + one action. Saved as a card on home.
+
+```text
+Ask TAR: "every morning send me yesterday's sales report"
+    ↓
+TAR plans: automation = schedule 08:00 → send report
+    ↓
+User confirms → card appears on home
 ```
 
-## Canvas - one screen, every member (concept)
+| Trigger | Example |
+| --- | --- |
+| tap | "restock alert" — tap to check low stock |
+| schedule (HH:mm) | "every morning at 8, send sales report" |
+| event | "if stock below 10, create PO to vendor" |
 
-```
-   OWNER - money, stock, store         MEMBER - own work, own shift
- +----------------------------------+  +----------------------------------+
- | (3) Aambal Neyvagam          (o) |  | (2) Aambal Neyvagam          (o) |
- | Owner                            |  | Cashier - Shift 14               |
- +----------------------------------+  +----------------------------------+
- | ! MONEY              Rs. 18,450  |  | SELL                  9 bills    |
- | Cash drawer out Rs. 350  [Audit] |  | 2 orders to pack       [ Pack ]  |
- +----------------------------------+  +----------------------------------+
- | SELL                 Rs. 12,200  |  | WORK                   2 tasks   |
- | 2 orders to pack       [ Pack ]  |  | my tasks today      [ New Task ] |
- +----------------------------------+  +----------------------------------+
- | STOCK                Rs. 45,000  |  | STOCK                  4 low     |
- | 4 low items          [ Adjust ]  |  | 4 low items          [ Adjust ]  |
- +----------------------------------+  +----------------------------------+
- | REACH             142 visits     |  | REACH                  3 unread  |
- |                     [ Open Chat ]|  |                      [ Open Chat ]|
- +----------------------------------+  +----------------------------------+
- | WORK                 3 pending   |  |                                  |
- |                     [ New Task ] |  |                                  |
- +----------------------------------+  +----------------------------------+
- |                              (+) |  |                              (+) |
- +----------------------------------+  +----------------------------------+
-```
+One automation = one trigger + one action. Chain automations by same event
+(e.g. "send PO" + "notify vendor" = two automations, same event).
+Max 8 automations per workspace.
 
-```
-a card with ! floats to the top. the rest keep their order.
-the badge counts every pending move. tapping it opens one flat list.
-```
+New business type = new recipe row + its status flow. Nothing else.
 
-## Birth, join, grow
+## Create workspace (onboarding)
 
-```
-CREATE   one sentence -> nature -> cards 2..5 -> [ confirm ]
-         -> actor wakes, 3 tables, first pending move, Canvas ready.
-JOIN     one invite code -> one role -> [ join ] -> a member item and
-         a pending link move. the link retries into the personal room
-         until done. the room is authority; the link is a cache.
-GROW     an import, or a new line of work -> [ confirm ].
-         personal -> work is a mode change, not a migration.
+Two steps. One description → Jev suggests → owner edits → create.
 
-the confirm is always one. a draft never lands until it is tapped.
-a failed or abandoned birth leaves nothing.
+```text
+STEP 1: describe                        STEP 2: your workspace
+┌──────────────────────────────┐        ┌──────────────────────────────┐
+│ (1/2) What do you do?        │        │ (2/2) Your workspace         │
+│                              │        │                              │
+│  "I run a taxi service"      │        │ Ravi's Taxi           (edit) │
+│  I take riders across        │        │  "I run a taxi service"      │
+│  the city.                   │        │                              │
+│                              │        │  We set up for you:          │
+│                              │        │  [ Fares ] [ Trips ]         │
+│                              │        │  [ Riders ] [ Team ]         │
+│                              │        │  [+ add a feature ]          │
+│                              │        │                              │
+│                              │        │                              │
+│                              │        │                              │
+│                              │        │                              │
+│                              │        │                              │
+│                              │        │                              │
+│                              │        │                              │
+│             [ Next ] →       │        │     [ Create workspace ]     │
+└──────────────────────────────┘        └──────────────────────────────┘
 ```
 
-## Site
-
-```
-one card (Reach), two modes, one url: *.tar.site
-
-curated  jev recipe -> a release in R2.
-custom   an ephemeral sandbox actor writes astro. visuals only.
-         price, tax, stock and checkout call the room's gate.
-release  immutable. publish and rollback repoint a row.
-         the room owns the url. the mode can change, the url does not.
-```
-
-## Network - phase 2
-
-```
-room -> room over actor rpc. a buyer's order enters the seller's gate
-as one pending move on their Sell card. each room keeps its own SQLite.
-routing lives in the order, never a join. an rpc is not durable,
-so a failed order retries by its move id. settlement across rooms
-is the one new design.
+```text
+One sentence
+    ↓
+Jev (1 call)  → type: any (store / delivery / taxi / auto / service / personal / ...)
+              → risk (abuse / spam)
+              → one yes/no per feature: "does this business need Fares?"
+              → POS layout hint: "restaurant" → table# + course grouping
+    ↓
+code → type recipe floor + Jev-suggested extras + POS layout config
+    ↓
+owner edits chips → [ Create ]  → workspace born
 ```
 
-## Device - a window, never a copy
+- Feature chips are **owned by the user**; Jev only suggests. Editable before create.
+- A personal workspace (tasks, health, plans) is created the same way.
+  "I want to track my health and morning routine" → Personal: Tasks · Health · Plans.
+- No Jev key / failure → code picks type from keywords + default recipe.
+- Jev speaks once at birth. Never on the sale or reload path.
+- New business types = new recipes added when driven by real demand.
 
-```
-socket   one connection to the active room, live while it is awake.
-         a room sleeps after 30 s idle and drops every socket.
-slice    pending rows + card numbers + badge, role-filtered, ~200B.
-         pushed on every commit.
-open     reconnect wakes the room and returns the slice. the slice,
-         not the socket, is the truth.
-offline  the last slice on disk is fine. taps wait in a queue with
-         move ids and replay in order. a queued tap is sent, not
-         done; the badge shows server truth, never the queue.
-         a tap carries intent and inputs, never price, stock or
-         totals; the room re-reads them at commit. a tap the gate
-         would pend lands pending, and only the owner can approve
-         it, only online.
-closed   FCM / APNs, from the actor. a device item holds the token.
-grant    the server grants the slice. the phone never picks its own.
+### Join a workspace
+
+```text
+Owner invites → link / QR → accept → appears as "MEMBER" in workspace sheet
 ```
 
-## Deploy - Rivet 3.0 (preview, 2026-10-26)
+- Invited member picks their role (driver, staff, chef, ...).
+- Home adapts per role (Driver = "mine today", no People).
+- Member can leave; owner can revoke.
 
-```
-runtime  one Rivet binary. one container is enough.
-         actors sleep and wake in 6.9 ms, write in 0.69 ms,
-         read in 0.20 ms (WarpDrive: 3 AZ, S3 behind).
-         three nodes across AZs is HA, not a minimum. or Rivet Cloud.
-         Apache 2.0.
-auth     getParams sends the google token on every connect.
-         onBeforeConnect verifies it and checks the member item;
-         throwing rejects the socket. that hook is the acl.
-         no control database, no gateway on the data path.
-         keys are arrays, ["room", slug], never a joined string.
-         the personal room keeps a link; the room is authority.
-limits   as of 3.0 preview: no built-in acls (onBeforeConnect is
-         ours), no multi-region, no serverless. cost is nodes + S3,
-         not per room.
+## Concept screens (mobile)
 
-backend/  workspace.ts   one actor: 3 tables, gate, skills, alarms, slice
-          sandbox.ts     site mode 2
-          registry.ts    5 cards, 14 kinds, recipes, adapters
-src/      Canvas, Ask, CardList, Sale, Chat, RecordDetail
-          ActionSheet, Card
+Real phone shape: status bar + header + block dividers inside each screen.
+
+```text
+HOME (store workspace)                  WORK = SELL (tap Sell card)
+┌──────────────────────────────┐        ┌──────────────────────────────┐
+│ 9:41                       ● │        │ 9:41                       ● │
+├──────────────────────────────┤        ├──────────────────────────────┤
+│ Aambal Stores            (o) │        │ ← Sell               [+ New] │
+│ Manager                     │        ├──────────────────────────────┤
+├──────────────────────────────┤        │ Today              Rs.12,400 │
+│ ! 2 orders → pack            │        ├──────────────────────────────┤
+├──────────────────────────────┤        │ #12 Sari order       Rs. 950 │
+│ SELL               Rs.12,400 │        │     → pack now               │
+│ · 2 orders to pack           │        ├──────────────────────────────┤
+├──────────────────────────────┤        │ #11 Counter          Rs. 200 │
+│ MONEY              Rs.18,450 │        ├──────────────────────────────┤
+├──────────────────────────────┤        │ #10 WhatsApp        Rs.1,250 │
+│ STOCK              Rs.45,000 │        ├──────────────────────────────┤
+├──────────────────────────────┤        │ #9 Counter           Rs. 300 │
+│ PEOPLE                    12 │        ├──────────────────────────────┤
+├──────────────────────────────┤        │                              │
+│ ▸ Sales report · 8am daily   │        │ [ New Sale ]                 │
+├──────────────────────────────┤        └──────────────────────────────┘
+│ [ New Sale ]           (Ask) │
+└──────────────────────────────┘
+
+SALE (POS)                              MONEY
+┌──────────────────────────────┐        ┌──────────────────────────────┐
+│ 9:41                       ● │        │ 9:41                       ● │
+├──────────────────────────────┤        ├──────────────────────────────┤
+│ ← New Sale            [done] │        │ ← Money                      │
+├──────────────────────────────┤        ├──────────────────────────────┤
+│ [ search products… ]         │        │ Cash               Rs. 8,200 │
+├──────────────────────────────┤        ├──────────────────────────────┤
+│ Saree silk   1          −  + │        │ Bank               Rs.10,250 │
+├──────────────────────────────┤        ├──────────────────────────────┤
+│ Blouse piece   2        −  + │        │ Today                        │
+├──────────────────────────────┤        ├──────────────────────────────┤
+│ CART (3)           Rs. 2,450 │        │ + Received           Rs. 500 │
+├──────────────────────────────┤        ├──────────────────────────────┤
+│ [cash] [upi] [card]          │        │ − Expense            Rs. 120 │
+│                              │        ├──────────────────────────────┤
+│                              │        │                              │
+│                              │        │                              │
+│ [ Complete Sale ]            │        │ [ Log Money ]                │
+└──────────────────────────────┘        └──────────────────────────────┘
+
+PEOPLE                                  ORDER DETAIL (tap a row)
+┌──────────────────────────────┐        ┌──────────────────────────────┐
+│ 9:41                       ● │        │ 9:41                       ● │
+├──────────────────────────────┤        ├──────────────────────────────┤
+│ ← People          [+ Invite] │        │ ← Order #12                  │
+├──────────────────────────────┤        ├──────────────────────────────┤
+│ TEAM                         │        │ Sari order · to pack         │
+│ Ravi · Owner                 │        ├──────────────────────────────┤
+├──────────────────────────────┤        │ 1 Silk saree         Rs. 900 │
+│ Meena · Cashier · Shift14    │        ├──────────────────────────────┤
+├──────────────────────────────┤        │ Delivery              Rs. 50 │
+│ CUSTOMERS · 12               │        ├──────────────────────────────┤
+│ Priya · WhatsApp             │        │ TOTAL                Rs. 950 │
+├──────────────────────────────┤        ├──────────────────────────────┤
+│ Kumar · regular              │        │ Paid · UPI ✓                 │
+│                              │        ├──────────────────────────────┤
+│                              │        │                              │
+│                              │        │                              │
+│                              │        │ [ Mark packed ]              │
+└──────────────────────────────┘        └──────────────────────────────┘
+
+ASK (optional)                          RULES
+┌──────────────────────────────┐        ┌──────────────────────────────┐
+│ 9:41                       ● │        │ Home → card → list/detail    │
+├──────────────────────────────┤        │          → action            │
+│ ← Ask TAR                    │        ├──────────────────────────────┤
+├──────────────────────────────┤        │ Sale + Chat own layout       │
+│ TAR: how can I help?         │        ├──────────────────────────────┤
+├──────────────────────────────┤        │ role filters read+action     │
+│ you: who ordered Friday?     │        ├──────────────────────────────┤
+│ TAR: Priya — 2 orders        │        ├──────────────────────────────┤
+├──────────────────────────────┤        │ no screen per record type    │
+│                              │        ├──────────────────────────────┤
+│                              │        │ queued ↔ confirmed           │
+│                              │        │ rejected: price/stock        │
+│                              │        │                              │
+│                              │        │                              │
+│                              │        │                              │
+│                              │        │                              │
+│ [ message…           ↑ ]     │        │                              │
+└──────────────────────────────┘        └──────────────────────────────┘
 ```
+
+## Store commerce = first launch
+
+```text
+Create workspace → add products → share store / WhatsApp
+                 → receive order or make sale → stock + money update
+
+Home → New sale → choose products → review → payment → receipt
+Home → Orders   → order detail → fulfill
+Home → Stock    → products / adjust / low stock / purchases
+Home → Store    → catalog / share link / WhatsApp
+Home → Pending  → open work → take action
+```
+
+| Home card | Shows on card | Opens |
+| --- | --- | --- |
+| Sell | today's total + to-pack count | New sale / orders / history / invoices |
+| Stock | low-stock count | Products / adjustments / purchases |
+| Money | cash + bank | Receipts / payments / expenses |
+| Reach | store link + new chats | Store / share / chat |
+| People | team + customers | Members / customers / tasks |
+
+Cards are per business type. Store launch = the five above. A taxi workspace
+enables its own cards (e.g. Trips · Fares · Riders) later, on the same home.
+Build a business type's cards only when it is prioritized—not before.
+
+## Data = clear records
+
+```text
+SQLite = workspace + members + customers + business records + money
+       + tasks + automations
+Store  = products + orders + sales + sale lines + payments + stock movements
+R2     = photos + documents + site releases
+```
+
+Use the tables, indexes and constraints the data needs. Prices, stock and
+payment status stay in SQLite. A sale can contain many product lines.
+
+| Rule | Meaning |
+| --- | --- |
+| Transaction | Sale + lines + stock commit together |
+| Stable ID | Retry = same result, not a duplicate |
+| Stock | Check availability + reservations; reject shortage |
+| Money | Integer minor units + auditable accounts; balanced postings |
+| Correction | Linked reversal; external payments use actual refund flow |
+| Order | Ordered ≠ fulfilled ≠ sold ≠ paid |
+| Totals | Indexed queries first; cache only when measured |
+| Time | Store UTC; use workspace time zone for business days |
+
+## Access + safety
+
+```text
+Member request → authenticate → current role + permission → gate → commit
+Customer       → scoped public access → order
+Payment event  → verify provider + event ID → update payment
+```
+
+- Check permissions on every read + action; handle revoked sessions.
+- Sensitive actions + AI-suggested money / messages → human approval.
+- Secure uploads + private files; keep secrets server-side.
+- Preserve financial history + audit important changes.
+
+## Live + offline
+
+```text
+Online    → action → gate → commit → role-filtered update
+Offline   → local queue → reconnect → validate → confirmed / rejected
+Reconnect → fetch current server state; socket ≠ truth
+```
+
+- Show **queued** separately from **confirmed**; retry with the same ID.
+- Changed price, stock or permission → show conflict; user resolves it.
+- Approvals + external payments need online confirmation.
+- Notifications = alerts; server state = truth.
+- External work = durable record + retries + idempotency + visible failure.
+
+## Ask + automations
+
+```text
+Words / photo / import → Ask → TAR answers or acts
+
+One-time:   Ask "who ordered Friday?"     → answer → done
+            Ask "create PO for 50 units"   → confirm → done
+
+Automation: Ask "every morning send sales report"
+            → TAR plans: schedule 08:00 → send report
+            → user confirms → saved as card on home
+```
+
+```text
+Automation = one trigger + one action
+  trigger: tap | schedule (HH:mm) | event (stock < N, order placed, ...)
+  action:  one registered action with inputs
+
+No multi-step flows. Chain = multiple automations on same trigger.
+```
+
+| Rule | Meaning |
+| --- | --- |
+| Model | LLM / Jev only where useful; validate output + measure cost |
+| Execution | Confirmed automations run without a model; no unrestricted SQL |
+| Safety | Money + customer actions always need human confirm |
+| Reliability | Scheduled / event automations survive restarts and retries safely |
+
+## Store + channels + network
+
+| Feature | Plan |
+| --- | --- |
+| Store | Curated `*.tar.site` + catalog + orders; publish / rollback |
+| WhatsApp | Shareable link first; opening WhatsApp ≠ message sent |
+| Channels | Add reviewed official WhatsApp / Telegram adapters when needed |
+| Payments | Verified provider events; workspace owns payment state |
+| Custom site | Later: isolated sandbox for visuals; workspace owns business rules |
+| Workspace ↔ workspace | Later: durable, idempotent delivery + explicit reconciliation / settlement |
+
+## Delivery
+
+```text
+1. STORE LAUNCH
+   workspace + roles + products + POS + orders + stock + money
+   + curated store + WhatsApp sharing
+
+2. RELIABLE DAILY USE
+   offline + live updates + notifications + GST + imports
+   + audit + backup / restore
+
+3. ASSISTANCE + TEAM
+   Ask + automations + tasks + staff + useful integrations
+
+4. EXPANSION
+   custom sites + advanced channels + workspace-to-workspace trade
+   + other business types, driven by real demand
+```
+
+Move safety or reliability work earlier if first customers need it.
+
+## Deploy + verify
+
+```text
+Rivet 3 preview → workspace actors → WarpDrive / S3
+                                  → R2 for application files
+Start small → measure → add nodes / availability zones when justified
+```
+
+Pin versions. Verify storage, recovery + actual costs. Vendor benchmarks ≠
+guaranteed app latency.
+
+**Before launch:** test the store journey + workspace isolation + permissions
++ retries + stock conflicts + offline replay + payment events + actor restarts
++ delivery failures + backup restore.

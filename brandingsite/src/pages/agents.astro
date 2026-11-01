@@ -1,6 +1,5 @@
 ---
 // TAR AI Agents & Bots — Full Editorial Page matching Homepage Design System
-// Incorporating Canonical Architecture from tar-harness.md
 import Layout from "../layouts/Layout.astro";
 import Nav from "../components/Nav.astro";
 import FooterSection from "../components/FooterSection.astro";
@@ -73,7 +72,7 @@ const rateTables = [
     title: "1. Core Workspace Operations",
     rows: [
       { action: "Offline sales, orders & catalog browsing", rate: "0 cr (₹0.00)", model: "On-Device", notes: "Instant local operations (100% Free)" },
-      { action: "Encrypted multi-device sync (Turso)", rate: "1 cr / 600 ops (~₹0.016 / 100 ops)", model: "Cloud Sync", notes: "TLS 1.3 edge replication" },
+      { action: "Encrypted workspace sync (Rivet actor SQLite)", rate: "1 cr / 600 ops (~₹0.016 / 100 ops)", model: "Actor Sync", notes: "TLS 1.3 edge sync" },
       { action: "Workspace semantic search & query", rate: "0.02 cr (~₹0.002)", model: "Gemma-4", notes: "1 credit = 50 queries" },
       { action: "Automated daily business summary", rate: "0.05 cr (~₹0.005)", model: "Gemma-4", notes: "Daily cash & order roll-up" }
     ]
@@ -359,8 +358,8 @@ const safetySteps = [
           <a href="/docs" class="btn-leaf-bright">
             Read User Docs →
           </a>
-          <a href="/harness" class="btn-ghost-light">
-            Read TAR Harness Standard
+          <a href="/manifesto" class="btn-ghost-light">
+            Read the TAR Manifesto
           </a>
         </div>
       </div>

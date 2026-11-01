@@ -234,7 +234,7 @@ Rivet uses the **Blueprint vs. Instance** model. You write the food ordering and
 
 ---
 
-## 7. Direct Comparison: Cloudflare Worker + Central DB vs. Rivet 3.0
+## 7. Direct Comparison: Legacy Worker + Central DB vs. Rivet 3.0
 
 | Feature | Legacy Setup (Worker + Central DB + Pusher) | Rivet 3.0 + Cloudflare R2 |
 | :--- | :--- | :--- |

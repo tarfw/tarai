@@ -19,8 +19,6 @@ yarn-error.log*
 nul
 SECRETS.md
 
-# Wrangler local state
-.wrangler/
 .mimocode/
 .freebuff/
 out_*/
