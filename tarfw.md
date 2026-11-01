@@ -11,7 +11,7 @@ Workspace = any SME business (store / delivery / taxi / service / ...)
 
 1 workspace = 1 Rivet actor + 1 SQLite
 Members     → private workspace    Customers → store / channels
-Phone       → online + offline     Files     → R2
+Phone       → online               Files     → R2
 ```
 
 One person can create, join and switch workspaces. Each workspace stays separate.
@@ -75,6 +75,153 @@ Each card = one number + one line → one section (list + forms).
 
 Money and People are always present for work workspaces. Personal has neither.
 
+### Home screens by workspace type
+
+Same home for every type — only the cards change (recipe order):
+
+```text
+Store
+┌──────────────────────────────┐
+│ 9:41                       ● │
+│ Aambal Stores            (o) │
+├──────────────────────────────┤
+│ ! 2 orders → pack            │
+│ SELL               Rs.12,400 │
+│ STOCK              Rs.45,000 │
+│ MONEY              Rs.18,450 │
+│ REACH            3 new chats │
+│ PEOPLE                    12 │
+├──────────────────────────────┤
+│ [ Ask TAR ]                  │
+└──────────────────────────────┘
+
+Delivery
+┌──────────────────────────────┐
+│ 9:41                       ● │
+│ Ravi Couriers            (o) │
+├──────────────────────────────┤
+│ ! 3 pickups pending          │
+│ DELIVERIES           8 today │
+│ STOCK            2 items low │
+│ MONEY               Rs.4,300 │
+│ PEOPLE                     5 │
+├──────────────────────────────┤
+│ [ Ask TAR ]                  │
+└──────────────────────────────┘
+
+Taxi
+┌──────────────────────────────┐
+│ 9:41                       ● │
+│ Ravi's Taxi              (o) │
+├──────────────────────────────┤
+│ ! 2 rides unassigned         │
+│ TRIPS               14 today │
+│ FARES               Rs.2,150 │
+│ MONEY               Rs.5,400 │
+│ PEOPLE                     6 │
+├──────────────────────────────┤
+│ [ Ask TAR ]                  │
+└──────────────────────────────┘
+
+Service / auto
+┌──────────────────────────────┐
+│ 9:41                       ● │
+│ Kumar Auto Works         (o) │
+├──────────────────────────────┤
+│ ! 1 job awaiting parts       │
+│ JOBS                  4 open │
+│ STOCK             1 item low │
+│ MONEY               Rs.9,800 │
+│ PEOPLE                     3 │
+├──────────────────────────────┤
+│ [ Ask TAR ]                  │
+└──────────────────────────────┘
+
+Personal
+┌──────────────────────────────┐
+│ 9:41                       ● │
+│ Meera                    (o) │
+├──────────────────────────────┤
+│ ! Report due tomorrow        │
+│ TASKS                 3 open │
+│ HEALTH       morning routine │
+│ PLANS         savings · trip │
+├──────────────────────────────┤
+│ [ Ask TAR ]                  │
+└──────────────────────────────┘
+```
+```text
+Store
+┌──────────────────────────────┐
+│ 9:41                       ● │
+│ Aambal Stores            (o) │
+│──────────────────────────────│
+│ ! 2 orders → pack            │
+│ SELL                Rs.12,400│
+│ STOCK               Rs.45,000│
+│ MONEY               Rs.18,450│
+│ REACH             3 new chats│
+│ PEOPLE                     12│
+│──────────────────────────────│
+│ [ Ask TAR ]                  │
+└──────────────────────────────┘
+
+Delivery
+┌──────────────────────────────┐
+│ 9:41                       ● │
+│ Ravi Couriers            (o) │
+│──────────────────────────────│
+│ ! 3 pickups pending          │
+│ DELIVERIES            8 today│
+│ STOCK             2 items low│
+│ MONEY                Rs.4,300│
+│ PEOPLE                      5│
+│──────────────────────────────│
+│ [ Ask TAR ]                  │
+└──────────────────────────────┘
+
+Taxi
+┌──────────────────────────────┐
+│ 9:41                       ● │
+│ Ravi's Taxi              (o) │
+│──────────────────────────────│
+│ ! 2 rides unassigned         │
+│ TRIPS                14 today│
+│ FARES                Rs.2,150│
+│ MONEY                Rs.5,400│
+│ PEOPLE                      6│
+│──────────────────────────────│
+│ [ Ask TAR ]                  │
+└──────────────────────────────┘
+
+Service / auto
+┌──────────────────────────────┐
+│ 9:41                       ● │
+│ Kumar Auto Works         (o) │
+│──────────────────────────────│
+│ ! 1 job awaiting parts       │
+│ JOBS                   4 open│
+│ STOCK              1 item low│
+│ MONEY                Rs.9,800│
+│ PEOPLE                      3│
+│──────────────────────────────│
+│ [ Ask TAR ]                  │
+└──────────────────────────────┘
+
+Personal
+┌──────────────────────────────┐
+│ 9:41                       ● │
+│ Meera                    (o) │
+│──────────────────────────────│
+│ ! Report due tomorrow        │
+│ TASKS                  3 open│
+│ HEALTH        morning routine│
+│ PLANS          savings · trip│
+│──────────────────────────────│
+│ [ Ask TAR ]                  │
+└──────────────────────────────┘
+```
+
 One work shape for all kinds: `kind · status · assignee · customer · amount`.
 
 | Kind | Status flow |
@@ -96,25 +243,8 @@ Customers are not members. They reach the business through Reach (link / WhatsAp
 
 ### Automations
 
-Users create automations from Ask. One trigger + one action. Saved as a card on home.
-
-```text
-Ask TAR: "every morning send me yesterday's sales report"
-    ↓
-TAR plans: automation = schedule 08:00 → send report
-    ↓
-User confirms → card appears on home
-```
-
-| Trigger | Example |
-| --- | --- |
-| tap | "restock alert" — tap to check low stock |
-| schedule (HH:mm) | "every morning at 8, send sales report" |
-| event | "if stock below 10, create PO to vendor" |
-
-One automation = one trigger + one action. Chain automations by same event
-(e.g. "send PO" + "notify vendor" = two automations, same event).
-Max 8 automations per workspace.
+Created from Ask: one trigger + one action → saved as a card on home.
+Full spec in "Ask + automations" below.
 
 New business type = new recipe row + its status flow. Nothing else.
 
@@ -123,26 +253,31 @@ New business type = new recipe row + its status flow. Nothing else.
 Two steps. One description → Jev suggests → owner edits → create.
 
 ```text
-STEP 1: describe                        STEP 2: your workspace
-┌──────────────────────────────┐        ┌──────────────────────────────┐
-│ (1/2) What do you do?        │        │ (2/2) Your workspace         │
-│                              │        │                              │
-│  "I run a taxi service"      │        │ Ravi's Taxi           (edit) │
-│  I take riders across        │        │  "I run a taxi service"      │
-│  the city.                   │        │                              │
-│                              │        │  We set up for you:          │
-│                              │        │  [ Fares ] [ Trips ]         │
-│                              │        │  [ Riders ] [ Team ]         │
-│                              │        │  [+ add a feature ]          │
-│                              │        │                              │
-│                              │        │                              │
-│                              │        │                              │
-│                              │        │                              │
-│                              │        │                              │
-│                              │        │                              │
-│                              │        │                              │
-│             [ Next ] →       │        │     [ Create workspace ]     │
-└──────────────────────────────┘        └──────────────────────────────┘
+STEP 1: describe
+┌──────────────────────────────┐
+│ (1/2) What do you do?        │
+│                              │
+│  "I run a taxi service"      │
+│  I take riders across        │
+│  the city.                   │
+│                              │
+│             [ Next ] →       │
+└──────────────────────────────┘
+
+STEP 2: your workspace
+┌──────────────────────────────┐
+│ (2/2) Your workspace         │
+│                              │
+│ Ravi's Taxi           (edit) │
+│  "I run a taxi service"      │
+│                              │
+│  We set up for you:          │
+│  [ Fares ] [ Trips ]         │
+│  [ Riders ] [ Team ]         │
+│  [+ add a feature ]          │
+│                              │
+│     [ Create workspace ]     │
+└──────────────────────────────┘
 ```
 
 ```text
@@ -180,91 +315,149 @@ Owner invites → link / QR → accept → appears as "MEMBER" in workspace shee
 Real phone shape: status bar + header + block dividers inside each screen.
 
 ```text
-HOME (store workspace)                  WORK = SELL (tap Sell card)
-┌──────────────────────────────┐        ┌──────────────────────────────┐
-│ 9:41                       ● │        │ 9:41                       ● │
-├──────────────────────────────┤        ├──────────────────────────────┤
-│ Aambal Stores            (o) │        │ ← Sell               [+ New] │
-│ Manager                     │        ├──────────────────────────────┤
-├──────────────────────────────┤        │ Today              Rs.12,400 │
-│ ! 2 orders → pack            │        ├──────────────────────────────┤
-├──────────────────────────────┤        │ #12 Sari order       Rs. 950 │
-│ SELL               Rs.12,400 │        │     → pack now               │
-│ · 2 orders to pack           │        ├──────────────────────────────┤
-├──────────────────────────────┤        │ #11 Counter          Rs. 200 │
-│ MONEY              Rs.18,450 │        ├──────────────────────────────┤
-├──────────────────────────────┤        │ #10 WhatsApp        Rs.1,250 │
-│ STOCK              Rs.45,000 │        ├──────────────────────────────┤
-├──────────────────────────────┤        │ #9 Counter           Rs. 300 │
-│ PEOPLE                    12 │        ├──────────────────────────────┤
-├──────────────────────────────┤        │                              │
-│ ▸ Sales report · 8am daily   │        │ [ New Sale ]                 │
-├──────────────────────────────┤        └──────────────────────────────┘
-│ [ New Sale ]           (Ask) │
+HOME (store workspace)
+┌──────────────────────────────┐
+│ 9:41                       ● │
+├──────────────────────────────┤
+│ Aambal Stores            (o) │
+│ Manager                      │
+├──────────────────────────────┤
+│ ! 2 orders → pack            │
+├──────────────────────────────┤
+│ SELL               Rs.12,400 │
+│ · 2 orders to pack           │
+├──────────────────────────────┤
+│ MONEY              Rs.18,450 │
+├──────────────────────────────┤
+│ STOCK              Rs.45,000 │
+├──────────────────────────────┤
+│ PEOPLE                    12 │
+├──────────────────────────────┤
+│ ▸ Sales report · 8am daily   │
+├──────────────────────────────┤
+│ [ Ask TAR ]                  │
 └──────────────────────────────┘
 
-SALE (POS)                              MONEY
-┌──────────────────────────────┐        ┌──────────────────────────────┐
-│ 9:41                       ● │        │ 9:41                       ● │
-├──────────────────────────────┤        ├──────────────────────────────┤
-│ ← New Sale            [done] │        │ ← Money                      │
-├──────────────────────────────┤        ├──────────────────────────────┤
-│ [ search products… ]         │        │ Cash               Rs. 8,200 │
-├──────────────────────────────┤        ├──────────────────────────────┤
-│ Saree silk   1          −  + │        │ Bank               Rs.10,250 │
-├──────────────────────────────┤        ├──────────────────────────────┤
-│ Blouse piece   2        −  + │        │ Today                        │
-├──────────────────────────────┤        ├──────────────────────────────┤
-│ CART (3)           Rs. 2,450 │        │ + Received           Rs. 500 │
-├──────────────────────────────┤        ├──────────────────────────────┤
-│ [cash] [upi] [card]          │        │ − Expense            Rs. 120 │
-│                              │        ├──────────────────────────────┤
-│                              │        │                              │
-│                              │        │                              │
-│ [ Complete Sale ]            │        │ [ Log Money ]                │
-└──────────────────────────────┘        └──────────────────────────────┘
+WORK = SELL (tap Sell card)
+┌──────────────────────────────┐
+│ 9:41                       ● │
+├──────────────────────────────┤
+│ ← Sell               [+ New] │
+├──────────────────────────────┤
+│ Today              Rs.12,400 │
+├──────────────────────────────┤
+│ #12 Sari order       Rs. 950 │
+│     → pack now               │
+├──────────────────────────────┤
+│ #11 Counter          Rs. 200 │
+├──────────────────────────────┤
+│ #10 WhatsApp        Rs.1,250 │
+├──────────────────────────────┤
+│ #9 Counter           Rs. 300 │
+├──────────────────────────────┤
+│ [ New Sale ]                 │
+└──────────────────────────────┘
 
-PEOPLE                                  ORDER DETAIL (tap a row)
-┌──────────────────────────────┐        ┌──────────────────────────────┐
-│ 9:41                       ● │        │ 9:41                       ● │
-├──────────────────────────────┤        ├──────────────────────────────┤
-│ ← People          [+ Invite] │        │ ← Order #12                  │
-├──────────────────────────────┤        ├──────────────────────────────┤
-│ TEAM                         │        │ Sari order · to pack         │
-│ Ravi · Owner                 │        ├──────────────────────────────┤
-├──────────────────────────────┤        │ 1 Silk saree         Rs. 900 │
-│ Meena · Cashier · Shift14    │        ├──────────────────────────────┤
-├──────────────────────────────┤        │ Delivery              Rs. 50 │
-│ CUSTOMERS · 12               │        ├──────────────────────────────┤
-│ Priya · WhatsApp             │        │ TOTAL                Rs. 950 │
-├──────────────────────────────┤        ├──────────────────────────────┤
-│ Kumar · regular              │        │ Paid · UPI ✓                 │
-│                              │        ├──────────────────────────────┤
-│                              │        │                              │
-│                              │        │                              │
-│                              │        │ [ Mark packed ]              │
-└──────────────────────────────┘        └──────────────────────────────┘
+SALE (POS)
+┌──────────────────────────────┐
+│ 9:41                       ● │
+├──────────────────────────────┤
+│ ← New Sale            [done] │
+├──────────────────────────────┤
+│ [ search products… ]         │
+├──────────────────────────────┤
+│ Saree silk   1          −  + │
+├──────────────────────────────┤
+│ Blouse piece   2        −  + │
+├──────────────────────────────┤
+│ CART (3)           Rs. 2,450 │
+├──────────────────────────────┤
+│ [cash] [upi] [card]          │
+│                              │
+│ [ Complete Sale ]            │
+└──────────────────────────────┘
 
-ASK (optional)                          RULES
-┌──────────────────────────────┐        ┌──────────────────────────────┐
-│ 9:41                       ● │        │ Home → card → list/detail    │
-├──────────────────────────────┤        │          → action            │
-│ ← Ask TAR                    │        ├──────────────────────────────┤
-├──────────────────────────────┤        │ Sale + Chat own layout       │
-│ TAR: how can I help?         │        ├──────────────────────────────┤
-├──────────────────────────────┤        │ role filters read+action     │
-│ you: who ordered Friday?     │        ├──────────────────────────────┤
-│ TAR: Priya — 2 orders        │        ├──────────────────────────────┤
-├──────────────────────────────┤        │ no screen per record type    │
-│                              │        ├──────────────────────────────┤
-│                              │        │ queued ↔ confirmed           │
-│                              │        │ rejected: price/stock        │
-│                              │        │                              │
-│                              │        │                              │
-│                              │        │                              │
-│                              │        │                              │
-│ [ message…           ↑ ]     │        │                              │
-└──────────────────────────────┘        └──────────────────────────────┘
+MONEY
+┌──────────────────────────────┐
+│ 9:41                       ● │
+├──────────────────────────────┤
+│ ← Money                      │
+├──────────────────────────────┤
+│ Cash               Rs. 8,200 │
+├──────────────────────────────┤
+│ Bank               Rs.10,250 │
+├──────────────────────────────┤
+│ Today                        │
+├──────────────────────────────┤
+│ + Received           Rs. 500 │
+├──────────────────────────────┤
+│ − Expense            Rs. 120 │
+├──────────────────────────────┤
+│ [ Log Money ]                │
+└──────────────────────────────┘
+
+PEOPLE
+┌──────────────────────────────┐
+│ 9:41                       ● │
+├──────────────────────────────┤
+│ ← People          [+ Invite] │
+├──────────────────────────────┤
+│ TEAM                         │
+│ Ravi · Owner                 │
+├──────────────────────────────┤
+│ Meena · Cashier · Shift14    │
+├──────────────────────────────┤
+│ CUSTOMERS · 12               │
+│ Priya · WhatsApp             │
+├──────────────────────────────┤
+│ Kumar · regular              │
+└──────────────────────────────┘
+
+ORDER DETAIL (tap a row)
+┌──────────────────────────────┐
+│ 9:41                       ● │
+├──────────────────────────────┤
+│ ← Order #12                  │
+├──────────────────────────────┤
+│ Sari order · to pack         │
+├──────────────────────────────┤
+│ 1 Silk saree         Rs. 900 │
+│ Delivery              Rs. 50 │
+├──────────────────────────────┤
+│ TOTAL                Rs. 950 │
+├──────────────────────────────┤
+│ Paid · UPI ✓                 │
+├──────────────────────────────┤
+│ [ Mark packed ]              │
+└──────────────────────────────┘
+
+ASK (optional)
+┌──────────────────────────────┐
+│ 9:41                       ● │
+├──────────────────────────────┤
+│ ← Ask TAR                    │
+├──────────────────────────────┤
+│ TAR: how can I help?         │
+├──────────────────────────────┤
+│ you: who ordered Friday?     │
+│ TAR: Priya — 2 orders        │
+├──────────────────────────────┤
+│ [ message…           ↑ ]     │
+└──────────────────────────────┘
+
+RULES
+┌──────────────────────────────┐
+│ Home → card → list/detail    │
+│          → action            │
+├──────────────────────────────┤
+│ Sale + Chat own layout       │
+├──────────────────────────────┤
+│ role filters read+action     │
+├──────────────────────────────┤
+│ no screen per record type    │
+├──────────────────────────────┤
+│ rejected: price/stock        │
+└──────────────────────────────┘
 ```
 
 ## Store commerce = first launch
@@ -273,7 +466,7 @@ ASK (optional)                          RULES
 Create workspace → add products → share store / WhatsApp
                  → receive order or make sale → stock + money update
 
-Home → New sale → choose products → review → payment → receipt
+Home → Sell → New sale → choose products → review → payment → receipt
 Home → Orders   → order detail → fulfill
 Home → Stock    → products / adjust / low stock / purchases
 Home → Store    → catalog / share link / WhatsApp
@@ -328,20 +521,6 @@ Payment event  → verify provider + event ID → update payment
 - Secure uploads + private files; keep secrets server-side.
 - Preserve financial history + audit important changes.
 
-## Live + offline
-
-```text
-Online    → action → gate → commit → role-filtered update
-Offline   → local queue → reconnect → validate → confirmed / rejected
-Reconnect → fetch current server state; socket ≠ truth
-```
-
-- Show **queued** separately from **confirmed**; retry with the same ID.
-- Changed price, stock or permission → show conflict; user resolves it.
-- Approvals + external payments need online confirmation.
-- Notifications = alerts; server state = truth.
-- External work = durable record + retries + idempotency + visible failure.
-
 ## Ask + automations
 
 ```text
@@ -379,6 +558,7 @@ No multi-step flows. Chain = multiple automations on same trigger.
 | Channels | Add reviewed official WhatsApp / Telegram adapters when needed |
 | Payments | Verified provider events; workspace owns payment state |
 | Custom site | Later: isolated sandbox for visuals; workspace owns business rules |
+| Offline mode | Later: local queue + replay; launch online-only |
 | Workspace ↔ workspace | Later: durable, idempotent delivery + explicit reconciliation / settlement |
 
 ## Delivery
@@ -389,7 +569,7 @@ No multi-step flows. Chain = multiple automations on same trigger.
    + curated store + WhatsApp sharing
 
 2. RELIABLE DAILY USE
-   offline + live updates + notifications + GST + imports
+   live updates + notifications + GST + imports
    + audit + backup / restore
 
 3. ASSISTANCE + TEAM
@@ -414,5 +594,5 @@ Pin versions. Verify storage, recovery + actual costs. Vendor benchmarks ≠
 guaranteed app latency.
 
 **Before launch:** test the store journey + workspace isolation + permissions
-+ retries + stock conflicts + offline replay + payment events + actor restarts
++ retries + stock conflicts + payment events + actor restarts
 + delivery failures + backup restore.

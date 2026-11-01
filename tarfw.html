@@ -1,0 +1,814 @@
+<!doctype html><html><head><meta charset="utf-8">
+<title>TAR — One Live Workspace</title>
+<style>
+ html { background: #fff; color: #1a1a1a; } body { font: 15px/1.5 system-ui, sans-serif; max-width: min(1080px, calc(100% - 72px)); margin: 24px auto; padding: 0 16px; }
+ pre { font: 13.3081px/1 "DejaVu Sans Mono", ui-monospace, Menlo, monospace;
+       text-rendering: geometricPrecision; letter-spacing: 0;
+       background:#f6f6f6; padding:12px; border-radius:8px; overflow-x:auto; }
+ code { font: 0.9em ui-monospace, Menlo, monospace; }
+ table { border-collapse: collapse; } td, th { border:1px solid #ddd; padding:4px 10px; }
+</style></head><body><h1>TAR = One Live Workspace</h1>
+<h2>Idea</h2>
+<pre><code class="language-text">TAR = workspace platform for commerce + business + personal
+
+Workspace = any SME business (store / delivery / taxi / service / ...)
+          + personal (health, tasks, plans)
+          open to all — Jev types the business from description
+
+1 workspace = 1 Rivet actor + 1 SQLite
+Members     → private workspace    Customers → store / channels
+Phone       → online               Files     → R2
+</code></pre>
+<p>One person can create, join and switch workspaces. Each workspace stays separate.
+An owner of one workspace can be a member of another (e.g. chef in a restaurant
+workspace, driver in a taxi workspace). AI helps; normal work never depends on it.
+Design for cheap phones + slow internet.</p>
+<h2>App = one home</h2>
+<pre><code class="language-text">Sign in → Create / join workspace → HOME (canvas)
+
+HOME
+ ├─ header: workspace name → switch   |   tray → Inbox
+ ├─ NEXT: top items inline, "○" = act now (max 3)
+ ├─ work cards: 1–5, per recipe
+ │     tap card → section → back to HOME
+ ├─ automations: user-saved from Ask (tap / schedule / event)
+ └─ bottom bar: Ask TAR
+</code></pre>
+<p>No tab bar. One home, one level of sections.
+The workspace sheet groups: OWN section + MEMBER section.</p>
+<table>
+<thead>
+<tr>
+<th>Screen</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Home (canvas)</td>
+<td>Cards with a number + one line each; NEXT; Ask TAR</td>
+</tr>
+<tr>
+<td>Section</td>
+<td>Lists + forms for one card (e.g. Sell, Stock)</td>
+</tr>
+<tr>
+<td>Detail</td>
+<td>One record + its relevant actions</td>
+</tr>
+<tr>
+<td>Ask</td>
+<td>Questions, actions, create automations</td>
+</tr>
+<tr>
+<td>Settings</td>
+<td>Workspace + permissions + integrations + account</td>
+</tr>
+</tbody>
+</table>
+<p>Enable only the features a workspace needs. Reuse lists, forms and details;
+give POS or chat its own layout when useful. POS adapts layout from a config
+set at onboarding (table#, course grouping for restaurant; barcode/weight for
+grocery; meter fare for taxi). No screen per record type.
+Role = only permitted information + actions.</p>
+<h2>Home by business type</h2>
+<p>Each card = one number + one line → one section (list + forms).</p>
+<p>NEXT shows the top items themselves — up to 3 rows, tap one → detail; beyond 3, the card&#39;s section lists them.</p>
+<table>
+<thead>
+<tr>
+<th>Workspace</th>
+<th>Work cards</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Store</td>
+<td>Sell · Stock · Money · Reach · People</td>
+</tr>
+<tr>
+<td>Delivery</td>
+<td>Deliveries · Stock · Money · People</td>
+</tr>
+<tr>
+<td>Food delivery</td>
+<td>Deliveries · Earnings · Money · People</td>
+</tr>
+<tr>
+<td>Taxi</td>
+<td>Trips · Fares · Money · People</td>
+</tr>
+<tr>
+<td>Service / auto</td>
+<td>Jobs · Stock · Money · People</td>
+</tr>
+<tr>
+<td>Personal</td>
+<td>Tasks · Health · Plans</td>
+</tr>
+</tbody>
+</table>
+<p>Money and People are always present for work workspaces. Personal has neither.</p>
+<h3>Home screens by workspace type</h3>
+<p>Same home for every type — only the cards change (recipe order):</p>
+<pre><code class="language-text">Store
+┌──────────────────────────────┐
+│ 9:41                       ● │
+│ Aambal Stores            (o) │
+├──────────────────────────────┤
+│ ○ #12 sari → pack            │
+├──────────────────────────────┤
+│ ○ #15 rice → pack            │
+├──────────────────────────────┤
+│ SELL         Rs.12,400 today │
+│                              │
+├──────────────────────────────┤
+│ STOCK            2 items low │
+│                              │
+├──────────────────────────────┤
+│ MONEY    cash+bank Rs.18,450 │
+│                              │
+├──────────────────────────────┤
+│ REACH            3 new chats │
+│                              │
+├──────────────────────────────┤
+│ PEOPLE 2 team · 10 customers │
+│                              │
+├──────────────────────────────┤
+└──────────────────────────────┘
+
+Delivery
+┌──────────────────────────────┐
+│ 9:41                       ● │
+│ Ravi Couriers            (o) │
+├──────────────────────────────┤
+│ ○ #7 → pick up               │
+├──────────────────────────────┤
+│ ○ #9 → pick up               │
+├──────────────────────────────┤
+│ DELIVERIES           8 today │
+│                              │
+├──────────────────────────────┤
+│ STOCK            2 items low │
+│                              │
+├──────────────────────────────┤
+│ MONEY     cash+bank Rs.4,300 │
+│                              │
+├──────────────────────────────┤
+│ PEOPLE  2 team · 3 customers │
+│                              │
+│                              │
+│                              │
+│                              │
+├──────────────────────────────┤
+└──────────────────────────────┘
+
+Food delivery
+┌──────────────────────────────┐
+│ 9:41                       ● │
+│ Arjun Food delivery      (o) │
+├──────────────────────────────┤
+│ ○ #23 → pick up              │
+├──────────────────────────────┤
+│ ○ #31 → drop                 │
+├──────────────────────────────┤
+│ DELIVERIES          3 active │
+│                              │
+├──────────────────────────────┤
+│ EARNINGS        Rs.640 today │
+│                              │
+├──────────────────────────────┤
+│ MONEY            Rs.180 cash │
+│                              │
+├──────────────────────────────┤
+│ PEOPLE  1 team · 3 customers │
+│                              │
+│                              │
+│                              │
+│                              │
+├──────────────────────────────┤
+└──────────────────────────────┘
+
+Taxi
+┌──────────────────────────────┐
+│ 9:41                       ● │
+│ Ravi's Taxi              (o) │
+├──────────────────────────────┤
+│ ○ ride #41 → assign          │
+├──────────────────────────────┤
+│ ○ ride #38 → assign          │
+├──────────────────────────────┤
+│ TRIPS               14 today │
+│                              │
+├──────────────────────────────┤
+│ FARES               Rs.2,150 │
+│                              │
+├──────────────────────────────┤
+│ MONEY     cash+bank Rs.5,400 │
+│                              │
+├──────────────────────────────┤
+│ PEOPLE  1 team · 5 customers │
+│                              │
+│                              │
+│                              │
+│                              │
+├──────────────────────────────┤
+└──────────────────────────────┘
+
+Service / auto
+┌──────────────────────────────┐
+│ 9:41                       ● │
+│ Kumar Auto Works         (o) │
+├──────────────────────────────┤
+│ ○ job #12 → parts            │
+├──────────────────────────────┤
+│ JOBS                  4 open │
+│                              │
+├──────────────────────────────┤
+│ STOCK             1 item low │
+│                              │
+├──────────────────────────────┤
+│ MONEY     cash+bank Rs.9,800 │
+│                              │
+├──────────────────────────────┤
+│ PEOPLE   2 team · 1 customer │
+│                              │
+│                              │
+│                              │
+│                              │
+│                              │
+│                              │
+├──────────────────────────────┤
+└──────────────────────────────┘
+
+Personal
+┌──────────────────────────────┐
+│ 9:41                       ● │
+│ Meera                    (o) │
+├──────────────────────────────┤
+│ ○ report due tomorrow        │
+├──────────────────────────────┤
+│ TASKS                 3 open │
+│                              │
+├──────────────────────────────┤
+│ HEALTH       morning routine │
+│                              │
+├──────────────────────────────┤
+│ PLANS         savings · trip │
+│                              │
+│                              │
+│                              │
+│                              │
+│                              │
+│                              │
+│                              │
+│                              │
+│                              │
+├──────────────────────────────┤
+└──────────────────────────────┘</code></pre>
+
+<p>One work shape for all kinds: <code>kind · status · assignee · customer · amount</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Kind</th>
+<th>Status flow</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>order (store)</td>
+<td>new → packed → done</td>
+</tr>
+<tr>
+<td>delivery</td>
+<td>assigned → picked → delivered</td>
+</tr>
+<tr>
+<td>trip</td>
+<td>requested → ongoing → done</td>
+</tr>
+<tr>
+<td>job</td>
+<td>booked → in progress → done</td>
+</tr>
+</tbody>
+</table>
+<p>Role changes scope, not layout:</p>
+<table>
+<thead>
+<tr>
+<th>Member</th>
+<th>Home sees</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Owner</td>
+<td>all cards, all records</td>
+</tr>
+<tr>
+<td>Staff</td>
+<td>granted cards, all records</td>
+</tr>
+<tr>
+<td>Driver (delivery / taxi / food delivery)</td>
+<td>Work card = "mine today"; Money = own collections; no People</td>
+</tr>
+</tbody>
+</table>
+<p>Customers are not members. They reach the business through Reach (link / WhatsApp) only.</p>
+<p>New business type = new recipe row + its status flow. Nothing else.</p>
+<h3>Automations</h3>
+<p>Created from Ask: one trigger + one action → saved as a card on home.
+Full spec in "Ask + automations" below.</p>
+<h2>Create workspace (onboarding)</h2>
+<pre><code class="language-text">STEP 1: describe
+┌──────────────────────────────┐
+│ (1/2) What do you do?        │
+│                              │
+│  &quot;I run a taxi service&quot;      │
+│  I take riders across        │
+│  the city.                   │
+│                              │
+│             [ Next ] →       │
+└──────────────────────────────┘
+
+STEP 2: your workspace
+┌──────────────────────────────┐
+│ (2/2) Your workspace         │
+│                              │
+│ Ravi's Taxi           (edit) │
+│  &quot;I run a taxi service&quot;      │
+│                              │
+│  We set up for you:          │
+│  [ Trips ] [ Fares ]         │
+│  [ Money ] [ People ]        │
+│  [+ add a feature ]          │
+│                              │
+│     [ Create workspace ]     │
+└──────────────────────────────┘
+</code></pre>
+<pre><code class="language-text">One sentence
+    ↓
+Jev (1 call)  → type: any (store / delivery / taxi / auto / service / personal / ...)
+              → risk (abuse / spam)
+              → one yes/no per feature: &quot;does this business need Fares?&quot;
+              → POS layout hint: &quot;restaurant&quot; → table# + course grouping
+    ↓
+code → type recipe floor + Jev-suggested extras + POS layout config
+    ↓
+owner edits chips → [ Create ]  → workspace born
+</code></pre>
+<ul>
+<li>Feature chips are <strong>owned by the user</strong>; Jev only suggests. Editable before create.</li>
+<li>A personal workspace (tasks, health, plans) is created the same way.
+  "I want to track my health and morning routine" → Personal: Tasks · Health · Plans.</li>
+<li>No Jev key / failure → code picks type from keywords + default recipe.</li>
+<li>Jev speaks once at birth. Never on the sale or reload path.</li>
+</ul>
+<h3>Join a workspace</h3>
+<pre><code class="language-text">Owner invites → link / QR → accept → appears as &quot;MEMBER&quot; in workspace sheet
+</code></pre>
+<ul>
+<li>Invited member picks their role (driver, staff, chef, ...).</li>
+<li>Home adapts per role (Driver = "mine today", no People).</li>
+<li>Member can leave; owner can revoke.</li>
+</ul>
+<h2>Concept screens (mobile)</h2>
+<p>Real phone shape: status bar + header + block dividers inside each screen.</p>
+<pre><code class="language-text">HOME (store workspace)
+┌──────────────────────────────┐
+│ 9:41                       ● │
+│ Aambal Stores            (o) │
+├──────────────────────────────┤
+│ ○ #12 sari order → pack      │
+├──────────────────────────────┤
+│ ○ #13 rice → pack            │
+├──────────────────────────────┤
+│ SELL         Rs.12,400 today │
+│ · 2 orders to pack           │
+│                              │
+├──────────────────────────────┤
+│ MONEY    cash+bank Rs.18,450 │
+│                              │
+├──────────────────────────────┤
+│ STOCK            2 items low │
+│                              │
+├──────────────────────────────┤
+│ PEOPLE 2 team · 10 customers │
+│                              │
+├──────────────────────────────┤
+│ ▸ Sales report · 8am daily   │
+├──────────────────────────────┤
+└──────────────────────────────┘
+
+WORK = SELL (tap Sell card)
+┌──────────────────────────────┐
+│ 9:41                       ● │
+├──────────────────────────────┤
+│ ← Sell               [+ New] │
+├──────────────────────────────┤
+│ Today              Rs.12,400 │
+├──────────────────────────────┤
+│ #12 Sari order       Rs. 950 │
+│     → pack now               │
+├──────────────────────────────┤
+│ #11 Counter          Rs. 200 │
+├──────────────────────────────┤
+│ #10 WhatsApp        Rs.1,250 │
+├──────────────────────────────┤
+│ #9 Counter           Rs. 300 │
+│                              │
+│                              │
+│                              │
+│                              │
+│                              │
+│                              │
+│                              │
+├──────────────────────────────┤
+└──────────────────────────────┘
+
+SALE (POS)
+┌──────────────────────────────┐
+│ 9:41                       ● │
+├──────────────────────────────┤
+│ ← New Sale            [done] │
+├──────────────────────────────┤
+│ [ search products… ]         │
+├──────────────────────────────┤
+│ Saree silk   1          −  + │
+├──────────────────────────────┤
+│ Blouse piece   2        −  + │
+├──────────────────────────────┤
+│ CART (3)           Rs. 2,450 │
+│                              │
+│                              │
+│                              │
+│                              │
+│                              │
+│                              │
+│                              │
+│                              │
+│                              │
+│                              │
+├──────────────────────────────┤
+└──────────────────────────────┘
+
+MONEY
+┌──────────────────────────────┐
+│ 9:41                       ● │
+├──────────────────────────────┤
+│ ← Money                      │
+├──────────────────────────────┤
+│ Cash               Rs. 8,200 │
+├──────────────────────────────┤
+│ Bank               Rs.10,250 │
+├──────────────────────────────┤
+│ Today                        │
+├──────────────────────────────┤
+│ + Received           Rs. 500 │
+├──────────────────────────────┤
+│ − Expense            Rs. 120 │
+│                              │
+│                              │
+│                              │
+│                              │
+│                              │
+│                              │
+│                              │
+│                              │
+├──────────────────────────────┤
+└──────────────────────────────┘
+
+PEOPLE
+┌──────────────────────────────┐
+│ 9:41                       ● │
+├──────────────────────────────┤
+│ ← People          [+ Invite] │
+├──────────────────────────────┤
+│ TEAM                         │
+│ Ravi · Owner                 │
+├──────────────────────────────┤
+│ Meena · Cashier · Shift14    │
+├──────────────────────────────┤
+│ CUSTOMERS · 12               │
+│ Priya · WhatsApp             │
+├──────────────────────────────┤
+│ Kumar · regular              │
+│                              │
+│                              │
+│                              │
+│                              │
+│                              │
+│                              │
+│                              │
+│                              │
+│                              │
+└──────────────────────────────┘
+
+ORDER DETAIL (tap a row)
+┌──────────────────────────────┐
+│ 9:41                       ● │
+├──────────────────────────────┤
+│ ← Order #12                  │
+├──────────────────────────────┤
+│ Sari order · to pack         │
+├──────────────────────────────┤
+│ 1 Silk saree         Rs. 900 │
+│ Delivery              Rs. 50 │
+├──────────────────────────────┤
+│ TOTAL                Rs. 950 │
+├──────────────────────────────┤
+│ Paid · UPI ✓                 │
+│                              │
+│                              │
+│                              │
+│                              │
+│                              │
+│                              │
+│                              │
+│                              │
+│                              │
+├──────────────────────────────┤
+└──────────────────────────────┘
+
+ASK
+┌──────────────────────────────┐
+│ 9:41                       ● │
+├──────────────────────────────┤
+│ ← Ask TAR                    │
+├──────────────────────────────┤
+│ TAR: how can I help?         │
+├──────────────────────────────┤
+│ you: who ordered Friday?     │
+│ TAR: Priya — 2 orders        │
+│                              │
+│                              │
+│                              │
+│                              │
+│                              │
+│                              │
+│                              │
+│                              │
+│                              │
+│                              │
+│                              │
+│                              │
+│                              │
+├──────────────────────────────┤
+└──────────────────────────────┘
+
+RULES
+┌──────────────────────────────┐
+│ Home → card → list/detail    │
+│          → action            │
+├──────────────────────────────┤
+│ Sale + Chat own layout       │
+├──────────────────────────────┤
+│ role filters read+action     │
+├──────────────────────────────┤
+│ no screen per record type    │
+├──────────────────────────────┤
+│ rejected: price/stock        │
+│                              │
+│                              │
+│                              │
+│                              │
+│                              │
+│                              │
+│                              │
+│                              │
+│                              │
+│                              │
+│                              │
+│                              │
+└──────────────────────────────┘</code></pre>
+<h2>Store recipe = first build</h2>
+<pre><code class="language-text">Create workspace → add products → share store / WhatsApp
+                 → receive order or make sale → stock + money update
+
+Home → Sell → New sale → choose products → review → payment → receipt
+Home → Sell → order → detail → fulfill
+Home → Stock → products / adjust / low stock / purchases
+Home → Reach → catalog / share link / WhatsApp
+Home → NEXT → open work → take action
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Home card</th>
+<th>Shows on card</th>
+<th>Opens</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Sell</td>
+<td>today's total + to-pack count</td>
+<td>New sale / orders / history / invoices</td>
+</tr>
+<tr>
+<td>Stock</td>
+<td>low-stock count</td>
+<td>Products / adjustments / purchases</td>
+</tr>
+<tr>
+<td>Money</td>
+<td>cash + bank</td>
+<td>Receipts / payments / expenses</td>
+</tr>
+<tr>
+<td>Reach</td>
+<td>store link + new chats</td>
+<td>Store / share / chat</td>
+</tr>
+<tr>
+<td>People</td>
+<td>team + customers</td>
+<td>Members / customers / tasks</td>
+</tr>
+</tbody>
+</table>
+<h2>Data = clear records</h2>
+<pre><code class="language-text">SQLite = workspace + members + customers + business records + money
+       + tasks + automations
+Store  = products + orders + sales + sale lines + payments + stock movements
+R2     = photos + documents + site releases
+</code></pre>
+<p>Use the tables, indexes and constraints the data needs. Prices, stock and
+payment status stay in SQLite. A sale can contain many product lines.</p>
+<table>
+<thead>
+<tr>
+<th>Rule</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Transaction</td>
+<td>Sale + lines + stock commit together</td>
+</tr>
+<tr>
+<td>Stable ID</td>
+<td>Retry = same result, not a duplicate</td>
+</tr>
+<tr>
+<td>Stock</td>
+<td>Check availability + reservations; reject shortage</td>
+</tr>
+<tr>
+<td>Money</td>
+<td>Integer minor units + auditable accounts; balanced postings</td>
+</tr>
+<tr>
+<td>Correction</td>
+<td>Linked reversal; external payments use actual refund flow</td>
+</tr>
+<tr>
+<td>Order</td>
+<td>Ordered ≠ fulfilled ≠ sold ≠ paid</td>
+</tr>
+<tr>
+<td>Totals</td>
+<td>Indexed queries first; cache only when measured</td>
+</tr>
+<tr>
+<td>Time</td>
+<td>Store UTC; use workspace time zone for business days</td>
+</tr>
+</tbody>
+</table>
+<h2>Access + safety</h2>
+<pre><code class="language-text">Member request → authenticate → current role + permission → gate → commit
+Customer       → scoped public access → order
+Payment event  → verify provider + event ID → update payment
+</code></pre>
+<ul>
+<li>Check permissions on every read + action; handle revoked sessions.</li>
+<li>Sensitive actions + AI-suggested money / messages → human approval.</li>
+<li>Secure uploads + private files; keep secrets server-side.</li>
+<li>Preserve financial history + audit important changes.</li>
+</ul>
+<h2>Ask + automations</h2>
+<pre><code class="language-text">Words / photo / import → Ask → TAR answers or acts
+
+One-time:   Ask &quot;who ordered Friday?&quot;     → answer → done
+            Ask &quot;create PO for 50 units&quot;   → confirm → done
+
+Automation: Ask &quot;every morning send sales report&quot;
+            → TAR plans: schedule 08:00 → send report
+            → user confirms → saved as card on home
+</code></pre>
+<pre><code class="language-text">Automation = one trigger + one action
+  trigger: tap | schedule (HH:mm) | event (stock &lt; N, order placed, ...)
+  action:  one registered action with inputs
+
+No multi-step flows. Chain = multiple automations on same trigger.
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Rule</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Model</td>
+<td>LLM / Jev only where useful; validate output + measure cost</td>
+</tr>
+<tr>
+<td>Execution</td>
+<td>Confirmed automations run without a model; no unrestricted SQL</td>
+</tr>
+<tr>
+<td>Safety</td>
+<td>Money + customer actions always need human confirm</td>
+</tr>
+<tr>
+<td>Reliability</td>
+<td>Scheduled / event automations survive restarts and retries safely</td>
+</tr>
+</tbody>
+</table>
+<h2>Store + channels + network</h2>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Plan</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Store</td>
+<td>Curated <code>*.tar.site</code> + catalog + orders; publish / rollback</td>
+</tr>
+<tr>
+<td>WhatsApp</td>
+<td>Shareable link first; opening WhatsApp ≠ message sent</td>
+</tr>
+<tr>
+<td>Channels</td>
+<td>Add reviewed official WhatsApp / Telegram adapters when needed</td>
+</tr>
+<tr>
+<td>Payments</td>
+<td>Verified provider events; workspace owns payment state</td>
+</tr>
+<tr>
+<td>Custom site</td>
+<td>Later: isolated sandbox for visuals; workspace owns business rules</td>
+</tr>
+<tr>
+<td>Offline mode</td>
+<td>Later: local queue + replay; launch online-only</td>
+</tr>
+<tr>
+<td>Workspace ↔ workspace</td>
+<td>Later: durable, idempotent delivery + explicit reconciliation / settlement</td>
+</tr>
+</tbody>
+</table>
+<h2>Delivery</h2>
+<pre><code class="language-text">1. STORE LAUNCH
+   workspace + roles + products + POS + orders + stock + money
+   + curated store + WhatsApp sharing
+
+2. RELIABLE DAILY USE
+   live updates + notifications + GST + imports
+   + audit + backup / restore
+
+3. ASSISTANCE + TEAM
+   Ask + automations + tasks + staff + useful integrations
+
+4. EXPANSION
+   custom sites + advanced channels + workspace-to-workspace trade
+   + other business types, driven by real demand
+</code></pre>
+<p>Move safety or reliability work earlier if first customers need it.</p>
+<h2>Deploy + verify</h2>
+<pre><code class="language-text">Rivet 3 preview → workspace actors → WarpDrive / S3
+                                  → R2 for application files
+Start small → measure → add nodes / availability zones when justified
+</code></pre>
+<p>Pin versions. Verify storage, recovery + actual costs. Vendor benchmarks ≠
+guaranteed app latency.</p>
+<p><strong>Before launch:</strong> test the store journey + workspace isolation + permissions
++ retries + stock conflicts + payment events + actor restarts
++ delivery failures + backup restore.</p>
+<script id="hotreload">
+(async () => {
+  const chk = async () => {
+    try {
+      const r = await fetch(location.pathname, { method: 'HEAD', cache: 'no-store' });
+      const m = r.headers.get('last-modified');
+      if (window.__lm && m && window.__lm !== m) location.reload();
+      window.__lm = m;
+    } catch (e) {}
+  };
+  setInterval(chk, 1500); chk();
+})();
+</script></body></html>

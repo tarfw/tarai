@@ -2,6 +2,10 @@
 
 *(All conversions calculated at the exact standard rate of **$1.00 USD = ₹85.00 INR**)*
 
+> **Fact-check 2026-11-01** (official rivet.dev + live console, org `tar-fwrks-organization-dhj1`, cluster `tar`):
+> ✅ **Confirmed:** 72.4 KB per Actor · 6.92 ms cold start (p50, 8.11 ms p99) · 4.37 ms wake-from-hibernate · 0 MB RAM while hibernating · 100 GB egress free · $0.06/GB overage · plan prices (see §4A).
+> ⚠️ **Unverified claims (no official source):** 0.69 ms write · ~1,400 writes/sec · 1.5–2 MB awake RAM · 10 GB actor / 50 GB object storage free tiers. Treat as estimates until Rivet publishes v3 limits.
+
 ---
 
 ## 1. Core Architecture, Deployment & Credentials
@@ -103,14 +107,14 @@ SQLite is simply the Actor's private notebook. The Actor itself is a **complete 
 
 ### A. How CPU & RAM Are Shared (Dynamic Pool)
 Actors do **not** have heavy, hard-reserved CPU or RAM locked to them:
-* **CPU (Shared):** An Actor borrows a vCPU core for **< 0.69 ms** to record a write or query, then immediately yields it back to the Node.
-* **RAM (Shared Dynamic):** While awake, an Actor uses **~1.5 to 2 MB** of working memory. When it hibernates, that RAM is completely freed.
+* **CPU (Shared):** An Actor borrows a vCPU core for **< 0.69 ms** to record a write or query, then immediately yields it back to the Node. *(unverified)*
+* **RAM (Shared Dynamic):** While awake, an Actor uses **~1.5 to 2 MB** of working memory *(unverified)*. When it hibernates, that RAM is completely freed — official page confirms **0 MB while hibernating**.
 * **State & SQLite (100% Dedicated):** Every Actor has its own private, isolated SQLite database file. No other Actor can read or lock it.
 
 ### B. Concurrent Writes (Rivet vs. Central DB vs. Uber Model)
 * **Across Different Workspaces (100% Parallel):** In traditional central databases (e.g. Postgres), thousands of shops write to shared tables, creating lock contention. In Rivet, **each workspace has its own database**. 10,000 shops write simultaneously with zero waiting.
 * **Inside a Single Workspace (The Single Queue):** If a cashier, a WhatsApp order, and an AI agent write to the *same* shop at the exact same millisecond, the Actor queues them in memory and writes them in sequence. **Database deadlocks (`SQLITE_BUSY`) are physically impossible**.
-* **Throughput:** Because writes commit locally to NVMe SSD in **0.69 ms**, a single Actor comfortably processes **1,400+ consecutive writes/sec**.
+* **Throughput:** Because writes commit locally to NVMe SSD in **0.69 ms**, a single Actor comfortably processes **1,400+ consecutive writes/sec**. *(derived from the 0.69 ms claim — unverified officially)*
 
 ### C. Conflict Resolution: Central DB (Lock & Reject) vs. Rivet + TAR (Queue & Merge)
 
@@ -144,12 +148,14 @@ WarpDrive eliminates the tradeoff between SSD speed and cloud durability:
 
 ### A. Control Plane Plans
 
-| Plan | Price USD / mo | Price INR / mo | Setup | Max Nodes | Features |
-| :--- | :--- | :--- | :---: | :---: | :--- |
-| **Free** | **$0.00** | **₹0** | 1 Node / 1 AZ | 1 Node | Community support |
-| **Hobby** | **$10.00** | **₹850** | 1 Node / 1 AZ | 3 Nodes | Email support |
-| **Team** | **$120.00** | **₹10,200** | 3 Nodes / 3 AZs | 10 Nodes | Slack & Email support |
-| **Enterprise** | **$900.00** | **₹76,500** | 5 Nodes / 3 AZs | 50 Nodes | 1.6 TB Hot Cache · 2.5 GB/s Writes · Dedicated support |
+> **Verified 2026-11-01 in Rivet 3.0 console (cluster `tar`).** Console (v3 preview) prices differ from the public pricing page (v2): Hobby **$18 vs $10**, Team **$156 vs $120**, Enterprise **$1,635 vs $900**. Console prices are authoritative.
+
+| Plan | Console USD/mo | Console INR/mo | Public site USD/mo | Setup | Max Nodes | Features |
+| :--- | :--- | :--- | :---: | :---: | :---: | :--- |
+| **Free** | **$0** | **₹0** | $0 | 1 Node / 1 AZ | 1 Node | Community support · Free-1: ¼ vCPU · 1 GB RAM · 10 GB hot cache · 30 MB/s writes |
+| **Hobby** | **$18.00** | **₹1,530** | $10 | 1 Node / 1 AZ | 3 Nodes | Email support |
+| **Team** | **$156.00** | **₹13,260** | $120 | 3 Nodes / 3 AZs | 10 Nodes | Slack & Email support |
+| **Enterprise** | **$1,635.00** | **₹1,38,975** | $900 | 5 Nodes / 3 AZs | 50 Nodes | 1.6 TB Hot Cache · 2.5 GB/s Writes · Dedicated support |
 
 ### B. Actor Node Sizes & Real-World Concurrency
 
@@ -166,11 +172,13 @@ WarpDrive eliminates the tradeoff between SSD speed and cloud durability:
 
 ### C. Authoritative Storage & Bandwidth Overage Rates
 
-| Resource | Included Free (Free-1 Plan) | Overage Rate (USD) | Overage Rate (INR) | Role |
-| :--- | :---: | :---: | :---: | :--- |
-| **Actor Storage** | **10 GB Free** | **$0.25 / GB** | **₹21.25 / GB-mo** | Fast NVMe SSD storage across 3 AZs for live SQLite states. |
-| **Object Storage** | **50 GB Free** | **$0.02 / GB** | **₹1.70 / GB-mo** | Deep S3 warehouse storage for historical deltas and files. |
-| **Egress (Bandwidth)** | **100 GB Free** | **$0.06 / GB** | **₹5.10 / GB** | WebSocket messages sent to users' devices. |
+> **Verification status (2026-11-01, console billing page):** Egress **✅ confirmed** (100 GB included · $0.06/GB overage). Actor/Object storage quotas **⚠️ unverified** — console currently renders "Up to undefined GB of user data" (v3 preview bug).
+
+| Resource | Included Free (Free-1 Plan) | Overage Rate (USD) | Overage Rate (INR) | Verified | Role |
+| :--- | :---: | :---: | :---: | :---: | :--- |
+| **Actor Storage** | **10 GB Free** | **$0.25 / GB** | **₹21.25 / GB-mo** | ⚠️ | Fast NVMe SSD storage across 3 AZs for live SQLite states. |
+| **Object Storage** | **50 GB Free** | **$0.02 / GB** | **₹1.70 / GB-mo** | ⚠️ | Deep S3 warehouse storage for historical deltas and files. |
+| **Egress (Bandwidth)** | **100 GB Free** | **$0.06 / GB** | **₹5.10 / GB** | ✅ | WebSocket messages sent to users' devices. |
 
 ### D. WebSocket Cost Rules: Open Connections & 24/7 Collaborators
 
