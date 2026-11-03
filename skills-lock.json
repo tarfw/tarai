@@ -7,6 +7,54 @@
       "skillPath": "skills/taste-skill/SKILL.md",
       "computedHash": "6ac8ba6089dcbc303744a507a4587113c5d845ca2f658b3ce2b0b5eab108fb0d"
     },
+    "rivet-actors": {
+      "source": "rivet-dev/skills",
+      "sourceType": "github",
+      "skillPath": "rivet-actors/SKILL.md",
+      "computedHash": "40461e5d9f6b5769c0cfa7d6f71a04676cea3bc96d9987e4d182a565a56772ed"
+    },
+    "rivet-agentos": {
+      "source": "rivet-dev/skills",
+      "sourceType": "github",
+      "skillPath": "rivet-agentos/SKILL.md",
+      "computedHash": "80d0618e903ec065b7542e0a95936eccfbfe3212d4d9e3df3f5660efa66f43d1"
+    },
+    "rivet-deploy-image": {
+      "source": "rivet-dev/skills",
+      "sourceType": "github",
+      "skillPath": "skills/rivet-deploy-image/SKILL.md",
+      "computedHash": "8720a4a16be74a3039a349f79684b36dfdbb656a46d7b940d755ddab0594af36"
+    },
+    "rivet-dynamic-apps": {
+      "source": "rivet-dev/skills",
+      "sourceType": "github",
+      "skillPath": "rivet-dynamic-apps/SKILL.md",
+      "computedHash": "924444fb9b80fc1184e0fdb37eae8526f5e6582a25116cd78cdc3ad61707af0c"
+    },
+    "rivet-sandbox-agent": {
+      "source": "rivet-dev/skills",
+      "sourceType": "github",
+      "skillPath": "rivet-sandbox-agent/SKILL.md",
+      "computedHash": "4b842fa5577878a70a8c3f2b92f4369c625039252cac95ac9fa38770be78adee"
+    },
+    "rivet-secure-exec": {
+      "source": "rivet-dev/skills",
+      "sourceType": "github",
+      "skillPath": "rivet-secure-exec/SKILL.md",
+      "computedHash": "c3fcca43b43a96c25d047ea98fe97f32ff72d025678c652a272e43186b8b51b1"
+    },
+    "rivet-workflows": {
+      "source": "rivet-dev/skills",
+      "sourceType": "github",
+      "skillPath": "rivet-workflows/SKILL.md",
+      "computedHash": "45653a80aab68f5852bc25e5b06d41cd6644277d0345a1f5bf43a68a9d5526f6"
+    },
+    "sandbox-agent": {
+      "source": "rivet-dev/skills",
+      "sourceType": "github",
+      "skillPath": "skills/sandbox-agent/SKILL.md",
+      "computedHash": "a2cb4bd37167bf824dd9f331447d3a5304f448c94f812748ef0d84f87b0f398b"
+    },
     "typesafe-ai": {
       "source": "typesafe-ai/skills",
       "sourceType": "github",

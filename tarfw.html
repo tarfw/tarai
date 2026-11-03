@@ -1,4 +1,5 @@
 <!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>TAR — One Live Workspace</title>
 <style>
  html { background: #fff; color: #1a1a1a; } body { font: 15px/1.5 system-ui, sans-serif; max-width: min(1080px, calc(100% - 72px)); margin: 24px auto; padding: 0 16px; }
@@ -13,7 +14,7 @@
 
 Workspace = any SME business (store / delivery / taxi / service / ...)
           + personal (health, tasks, plans)
-          open to all — Jev types the business from description
+          open to all — pick a type chip; Jev optional
 
 1 workspace = 1 Rivet actor + 1 SQLite
 Members     → private workspace    Customers → store / channels
@@ -27,11 +28,11 @@ Design for cheap phones + slow internet.</p>
 <pre><code class="language-text">Sign in → Create / join workspace → HOME (canvas)
 
 HOME
- ├─ header: workspace name → switch   |   tray → Inbox
+ ├─ header: workspace name → switch
  ├─ NEXT: top items inline, "○" = act now (max 3)
  ├─ work cards: 1–5, per recipe
  │     tap card → section → back to HOME
- ├─ automations: user-saved from Ask (tap / schedule / event)
+ ├─ quick actions: tap-automations saved from Ask
  └─ bottom bar: Ask TAR
 </code></pre>
 <p>No tab bar. One home, one level of sections.
@@ -73,7 +74,7 @@ grocery; meter fare for taxi). No screen per record type.
 Role = only permitted information + actions.</p>
 <h2>Home by business type</h2>
 <p>Each card = one number + one line → one section (list + forms).</p>
-<p>NEXT shows the top items themselves — up to 3 rows, tap one → detail; beyond 3, the card&#39;s section lists them.</p>
+<p>NEXT shows the top items themselves — up to 3 rows; tap ○ = done (undo), tap row → detail; beyond 3, the card&#39;s section lists them.</p>
 <table>
 <thead>
 <tr>
@@ -92,11 +93,11 @@ Role = only permitted information + actions.</p>
 </tr>
 <tr>
 <td>Food delivery</td>
-<td>Deliveries · Earnings · Money · People</td>
+<td>Deliveries · Money · People</td>
 </tr>
 <tr>
 <td>Taxi</td>
-<td>Trips · Fares · Money · People</td>
+<td>Trips · Money · People</td>
 </tr>
 <tr>
 <td>Service / auto</td>
@@ -108,7 +109,7 @@ Role = only permitted information + actions.</p>
 </tr>
 </tbody>
 </table>
-<p>Money and People are always present for work workspaces. Personal has neither.</p>
+<p>Money and People are always present for work workspaces. Personal has neither — it reuses the same primitives: tasks = work (open → done), habits = daily check-off items, plans = money goals in the ledger.</p>
 <h3>Home screens by workspace type</h3>
 <p>Same home for every type — only the cards change (recipe order):</p>
 <pre><code class="language-text">Store
@@ -129,7 +130,7 @@ Role = only permitted information + actions.</p>
 │ MONEY    cash+bank Rs.18,450 │
 │                              │
 ├──────────────────────────────┤
-│ REACH            3 new chats │
+│ REACH       12 catalog views │
 │                              │
 ├──────────────────────────────┤
 │ PEOPLE 2 team · 10 customers │
@@ -146,7 +147,7 @@ Delivery
 ├──────────────────────────────┤
 │ ○ #9 → pick up               │
 ├──────────────────────────────┤
-│ DELIVERIES           8 today │
+│ DELIVERIES 8 today · Rs.1,600│
 │                              │
 ├──────────────────────────────┤
 │ STOCK            2 items low │
@@ -172,16 +173,16 @@ Food delivery
 ├──────────────────────────────┤
 │ ○ #31 → drop                 │
 ├──────────────────────────────┤
-│ DELIVERIES          3 active │
-│                              │
-├──────────────────────────────┤
-│ EARNINGS        Rs.640 today │
+│ DELIVERIES 3 active · Rs.640 │
 │                              │
 ├──────────────────────────────┤
 │ MONEY            Rs.180 cash │
 │                              │
 ├──────────────────────────────┤
 │ PEOPLE  1 team · 3 customers │
+│                              │
+│                              │
+│                              │
 │                              │
 │                              │
 │                              │
@@ -198,16 +199,16 @@ Taxi
 ├──────────────────────────────┤
 │ ○ ride #38 → assign          │
 ├──────────────────────────────┤
-│ TRIPS               14 today │
-│                              │
-├──────────────────────────────┤
-│ FARES               Rs.2,150 │
+│ TRIPS    14 today · Rs.2,150 │
 │                              │
 ├──────────────────────────────┤
 │ MONEY     cash+bank Rs.5,400 │
 │                              │
 ├──────────────────────────────┤
 │ PEOPLE  1 team · 5 customers │
+│                              │
+│                              │
+│                              │
 │                              │
 │                              │
 │                              │
@@ -222,7 +223,7 @@ Service / auto
 ├──────────────────────────────┤
 │ ○ job #12 → parts            │
 ├──────────────────────────────┤
-│ JOBS                  4 open │
+│ JOBS 4 open · Rs.4,500       │
 │                              │
 ├──────────────────────────────┤
 │ STOCK             1 item low │
@@ -320,16 +321,18 @@ Personal
 <p>Customers are not members. They reach the business through Reach (link / WhatsApp) only.</p>
 <p>New business type = new recipe row + its status flow. Nothing else.</p>
 <h3>Automations</h3>
-<p>Created from Ask: one trigger + one action → saved as a card on home.
+<p>Created from Ask: one trigger + one action → tap = card on home; schedule / event listed in Ask.
 Full spec in "Ask + automations" below.</p>
 <h2>Create workspace (onboarding)</h2>
-<pre><code class="language-text">STEP 1: describe
+<pre><code class="language-text">STEP 1: your type
 ┌──────────────────────────────┐
 │ (1/2) What do you do?        │
 │                              │
-│  &quot;I run a taxi service&quot;      │
-│  I take riders across        │
-│  the city.                   │
+│  [ Grocery ]   [ Restaurant ]│
+│  [ Delivery ]  [ Taxi ]      │
+│  [ Service ]   [ Personal ]  │
+│                              │
+│  or describe: _____________  │
 │                              │
 │             [ Next ] →       │
 └──────────────────────────────┘
@@ -342,19 +345,16 @@ STEP 2: your workspace
 │  &quot;I run a taxi service&quot;      │
 │                              │
 │  We set up for you:          │
-│  [ Trips ] [ Fares ]         │
-│  [ Money ] [ People ]        │
+│  [ Trips ] [ Money ]         │
+│  [ People ]                  │
 │  [+ add a feature ]          │
 │                              │
 │     [ Create workspace ]     │
 └──────────────────────────────┘
 </code></pre>
-<pre><code class="language-text">One sentence
-    ↓
-Jev (1 call)  → type: any (store / delivery / taxi / auto / service / personal / ...)
-              → risk (abuse / spam)
-              → one yes/no per feature: &quot;does this business need Fares?&quot;
-              → POS layout hint: &quot;restaurant&quot; → table# + course grouping
+<pre><code class="language-text">Type chips: Grocery / Restaurant / Delivery / Taxi / Service / Personal
+    ↓ one tap → recipe loads instantly (works offline)
+Typed description? → Jev (1 call) → refine type + feature yes/no + POS hint
     ↓
 code → type recipe floor + Jev-suggested extras + POS layout config
     ↓
@@ -364,14 +364,14 @@ owner edits chips → [ Create ]  → workspace born
 <li>Feature chips are <strong>owned by the user</strong>; Jev only suggests. Editable before create.</li>
 <li>A personal workspace (tasks, health, plans) is created the same way.
   "I want to track my health and morning routine" → Personal: Tasks · Health · Plans.</li>
-<li>No Jev key / failure → code picks type from keywords + default recipe.</li>
-<li>Jev speaks once at birth. Never on the sale or reload path.</li>
+<li>Type chips work offline; no Jev key or a Jev failure changes nothing.</li>
+<li>Jev speaks once at birth — photo of a menu / rate card → fills Stock. Never on the sale or reload path.</li>
 </ul>
 <h3>Join a workspace</h3>
-<pre><code class="language-text">Owner invites → link / QR → accept → appears as &quot;MEMBER&quot; in workspace sheet
+<pre><code class="language-text">Owner picks role → role link / QR → accept → appears as &quot;MEMBER&quot; in sheet
 </code></pre>
 <ul>
-<li>Invited member picks their role (driver, staff, chef, ...).</li>
+<li>Owner selects the member&#39;s role (driver, staff, chef, ...) before sharing the link.</li>
 <li>Home adapts per role (Driver = "mine today", no People).</li>
 <li>Member can leave; owner can revoke.</li>
 </ul>
@@ -384,22 +384,22 @@ owner edits chips → [ Create ]  → workspace born
 ├──────────────────────────────┤
 │ ○ #12 sari order → pack      │
 ├──────────────────────────────┤
-│ ○ #13 rice → pack            │
-├──────────────────────────────┤
 │ SELL         Rs.12,400 today │
-│ · 2 orders to pack           │
-│                              │
-├──────────────────────────────┤
-│ MONEY    cash+bank Rs.18,450 │
 │                              │
 ├──────────────────────────────┤
 │ STOCK            2 items low │
 │                              │
 ├──────────────────────────────┤
+│ MONEY    cash+bank Rs.18,450 │
+│                              │
+├──────────────────────────────┤
+│ REACH        12 catalog views│
+│                              │
+├──────────────────────────────┤
 │ PEOPLE 2 team · 10 customers │
 │                              │
 ├──────────────────────────────┤
-│ ▸ Sales report · 8am daily   │
+│ ▸ Reorder 50 units     [tap] │
 ├──────────────────────────────┤
 └──────────────────────────────┘
 
@@ -543,8 +543,8 @@ ASK
 ├──────────────────────────────┤
 │ you: who ordered Friday?     │
 │ TAR: Priya — 2 orders        │
-│                              │
-│                              │
+├──────────────────────────────┤
+│ ▸ Sales report · 8am daily   │
 │                              │
 │                              │
 │                              │
@@ -570,7 +570,7 @@ RULES
 ├──────────────────────────────┤
 │ no screen per record type    │
 ├──────────────────────────────┤
-│ rejected: price/stock        │
+│ low stock: warn, never block │
 │                              │
 │                              │
 │                              │
@@ -605,7 +605,7 @@ Home → NEXT → open work → take action
 <tbody>
 <tr>
 <td>Sell</td>
-<td>today's total + to-pack count</td>
+<td>today's total (to-pack = NEXT items)</td>
 <td>New sale / orders / history / invoices</td>
 </tr>
 <tr>
@@ -620,8 +620,8 @@ Home → NEXT → open work → take action
 </tr>
 <tr>
 <td>Reach</td>
-<td>store link + new chats</td>
-<td>Store / share / chat</td>
+<td>store link + view count</td>
+<td>Store / share</td>
 </tr>
 <tr>
 <td>People</td>
@@ -633,8 +633,8 @@ Home → NEXT → open work → take action
 <h2>Data = clear records</h2>
 <pre><code class="language-text">SQLite = workspace + members + customers + business records + money
        + tasks + automations
-Store  = products + orders + sales + sale lines + payments + stock movements
-R2     = photos + documents + site releases
+Store  = one work table (kind: order / delivery / trip / job) + work lines + stock
+R2     = photos + documents
 </code></pre>
 <p>Use the tables, indexes and constraints the data needs. Prices, stock and
 payment status stay in SQLite. A sale can contain many product lines.</p>
@@ -656,11 +656,11 @@ payment status stay in SQLite. A sale can contain many product lines.</p>
 </tr>
 <tr>
 <td>Stock</td>
-<td>Check availability + reservations; reject shortage</td>
+<td>Never block a counter sale — stock can go negative → reconcile item. Web order: deduct on order, restore on cancel</td>
 </tr>
 <tr>
 <td>Money</td>
-<td>Integer minor units + auditable accounts; balanced postings</td>
+<td>Integer minor units; one append-only ledger — cash / bank in·out + party balance (credit); a payment = a ledger row on the work id</td>
 </tr>
 <tr>
 <td>Correction</td>
@@ -668,7 +668,7 @@ payment status stay in SQLite. A sale can contain many product lines.</p>
 </tr>
 <tr>
 <td>Order</td>
-<td>Ordered ≠ fulfilled ≠ sold ≠ paid</td>
+<td>One work row: channel (pos / web / whatsapp) + status (new → packed → done) + paid (unpaid / part / full); POS = insert as done</td>
 </tr>
 <tr>
 <td>Totals</td>
@@ -684,6 +684,7 @@ payment status stay in SQLite. A sale can contain many product lines.</p>
 <pre><code class="language-text">Member request → authenticate → current role + permission → gate → commit
 Customer       → scoped public access → order
 Payment event  → verify provider + event ID → update payment
+Publish *.tar.site / mass message → risk check (abuse / spam)
 </code></pre>
 <ul>
 <li>Check permissions on every read + action; handle revoked sessions.</li>
@@ -699,13 +700,13 @@ One-time:   Ask &quot;who ordered Friday?&quot;     → answer → done
 
 Automation: Ask &quot;every morning send sales report&quot;
             → TAR plans: schedule 08:00 → send report
-            → user confirms → saved as card on home
+            → user confirms → runs daily 08:00; listed in Ask
 </code></pre>
 <pre><code class="language-text">Automation = one trigger + one action
   trigger: tap | schedule (HH:mm) | event (stock &lt; N, order placed, ...)
   action:  one registered action with inputs
 
-No multi-step flows. Chain = multiple automations on same trigger.
+No multi-step flows. Tap = card on HOME; schedule / event = listed in Ask.
 </code></pre>
 <table>
 <thead>
@@ -744,7 +745,7 @@ No multi-step flows. Chain = multiple automations on same trigger.
 <tbody>
 <tr>
 <td>Store</td>
-<td>Curated <code>*.tar.site</code> + catalog + orders; publish / rollback</td>
+<td>Curated <code>*.tar.site</code> = live catalog read (cache purged on edit) — prices update instantly</td>
 </tr>
 <tr>
 <td>WhatsApp</td>
