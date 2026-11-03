@@ -23,3 +23,12 @@ SECRETS.md
 .freebuff/
 out_*/
 *_rel.json
+
+# agent skill caches — re-downloadable, recorded in skills-lock.json
+# (narrow on purpose: .agents/skills/typesafe-ai and .zcode/skills/design-taste-frontend are tracked)
+/agent/
+/.claude/
+/.agents/skills/rivet-*
+/.agents/skills/sandbox-agent
+/.zcode/skills/rivet-*
+/.zcode/skills/sandbox-agent
