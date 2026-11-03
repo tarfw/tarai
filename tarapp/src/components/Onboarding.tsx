@@ -95,7 +95,9 @@ export function Onboarding() {
       }
       if (slug) select(slug);
     } catch (cause) {
-      setError(cause instanceof TarError ? cause.message : 'Could not create the workspace. Try again.');
+      console.error('[Onboarding] create failed:', cause);
+      const detail = cause instanceof Error ? cause.message : String(cause);
+      setError(detail ? `Could not create the workspace — ${detail.slice(0, 180)}` : 'Could not create the workspace. Try again.');
       setBusy(null);
     }
   };

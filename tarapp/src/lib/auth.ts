@@ -1,16 +1,7 @@
-import { GoogleSignin, statusCodes } from "@react-native-google-signin/google-signin";
+// Identity, Phase 1: a device-local profile. Google sign-in returns with the
+// Access+safety build-out; every screen already works without it.
+
 import * as SecureStore from "expo-secure-store";
-
-const SECURE_STORE_USER_KEY = "google_auth_user";
-let cachedUser: UserProfile | null | undefined;
-let userLoad: Promise<UserProfile | null> | null = null;
-let silentSignInLoad: Promise<UserProfile | null> | null = null;
-
-GoogleSignin.configure({
-  webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || "226183831843-5sjvl1hsv4d04aucnqsqn19u83o4f5ku.apps.googleusercontent.com",
-  offlineAccess: false,
-  scopes: ["profile", "email"],
-});
 
 export interface UserProfile {
   id: string;
@@ -20,160 +11,34 @@ export interface UserProfile {
   idToken: string | null;
 }
 
-export async function signInWithGoogle(): Promise<UserProfile> {
-  const t0 = Date.now();
-  try {
-    console.log(`[Auth] ${Date.now() - t0}ms — signInWithGoogle START`);
-    await GoogleSignin.hasPlayServices();
-    console.log(`[Auth] ${Date.now() - t0}ms — hasPlayServices OK`);
-    const response = await GoogleSignin.signIn();
-    console.log(`[Auth] ${Date.now() - t0}ms — signIn DONE`);
+const LOCAL_USER_KEY = "tar_local_user";
 
-    const signInResult = response as any;
-    const userData = signInResult.data ? signInResult.data : signInResult;
-
-    if (!userData || !userData.user) {
-      throw new Error("No user data returned from Google Sign-In");
-    }
-
-    const profile: UserProfile = {
-      id: userData.user.id,
-      name: userData.user.name,
-      email: userData.user.email,
-      photo: userData.user.photo,
-      idToken: userData.idToken,
-    };
-
-    console.log(`[Auth] ${Date.now() - t0}ms — storing profile to SecureStore`);
-    await SecureStore.setItemAsync(SECURE_STORE_USER_KEY, JSON.stringify(profile));
-    cachedUser = profile;
-
-    console.log(`[Auth] ${Date.now() - t0}ms — signInWithGoogle DONE: ${profile.email}`);
-    return profile;
-  } catch (error: any) {
-    console.error("[Auth] Google Sign-In error details:", error);
-    if (error.code === statusCodes.SIGN_IN_CANCELLED) {
-      throw new Error("Sign in was cancelled by user");
-    } else if (error.code === statusCodes.IN_PROGRESS) {
-      throw new Error("Sign in is already in progress");
-    } else if (error.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
-      throw new Error("Play services not available or outdated");
-    } else if (
-      (statusCodes as any).DEVELOPER_ERROR && error.code === (statusCodes as any).DEVELOPER_ERROR ||
-      String(error.code) === "10" ||
-      error.message?.includes("DEVELOPER_ERROR")
-    ) {
-      throw new Error(
-        "Google Sign-In DEVELOPER_ERROR (10): OAuth configuration mismatch on Google Cloud / Play Console.\n" +
-        "Please verify Google Play App Signing SHA-1 is added in Google Cloud Console."
-      );
-    } else {
-      throw new Error(error.message || "An unknown error occurred during Google Sign-In");
-    }
-  }
+export async function getCurrentUser(): Promise<UserProfile> {
+  const raw = await SecureStore.getItemAsync(LOCAL_USER_KEY);
+  if (raw) return JSON.parse(raw) as UserProfile;
+  const local: UserProfile = { id: "local", name: "Owner", email: "local@tar.app", photo: null, idToken: null };
+  await SecureStore.setItemAsync(LOCAL_USER_KEY, JSON.stringify(local));
+  return local;
 }
 
+/** Clears the local profile + session; onboarding starts fresh. */
 export async function signOutGoogle(): Promise<void> {
-  const t0 = Date.now();
-  try {
-    console.log(`[Auth] ${Date.now() - t0}ms — signOutGoogle START`);
-    await GoogleSignin.revokeAccess();
-    await GoogleSignin.signOut();
-    console.log(`[Auth] ${Date.now() - t0}ms — Google sign-out done`);
-  } catch (error) {
-    console.error(`[Auth] ${Date.now() - t0}ms — signOutGoogle error:`, error);
-  } finally {
-    await SecureStore.deleteItemAsync(SECURE_STORE_USER_KEY);
-    cachedUser = null;
-    userLoad = null;
-    console.log(`[Auth] ${Date.now() - t0}ms — signOutGoogle DONE (SecureStore cleared)`);
-  }
+  await SecureStore.deleteItemAsync(LOCAL_USER_KEY);
+  const { signOutSession } = await import("./tar");
+  await signOutSession();
 }
 
-export async function getCurrentUser(): Promise<UserProfile | null> {
-  if (cachedUser !== undefined) return cachedUser;
-  if (userLoad) return userLoad;
-  const t0 = Date.now();
-  userLoad = SecureStore.getItemAsync(SECURE_STORE_USER_KEY).then((savedUserJson) => {
-    console.log(`[Auth] ${Date.now() - t0}ms — getCurrentUser: ${savedUserJson ? 'found' : 'null'}`);
-    cachedUser = savedUserJson ? JSON.parse(savedUserJson) as UserProfile : null;
-    return cachedUser;
-  }).finally(() => { userLoad = null; });
-  return userLoad;
-}
-
-function tokenExpiresSoon(token: string | null): boolean {
-  if (!token) return true;
-  try {
-    const encoded = token.split('.')[1];
-    if (!encoded) return true;
-    const payload = JSON.parse(atob(encoded.replace(/-/g, '+').replace(/_/g, '/')));
-    return typeof payload.exp !== 'number' || payload.exp * 1000 <= Date.now() + 2 * 60_000;
-  } catch {
-    return true;
-  }
-}
-
-/** Returns a current Google ID token for Tarai, silently refreshing it when needed. */
+/** Kept for compatibility; the local identity needs no token. */
 export async function getValidIdToken(): Promise<string | null> {
-  const user = await getCurrentUser();
-  if (user?.idToken && !tokenExpiresSoon(user.idToken)) return user.idToken;
-  const refreshed = await trySilentSignIn();
-  return refreshed?.idToken || null;
+  return null;
 }
 
-export async function invalidateGoogleToken(): Promise<void> {
-  const user = await getCurrentUser();
-  if (!user) return;
-  cachedUser = { ...user, idToken: null };
-  await SecureStore.setItemAsync(SECURE_STORE_USER_KEY, JSON.stringify(cachedUser));
+export async function trySilentSignIn(): Promise<UserProfile | null> {
+  return getCurrentUser();
 }
 
-async function silentSignIn(): Promise<UserProfile | null> {
-  const t0 = Date.now();
-  try {
-    console.log(`[Auth] ${Date.now() - t0}ms — trySilentSignIn START`);
-    const hasPrevious = await GoogleSignin.hasPreviousSignIn();
-    console.log(`[Auth] ${Date.now() - t0}ms — hasPreviousSignIn: ${hasPrevious}`);
-    if (!hasPrevious) return null;
-
-    console.log(`[Auth] ${Date.now() - t0}ms — signInSilently START`);
-    let timeout: ReturnType<typeof setTimeout> | undefined;
-    const response = await Promise.race([
-      GoogleSignin.signInSilently(),
-      new Promise<never>((_, reject) => { timeout = setTimeout(() => reject(new Error("silent sign-in timeout")), 15_000); }),
-    ]).finally(() => { if (timeout) clearTimeout(timeout); });
-    console.log(`[Auth] ${Date.now() - t0}ms — signInSilently DONE`);
-
-    const signInResult = response as any;
-    const userData = signInResult.data ? signInResult.data : signInResult;
-
-    if (!userData?.user) {
-      console.log(`[Auth] ${Date.now() - t0}ms — no user data`);
-      return null;
-    }
-
-    const profile: UserProfile = {
-      id: userData.user.id,
-      name: userData.user.name,
-      email: userData.user.email,
-      photo: userData.user.photo,
-      idToken: userData.idToken,
-    };
-
-    await SecureStore.setItemAsync(SECURE_STORE_USER_KEY, JSON.stringify(profile));
-    cachedUser = profile;
-
-    console.log(`[Auth] ${Date.now() - t0}ms — trySilentSignIn DONE: ${profile.email}`);
-    return profile;
-  } catch (error) {
-    console.warn(`[Auth] ${Date.now() - t0}ms — trySilentSignIn FAILED:`, error);
-    return null;
-  }
+export async function signInWithGoogle(): Promise<UserProfile> {
+  return getCurrentUser();
 }
 
-export function trySilentSignIn(): Promise<UserProfile | null> {
-  if (silentSignInLoad) return silentSignInLoad;
-  silentSignInLoad = silentSignIn().finally(() => { silentSignInLoad = null; });
-  return silentSignInLoad;
-}
+export async function invalidateGoogleToken(): Promise<void> {}

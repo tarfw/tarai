@@ -4,7 +4,7 @@
 import { Platform } from 'react-native';
 import { requireOptionalNativeModule } from 'expo';
 import * as SecureStore from 'expo-secure-store';
-import { request } from './tar';
+
 
 const DONE_KEY = 'tar_push_registered_at';
 
@@ -19,8 +19,8 @@ export async function registerPush(force = false): Promise<void> {
     });
     const permission = await Notifications.requestPermissionsAsync();
     if (!permission.granted) return;
-    const token = await Notifications.getDevicePushTokenAsync();
-    await request('POST', '/v1/push/register', { token: (token as { data?: string }).data ?? String(token), platform: Platform.OS === 'ios' ? 'ios' : 'android' });
+    // Phase 1: the device registers; the backend push route returns later.
+    await Notifications.getDevicePushTokenAsync();
     await SecureStore.setItemAsync(DONE_KEY, String(Date.now()));
   } catch { /* the bell is best-effort; the badge still tells the truth */ }
 }

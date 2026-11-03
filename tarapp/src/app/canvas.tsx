@@ -1,15 +1,15 @@
-// Canvas: one screen, every member. The header ends in a hairline; the tray
-// opens the flat inbox and fills when something waits; the name opens the flat
-// workspaces sheet; the bottom bar is Ask. NEXT is the top row; urgent rows carry !.
+// Canvas: one screen, every member. The header ends in a hairline; the name
+// opens the flat workspaces sheet; the bottom bar is Ask. NEXT is the inline
+// list of the top three waiting rows; urgent rows carry !. No tray, per the plan.
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, AppState, Modal, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRouter } from 'expo-router';
 import { useTheme } from '@/hooks/use-theme';
 import { useWorkspace } from '@/state/Workspace';
 import { Card } from '@/components/Card';
+import { TarAvatar } from '@/components/TarAvatar';
 import { confirmRequest, enqueue, pendingCount, resolveConfirm, subscribe } from '@/lib/queue';
 import { advanceSkill, dropSkill, slice, startSkill, type CardView, type InboxRow, type RunView, type SkillView } from '@/lib/tar';
 import { saveSlice } from '@/lib/slicecache';
@@ -18,13 +18,14 @@ import { getCurrentUser } from '@/lib/auth';
 import { Onboarding } from '@/components/Onboarding';
 import { Terms } from '@/components/Terms';
 import { acceptedTerms, acceptTerms } from '@/lib/terms';
+import { AGENT_NAME } from '@/lib/agent';
 
 export default function Canvas() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { current, slice: data, refreshSlice, workspaces, select, loading } = useWorkspace();
-  const [sheet, setSheet] = useState<'none' | 'inbox' | 'many'>('none');
+  const [sheet, setSheet] = useState<'none' | 'many'>('none');
   const [confirm, setConfirm] = useState<{ key: string; label: string } | null>(null);
   const [queueBadge, setQueueBadge] = useState(0);
   // one look at the terms per account, before any workspace work
@@ -143,8 +144,8 @@ export default function Canvas() {
     ]);
   }, [current, refreshSlice]);
 
-  const inboxRows: InboxRow[] = useMemo(() => data?.inbox ?? [], [data]);
-  const next = data?.next ?? null;
+  // NEXT is the inline list: the top three waiting rows, rest live in sections
+  const nextRows: InboxRow[] = useMemo(() => (data?.inbox ?? []).slice(0, 3), [data]);
   const cards = useMemo(() => data?.cards ?? [], [data]);
   const [rowBusy, setRowBusy] = useState<string | null>(null);
 
@@ -202,17 +203,30 @@ export default function Canvas() {
           <Text style={[styles.wsName, { color: theme.text }]} numberOfLines={1}>{current.mode === 'personal' ? 'Personal' : current.name}</Text>
         </TouchableOpacity>
         {roleLabel ? <Text style={[styles.roleText, { color: theme.textSecondary }]}>{roleLabel}</Text> : null}
-        <TouchableOpacity accessibilityRole="button" style={styles.badgeWrap} onPress={() => setSheet('inbox')} accessibilityLabel="Inbox">
-          <Ionicons name={inboxRows.length > 0 ? 'file-tray-full-outline' : 'file-tray-outline'} size={24} color={theme.text} />
-        </TouchableOpacity>
       </View>
 
       <ScrollView contentContainerStyle={[styles.stack, { paddingBottom: insets.bottom + 96 }]}>
-        {next ? (
-          <TouchableOpacity accessibilityRole="button" activeOpacity={0.7} onPress={() => void openInbox(next)} style={[styles.next, { backgroundColor: theme.backgroundElement }]}>
-            <Text style={[styles.nextLabel, { color: next.urgent ? '#B42318' : theme.textSecondary }]}>{next.urgent ? '! NEXT' : 'NEXT'}</Text>
-            <Text style={[styles.nextTitle, { color: theme.text }]} numberOfLines={2}>{next.title}</Text>
-          </TouchableOpacity>
+        {nextRows.length ? (
+          <View style={[styles.nextList, { backgroundColor: theme.backgroundElement }]}>
+            {nextRows.map((row, index) => (
+              <TouchableOpacity
+                key={row.id}
+                accessibilityRole="button"
+                activeOpacity={0.7}
+                disabled={rowBusy === row.id}
+                onPress={() => void openInbox(row)}
+                style={[
+                  styles.nextRow,
+                  index ? { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.border } : null,
+                ]}
+              >
+                {index === 0 ? (
+                  <Text style={[styles.nextLabel, { color: row.urgent ? '#B42318' : theme.textSecondary }]}>{row.urgent ? '! NEXT' : 'NEXT'}</Text>
+                ) : null}
+                <Text style={[styles.nextTitle, { color: theme.text }]} numberOfLines={2}>{row.title}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         ) : null}
         {cards.map((card) => <Card key={card.tool} card={card} onTap={(tapped) => void openTap(tapped)} />)}
         {skillCards.length ? (
@@ -250,9 +264,9 @@ export default function Canvas() {
       </ScrollView>
 
       <View style={[styles.askFooter, { backgroundColor: theme.background, borderTopColor: theme.border, paddingBottom: insets.bottom + 12 }]}>
-        <TouchableOpacity accessibilityRole="button" style={[styles.askBar, { backgroundColor: theme.primary }]} onPress={() => router.push('/ask')} accessibilityLabel="Ask TAR">
-          <Ionicons name="add" size={20} color="#fff" />
-          <Text style={styles.askBarText}>Ask TAR</Text>
+        <TouchableOpacity accessibilityRole="button" style={[styles.askBar, { backgroundColor: theme.primary }]} onPress={() => router.push('/ask')} accessibilityLabel={`Ask ${AGENT_NAME}`}>
+          <TarAvatar size={22} bgColor="#fff" eyeColor={theme.primary} />
+          <Text style={styles.askBarText}>Ask {AGENT_NAME}</Text>
           {queueBadge > 0 ? (
             <View style={styles.askBarBadge}>
               <Text style={[styles.askBarBadgeText, { color: theme.primary }]}>{queueBadge > 9 ? '9+' : queueBadge}</Text>
@@ -260,25 +274,6 @@ export default function Canvas() {
           ) : null}
         </TouchableOpacity>
       </View>
-
-      <Sheet title="Inbox" gap visible={sheet === 'inbox'} onClose={() => setSheet('none')}>
-        {inboxRows.length === 0 ? <Text style={[styles.empty, { color: theme.textSecondary }]}>Nothing waiting.</Text> : null}
-        {inboxRows.map((row) => (
-          <TouchableOpacity
-            key={row.id}
-            accessibilityRole="button"
-            activeOpacity={0.7}
-            disabled={rowBusy === row.id}
-            onPress={() => void openInbox(row)}
-            style={[styles.inboxRow, { backgroundColor: theme.backgroundElement }]}
-          >
-            <View style={styles.inboxDotWrap}>
-              {row.urgent ? <View style={styles.inboxDot} /> : null}
-            </View>
-            <Text style={[styles.inboxText, { color: theme.text }]} numberOfLines={2}>{row.title}</Text>
-          </TouchableOpacity>
-        ))}
-      </Sheet>
 
       <Sheet title="Workspaces" gap visible={sheet === 'many'} onClose={() => setSheet('none')}>
         {workspaces.map((ws) => {
@@ -370,12 +365,12 @@ function ConfirmCard({ label, onResolve }: { label: string; onResolve: (confirme
 const styles = StyleSheet.create({
   page: { flex: 1 },
   header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingBottom: 10, borderBottomWidth: StyleSheet.hairlineWidth },
-  badgeWrap: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   heading: { flex: 1 },
   wsName: { fontSize: 22, fontWeight: '800', letterSpacing: -0.5 },
   roleText: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' },
   stack: { padding: 16, gap: 12 },
-  next: { borderRadius: 4, minHeight: 108, paddingHorizontal: 18, paddingVertical: 16, gap: 6, justifyContent: 'space-between' },
+  nextList: { borderRadius: 4, overflow: 'hidden' },
+  nextRow: { minHeight: 56, paddingHorizontal: 18, paddingVertical: 14, gap: 4, justifyContent: 'center' },
   nextLabel: { fontSize: 11, fontWeight: '800', letterSpacing: 1 },
   nextTitle: { fontSize: 16, fontWeight: '600' },
   skillGroup: { marginHorizontal: -16, borderTopWidth: StyleSheet.hairlineWidth },
@@ -387,11 +382,6 @@ const styles = StyleSheet.create({
   askBarText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   askBarBadge: { marginLeft: 'auto', minWidth: 22, height: 22, borderRadius: 11, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 },
   askBarBadgeText: { fontSize: 11, fontWeight: '800' },
-  inboxRow: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 4, paddingHorizontal: 14, minHeight: 52, paddingVertical: 12 },
-  inboxDotWrap: { width: 8, alignItems: 'center' },
-  inboxDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#B42318' },
-  inboxText: { flex: 1, fontSize: 15, lineHeight: 21 },
-  empty: { paddingVertical: 24, textAlign: 'center' },
   wsRow: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 56, paddingHorizontal: 14, paddingVertical: 12, borderRadius: 4 },
   wsRowName: { fontSize: 16, fontWeight: '700' },
   wsRowMeta: { fontSize: 12, paddingTop: 2, textTransform: 'capitalize' },

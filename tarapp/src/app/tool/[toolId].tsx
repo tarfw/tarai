@@ -20,6 +20,7 @@ const TOOL_TITLES: Record<string, string> = {
   pos: 'Sales', catalog: 'Products', stock: 'Inventory', purchase: 'Purchases', expense: 'Expenses',
   contact: 'Customers', member: 'Team', site: 'Storefront', task: 'Tasks', channel: 'Messages',
   invoice: 'Billing', payment: 'Payments', order: 'Orders', register: 'Cash', settings: 'Settings',
+  delivery: 'Deliveries', trip: 'Trips', job: 'Jobs',
 };
 
 // The section's one +: its create action and the form's title.
@@ -29,7 +30,7 @@ const ADD_ACTIONS: Record<string, { action: string; title: string }> = {
   contact: { action: 'contact.create', title: 'New contact' },
   purchase: { action: 'purchase.create', title: 'New purchase' },
   task: { action: 'task.create', title: 'New task' },
-  stock: { action: 'stock.adjust', title: 'Adjust stock' },
+  stock: { action: 'catalog.item.save', title: 'New item' },
   payment: { action: 'payment.record', title: 'Record payment' },
   invoice: { action: 'invoice.issue', title: 'Issue bill' },
 };

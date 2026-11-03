@@ -7,11 +7,9 @@ import { TarLogo } from '@/components/TarLogo';
 import { useTheme } from '@/hooks/use-theme';
 import { useThemeMode } from '@/hooks/use-theme-context';
 import { getCurrentUser, signOutGoogle, type UserProfile } from '@/lib/auth';
-import { useAgentName } from '@/lib/agent';
 
 export default function SettingsScreen() {
   const router = useRouter(); const theme = useTheme(); const insets = useSafeAreaInsets();
-  const agentName = useAgentName();
   const { themeMode, setThemeMode } = useThemeMode(); const [user, setUser] = useState<UserProfile | null>(null);
   useEffect(() => { void getCurrentUser().then(setUser); }, []);
   const signOut = async () => {
@@ -29,13 +27,6 @@ export default function SettingsScreen() {
           <View style={styles.rowLabel}><Ionicons name={themeMode === 'light' ? 'sunny-outline' : 'moon-outline'} size={18} color={theme.primary} /><Text style={[styles.rowText, { color: theme.text }]}>Theme</Text></View>
           <Text style={[styles.value, { color: theme.textSecondary }]}>{themeMode === 'light' ? 'Light' : 'Dark'}</Text>
         </TouchableOpacity>
-      </View>
-      <Text style={[styles.label, { color: theme.textSecondary }]}>PERSONAL AGENT</Text>
-      <View style={[styles.card, { backgroundColor: theme.backgroundElement }]}>
-        <View style={styles.row}>
-          <View style={styles.rowLabel}><Ionicons name="sparkles-outline" size={18} color={theme.primary} /><Text style={[styles.rowText, { color: theme.text }]}>Agent name</Text></View>
-          <Text style={[styles.value, { color: theme.textSecondary }]}>{agentName}</Text>
-        </View>
       </View>
       {user ? <>
         <Text style={[styles.label, { color: theme.textSecondary }]}>ACCOUNT</Text>

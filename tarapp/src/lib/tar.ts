@@ -1,11 +1,15 @@
-// One door: the TAR API. The app is a window — a session, a slice, intents.
+// One door: the TAR actor. The app is a window — a session, a slice, intents.
 // It never holds a database token, never syncs, never mirrors.
+// Transport: the workspace actor on Rivet (1 workspace = 1 actor + 1 SQLite).
 
 import * as SecureStore from 'expo-secure-store';
-import { getValidIdToken } from './auth';
+import * as Crypto from 'expo-crypto';
+import { createClient } from 'rivetkit/client';
 
-const HARNESS = process.env.EXPO_PUBLIC_TARHARNESS_URL || 'https://tarharness.tar-54d.workers.dev';
-const SESSION_KEY = 'tar_session';
+const APP_URL = process.env.EXPO_PUBLIC_TAR_APP_URL || 'https://tars93k.onrivet.dev';
+const API_URL = process.env.EXPO_PUBLIC_TAR_API_URL || 'https://tars93k-api.onrivet.dev';
+const SESSION_KEY = 'tar_session_v2';
+const REGISTRY_KEY = 'tar_ws_registry';
 
 export interface TarWorkspace { id: string; name: string; slug: string; mode: 'personal' | 'work'; role: string; state: string; badge: number }
 export interface InboxRow { id: string; tool: string; reach: string; due: number | null; status: string; title: string; urgent: boolean; action: string | null; input: Record<string, unknown>; created: number }
@@ -20,13 +24,15 @@ export interface Slice {
   workspace: { id: string; name: string; slug: string; mode: string; role: string };
 }
 
-interface Session { token: string; expiresAt: number }
-
 export class TarError extends Error {
   constructor(readonly status: number, message: string, readonly body: Record<string, unknown> = {}) { super(message); }
 }
 
-/** The TAR session token, minted when needed. */
+// --- session: a gateway token minted by the actor node ---
+
+interface Session { token: string; expiresAt: number; engine?: string }
+let cachedClient: { token: string; client: any } | null = null;
+
 export async function sessionToken(): Promise<string> { return ensureSession(); }
 
 async function ensureSession(): Promise<string> {
@@ -34,39 +40,154 @@ async function ensureSession(): Promise<string> {
   if (raw) {
     try {
       const session = JSON.parse(raw) as Session;
-      if (session.expiresAt > Date.now() + 60_000) return session.token;
+      // Sessions minted before the Rivet transport carry no engine marker; the
+      // old HS256 token can never authenticate against the engine.
+      if (session.engine === 'rivet' && session.expiresAt > Date.now() + 60_000) return session.token;
     } catch { /* re-mint */ }
   }
-  const google = await getValidIdToken();
-  if (!google) throw new TarError(401, 'Sign in first.');
-  const response = await request('POST', '/v1/auth/session', undefined, google);
-  const session = { token: response.token as string, expiresAt: Number(response.expiresAt) };
+  const session = await mintSession();
   await SecureStore.setItemAsync(SESSION_KEY, JSON.stringify(session));
   return session.token;
 }
 
-export async function signOutSession(): Promise<void> {
-  await SecureStore.deleteItemAsync(SESSION_KEY);
-}
-
-export async function request(method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, body?: unknown, authorization?: string, extraHeaders: Record<string, string> = {}): Promise<Record<string, unknown>> {
-  const token = authorization ?? await ensureSession();
-  const response = await fetch(`${HARNESS}${path}`, {
-    method,
-    headers: { Authorization: `Bearer ${token}`, ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...extraHeaders },
-    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+async function mintSession(): Promise<Session> {
+  const response = await fetch(`${APP_URL}/mint`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ subject: 'tar-phone' }),
   });
   const text = await response.text();
-  const parsed: Record<string, unknown> = text ? safeJson(text) : {};
-  if (!response.ok) throw new TarError(response.status, String(parsed.error || response.statusText), parsed);
-  return parsed;
+  let parsed: any = {};
+  try { parsed = JSON.parse(text); } catch { parsed = {}; }
+  if (!response.ok || !parsed.token) throw new TarError(response.status, 'Could not reach the workspace.');
+  // Rivet's expires_ts is epoch milliseconds (a 1 hour token). Cap the cache at
+  // 50 minutes so a wrong unit can never leave the device holding a dead token.
+  const hardCap = Date.now() + 50 * 60_000;
+  return { token: parsed.token as string, expiresAt: Math.min(Number(parsed.expires_ts), hardCap), engine: 'rivet' };
 }
 
-function safeJson(text: string): Record<string, unknown> {
-  try { return JSON.parse(text) as Record<string, unknown>; } catch { return {}; }
+export async function signOutSession(): Promise<void> {
+  await SecureStore.deleteItemAsync(SESSION_KEY);
+  cachedClient = null;
+}
+
+async function client(): Promise<any> {
+  const token = await ensureSession();
+  if (cachedClient?.token === token) return cachedClient.client;
+  // createClient() takes ONE config object; a second argument is ignored and
+  // the request goes unauthenticated ("Authentication token is invalid").
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const created = (createClient as any)({ endpoint: API_URL, token, namespace: "default" });
+  cachedClient = { token, client: created };
+  return created;
+}
+
+// --- the local workspace registry (which workspaces this device owns/joins) ---
+
+interface WsReg { slug: string; name: string; type: string; role: string; memberId: string }
+
+async function registryList(): Promise<WsReg[]> {
+  const raw = await SecureStore.getItemAsync(REGISTRY_KEY);
+  return raw ? JSON.parse(raw) as WsReg[] : [];
+}
+
+async function registrySave(list: WsReg[]): Promise<void> {
+  await SecureStore.setItemAsync(REGISTRY_KEY, JSON.stringify(list));
+}
+
+export async function registerWorkspace(entry: WsReg): Promise<void> {
+  const list = await registryList();
+  if (!list.some((w) => w.slug === entry.slug)) {
+    list.push(entry);
+    await registrySave(list);
+  }
+}
+
+async function handle(slug: string) {
+  const c = await client();
+  return c.workspace.getOrCreate([slug]);
+}
+
+async function memberOf(slug: string): Promise<string> {
+  const entry = (await registryList()).find((w) => w.slug === slug);
+  if (!entry) throw new TarError(404, 'Workspace not on this phone.');
+  return entry.memberId;
 }
 
 // --- reads ---
+
+// The actor sends one integer per card; the words are ours. The label names the
+// section, the caption names the figure, so no word repeats.
+const CARD_COPY: Record<string, { label: string; caption: string; money?: boolean }> = {
+  sell: { label: 'Sales', caption: 'today', money: true },
+  deliveries: { label: 'Deliveries', caption: 'today' },
+  trips: { label: 'Trips', caption: 'today' },
+  jobs: { label: 'Jobs', caption: 'today' },
+  tasks: { label: 'Tasks', caption: 'today' },
+  stock: { label: 'Stock', caption: 'low' },
+  money: { label: 'Money', caption: 'in hand', money: true },
+  reach: { label: 'Link', caption: 'orders' },
+  people: { label: 'People', caption: 'customers' },
+  health: { label: 'Health', caption: 'open' },
+  plans: { label: 'Plans', caption: 'open' },
+};
+
+const money = (minor: number) => `Rs ${(minor / 100).toFixed(2)}`;
+
+function toCard(raw: { tool: string; title: string; reach?: string; shape?: string; tap?: { action: string | null; label: string }; value?: number | null }): CardView {
+  const copy = CARD_COPY[raw.title] ?? { label: raw.title, caption: '' };
+  const value = typeof raw.value === 'number' ? raw.value : null;
+  return {
+    tool: raw.tool,
+    title: copy.label,
+    reach: raw.reach ?? '',
+    shape: raw.shape ?? '',
+    tap: raw.tap ?? { action: null, label: 'Open' },
+    number: value === null ? null : (copy.money ? money(value) : String(value)),
+    pendingLine: value === null ? null : copy.caption || null,
+  };
+}
+
+export async function me(): Promise<{ user: { id: string; email: string; name: string | null }; workspaces: TarWorkspace[] }> {
+  const list = await registryList();
+  return {
+    user: { id: 'local', email: 'local@tar.app', name: 'Owner' },
+    workspaces: list.map((w) => ({
+      id: w.slug, name: w.name, slug: w.slug,
+      mode: w.type === 'personal' ? 'personal' as const : 'work' as const,
+      role: w.role, state: '', badge: 0,
+    })),
+  };
+}
+
+export async function slice(ws: string, _etag?: string | null): Promise<Slice> {
+  const [w, memberId] = await Promise.all([handle(ws), memberOf(ws)]);
+  const raw = await w.slice({ byId: memberId });
+  return {
+    version: raw.version,
+    next: raw.next ?? null,
+    inbox: raw.inbox ?? [],
+    cards: (raw.cards ?? []).map(toCard),
+    skills: raw.skills ?? [],
+    workspace: {
+      id: ws, name: raw.workspace.name, slug: ws,
+      mode: raw.workspace.type === 'personal' ? 'personal' : 'work',
+      role: raw.workspace.role,
+    },
+  };
+}
+
+export async function toolRows(ws: string, toolId: string, q = '', offset = 0) {
+  const [w, memberId] = await Promise.all([handle(ws), memberOf(ws)]);
+  return w.toolRows({ byId: memberId, toolId, q, offset });
+}
+
+export async function record(ws: string, id: string) {
+  const [w, memberId] = await Promise.all([handle(ws), memberOf(ws)]);
+  return w.record({ byId: memberId, id });
+}
+
+// --- onboarding: deterministic chips (0ms, works offline); Jev refines later ---
 
 export interface PlanCard { id: string; title: string }
 export interface OnboardingPlan {
@@ -82,110 +203,117 @@ export interface OnboardingPlan {
   models: { llm: string | null; jev: string | null };
 }
 
-/** Read-only: Groq writes the name and sentence, Jev types both decks. */
-export async function planOnboarding(words: string, audience: string): Promise<OnboardingPlan> {
-  return request('POST', '/v1/onboarding/plan', { words, audience }) as unknown as Promise<OnboardingPlan>;
+const TYPE_CARDS: Record<string, string[]> = {
+  store: ['sell', 'stock', 'money', 'reach', 'people'],
+  delivery: ['deliveries', 'stock', 'money', 'people'],
+  taxi: ['trips', 'money', 'people'],
+  service: ['jobs', 'stock', 'money', 'people'],
+  personal: ['tasks', 'health', 'plans'],
+};
+const CARD_LABEL: Record<string, string> = {
+  sell: 'Sell', stock: 'Stock', money: 'Money', reach: 'Reach', people: 'People',
+  deliveries: 'Deliveries', trips: 'Trips', jobs: 'Jobs', tasks: 'Tasks', health: 'Health', plans: 'Plans',
+};
+
+function detectType(words: string): string {
+  const l = words.toLowerCase();
+  if (/(personal|habit|health|routine|todo|my tasks)/.test(l)) return 'personal';
+  if (/(taxi|cab\b|auto stand|ola|uber|rickshaw)/.test(l)) return 'taxi';
+  if (/(courier|deliver|parcel|swiggy|zomato|shipment)/.test(l)) return 'delivery';
+  if (/(repair|garage|service|plumb|electric|salon|workshop|tailor)/.test(l)) return 'service';
+  return 'store';
+}
+
+export async function planOnboarding(words: string, _audience: string): Promise<OnboardingPlan> {
+  const type = detectType(words);
+  const nature = type === 'taxi' || type === 'delivery' || type === 'service' ? 'service'
+    : type === 'personal' ? 'general' : 'shop';
+  const first = words.split(/[.\n]/)[0].replace(/\s+/g, ' ').trim();
+  const name = (first.length > 48 ? first.slice(0, 48).replace(/\s+\S*$/, '') : first) || 'My workspace';
+  const work = TYPE_CARDS[type === 'personal' ? 'personal' : type];
+  return {
+    name,
+    summary: `A ${type === 'personal' ? 'personal' : type} workspace: cards, sections and Ask — ready.`,
+    nature: nature as OnboardingPlan['nature'],
+    confidence: 1,
+    doubt: false,
+    risk: 0,
+    work,
+    personal: [],
+    catalog: work.map((id) => ({ id, title: CARD_LABEL[id] ?? id })),
+    models: { llm: null, jev: null },
+  };
 }
 
 export interface OnboardingSelection { cards: string[]; personalCards: string[]; nature: OnboardingPlan['nature'] }
 
-export async function createWorkspace(name: string, words: string, plan?: OnboardingSelection): Promise<{ workspace?: { slug?: string } }> {
-  return request('POST', '/v1/workspaces', { name, words, ...(plan || {}) }) as Promise<{ workspace?: { slug?: string } }>;
+function typeFromCards(cards: string[] | undefined): string {
+  const set = new Set(cards ?? []);
+  if (set.has('trips')) return 'taxi';
+  if (set.has('deliveries')) return 'delivery';
+  if (set.has('jobs')) return 'service';
+  if (set.has('sell')) return 'store';
+  return 'personal';
 }
 
-export async function me(): Promise<{ user: { id: string; email: string; name: string | null }; workspaces: TarWorkspace[] }> {
-  return request('GET', '/v1/me') as Promise<{ user: { id: string; email: string; name: string | null }; workspaces: TarWorkspace[] }>;
+export async function createWorkspace(name: string, _words: string, plan?: OnboardingSelection): Promise<{ workspace?: { slug?: string } }> {
+  const type = plan ? typeFromCards(plan.cards) : 'store';
+  const slug = Crypto.randomUUID().slice(0, 8);
+  const w = await handle(slug);
+  const born: any = await w.createWorkspace({ name, type, ownerName: 'Owner' });
+  await registerWorkspace({ slug, name, type, role: 'owner', memberId: born.ownerId });
+  // Personal is always present (same flow, its own actor)
+  const list = await registryList();
+  if (!list.some((x) => x.type === 'personal')) {
+    const pSlug = Crypto.randomUUID().slice(0, 8);
+    const pw = await handle(pSlug);
+    const pBorn: any = await pw.createWorkspace({ name: 'Personal', type: 'personal', ownerName: 'Owner' });
+    await registerWorkspace({ slug: pSlug, name: 'Personal', type: 'personal', role: 'owner', memberId: pBorn.ownerId });
+  }
+  return { workspace: { slug } };
 }
 
-/** The slice. Pass the version you hold: a 304 answers null and costs nothing. */
-export async function slice(ws: string, etag?: string | null): Promise<Slice | null> {
-  const token = await ensureSession();
-  const response = await fetch(`${HARNESS}/v1/slice?ws=${encodeURIComponent(ws)}`, {
-    headers: { Authorization: `Bearer ${token}`, ...(etag ? { 'If-None-Match': etag } : {}) },
-  });
-  if (response.status === 304) return null;
-  const parsed = safeJson(await response.text());
-  if (!response.ok) throw new TarError(response.status, String(parsed.error || response.statusText), parsed);
-  return parsed as unknown as Slice;
-}
-
-export async function toolRows(ws: string, toolId: string, q = '', offset = 0) {
-  return request('GET', `/v1/workspaces/${ws}/tool/${toolId}/rows?q=${encodeURIComponent(q)}&offset=${offset}`);
-}
-
-export async function record(ws: string, id: string) {
-  return request('GET', `/v1/workspaces/${ws}/records/${encodeURIComponent(id)}`);
-}
-
-// --- cards: Jev's stack, grown by one confirmed plan ---
-
-export interface CardChanges {
-  kind: 'card';
-  add: string[];
-  remove: string[];
-  changes: string[];
-  confidence: number;
-}
-
-export interface CustomCard {
-  kind: 'skill';
-  draft: { title: string; words: string; trigger: Record<string, unknown>; steps: { action: string; input: Record<string, unknown>; auto?: boolean }[]; shape: string; preview?: string[] };
-}
-
-/** The card is already on the canvas: say so, add nothing. */
-export interface KnownCard {
-  kind: 'known';
-  tools: string[];
-  titles: string[];
-  message: string;
-}
-
-/** One plain question; the answer comes back as the next turn. */
-export interface CardQuestion {
-  kind: 'question';
-  text: string;
-}
-
-export type CardPlan = CardChanges | CustomCard | KnownCard | CardQuestion | { kind: 'none'; reason?: string };
-
-export interface PlanTurn { who: 'you' | 'tar'; text: string }
-
-/** The owner names a job; Jev types the change, or TAR asks one question. */
-export async function planCard(ws: string, words: string, history: PlanTurn[] = []): Promise<CardPlan> {
-  return request('POST', `/v1/workspaces/${ws}/cards/plan`, { words, history }) as Promise<CardPlan>;
-}
-
-export async function confirmCard(ws: string, plan: { add?: string[]; remove?: string[] } | { draft: CustomCard['draft'] }) {
-  return request('POST', `/v1/workspaces/${ws}/cards/confirm`, plan);
-}
-
-/** A custom card is hidden for good; the row stays. */
-export async function dropSkill(ws: string, id: string) {
-  return request('POST', `/v1/workspaces/${ws}/skills/${id}/drop`, {});
-}
+// --- Ask: deterministic answers; the Jev conversation returns later ---
 
 export type RunStatus = 'ready' | 'waiting' | 'done' | 'failed';
 export interface RunView { id: string; skill: string; title: string; step: number; status: RunStatus; key: string }
 
-/** A skill card taps through two calls: start the run, then advance it. */
 export async function startSkill(ws: string, skillId: string): Promise<RunView> {
-  const key = `run-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const started = await request('POST', `/v1/workspaces/${ws}/runs/${skillId}/advance`, {}, undefined, { 'Idempotency-Key': key }) as { run?: RunView };
-  if (!started.run) throw new TarError(500, 'The card did not start.');
-  return advanceSkill(ws, started.run.id);
+  const [w, memberId] = await Promise.all([handle(ws), memberOf(ws)]);
+  const output = await w.runAutomation(skillId);
+  return { id: skillId, skill: skillId, title: String(output ?? 'Done'), step: 1, status: 'done', key: skillId };
 }
 
-/** A waiting run resumes with one confirm; money and customer still ask once. */
-export async function advanceSkill(ws: string, runId: string, confirmed = false): Promise<RunView> {
-  const result = await request('POST', `/v1/workspaces/${ws}/runs/${runId}/advance`, { confirmed }) as { run?: RunView };
-  if (!result.run) throw new TarError(500, 'The card did not run.');
-  return result.run;
+export async function advanceSkill(ws: string, runId: string, _confirmed = false): Promise<RunView> {
+  return startSkill(ws, runId);
+}
+
+/** A custom card is hidden for good; the row stays. */
+export async function dropSkill(ws: string, id: string) {
+  const [w, memberId] = await Promise.all([handle(ws), memberOf(ws)]);
+  return w.intent({ byId: memberId, action: 'automation.remove', input: { id }, key: `drop-${id}` });
+}
+
+export interface PlanTurn { who: 'you' | 'tar'; text: string }
+
+export type CardPlan =
+  | { kind: 'known'; tools: string[]; titles: string[]; message: string }
+  | { kind: 'none'; reason?: string };
+
+/** Deterministic Ask today: the actor answers; Jev plans cards in a later phase. */
+export async function planCard(ws: string, words: string, _history: PlanTurn[] = []): Promise<CardPlan> {
+  const [w, memberId] = await Promise.all([handle(ws), memberOf(ws)]);
+  const answer = await w.ask({ byId: memberId, q: words });
+  return { kind: 'known', tools: [], titles: [], message: String(answer) };
+}
+
+export async function confirmCard(_ws: string, _plan: unknown): Promise<Record<string, unknown>> {
+  return {};
 }
 
 // --- writes: intent -> gate -> one confirm ---
 
 export interface IntentOutcome {
-  /** 202: the gate asks first */
   gate?: 'ask' | 'approve';
   missing?: string[];
   action?: string;
@@ -195,38 +323,34 @@ export interface IntentOutcome {
 }
 
 export async function intent(ws: string, action: string, input: Record<string, unknown>, key: string, confirmed = false): Promise<IntentOutcome> {
-  return request('POST', '/v1/intent', { ws, action, input, key, confirmed }) as Promise<IntentOutcome>;
+  const [w, memberId] = await Promise.all([handle(ws), memberOf(ws)]);
+  const result = await w.intent({ byId: memberId, action, input, key, confirmed });
+  return { result: (result?.result ?? {}) as Record<string, unknown> };
 }
 
-/** Store an item photo; returns its public immutable URL for photoUrl fields. */
-export async function uploadMedia(ws: string, mime: string, base64: string): Promise<string> {
-  const result = await request('POST', '/v1/workspaces/media', { ws, mime, data: base64 }) as { url?: string };
-  if (!result.url) throw new TarError(500, 'Media upload failed.');
-  return result.url;
+// --- later-phase features: present but honest stubs ---
+
+export async function uploadMedia(_ws: string, _mime: string, _base64: string): Promise<string> {
+  throw new TarError(501, 'Media upload comes later.');
 }
 
-/** Jev suggests item fields from the name; missing answers come back undefined. */
-export async function draftItem(ws: string, name: string): Promise<{ category?: string; unit?: string; tax?: number }> {
-  try {
-    return await request('POST', '/v1/workspaces/draft-item', { ws, name }) as { category?: string; unit?: string; tax?: number };
-  } catch { return {}; }
+export async function draftItem(_ws: string, _name: string): Promise<{ category?: string; unit?: string; tax?: number }> {
+  return {};
 }
 
-// --- ask / skills ---
-
-export async function importRows(ws: string, rows: { name: string; price?: unknown }[]) {
-  return request('POST', `/v1/workspaces/${ws}/import`, { rows });
+export async function importRows(_ws: string, _rows: { name: string; price?: unknown }[]): Promise<Record<string, unknown>> {
+  return {};
 }
 
-/** A photo becomes rows: the harness vision model reads it, Jev judges each row. */
-export async function importImage(ws: string, imageBase64: string) {
-  return request('POST', `/v1/workspaces/${ws}/import`, { image: imageBase64 }) as Promise<{ rows?: { name: string; price: string | null; doubt: boolean }[] }>;
+export async function importImage(_ws: string, _imageBase64: string): Promise<{ rows?: { name: string; price: string | null; doubt: boolean }[] }> {
+  return { rows: [] };
 }
 
-export async function hire(ws: string, words: string): Promise<{ role: string; confidence: number; tools: string[]; model: string | null }> {
-  return request('POST', `/v1/workspaces/${ws}/hire`, { words }) as Promise<{ role: string; confidence: number; tools: string[]; model: string | null }>;
+export async function hire(_ws: string, _words: string): Promise<{ role: string; confidence: number; tools: string[]; model: string | null }> {
+  throw new TarError(501, 'Hiring comes later.');
 }
 
 export async function actionCatalogs(ws: string) {
-  return request('GET', `/v1/workspaces/${ws}/actions`);
+  const [w, memberId] = await Promise.all([handle(ws), memberOf(ws)]);
+  return w.actionCatalogs({ byId: memberId });
 }

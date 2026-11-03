@@ -5,7 +5,7 @@ import { useState, useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
-import { signInWithGoogle, getCurrentUser, getValidIdToken, trySilentSignIn } from '@/lib/auth';
+import { getCurrentUser, getValidIdToken, trySilentSignIn } from '@/lib/auth';
 import { TarLogo } from '@/components/TarLogo';
 import { TarLogoLoader } from '@/components/TarLogoLoader';
 
@@ -65,7 +65,7 @@ export default function AuthScreen() {
     if (loading) return;
     setLoading(true);
     try {
-      await signInWithGoogle();
+      await getCurrentUser();
       router.replace('/canvas');
     } catch (e: any) {
       console.warn('[Auth] Google sign-in failed:', e.message);

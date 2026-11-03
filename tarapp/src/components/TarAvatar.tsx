@@ -13,7 +13,8 @@ export interface TarAvatarProps {
 
 /**
  * Minimal Codex/Grok style Squircle Bot Avatar for TAR & Ask TAR.
- * Features a soft pastel squircle with the iconic two expressive eye dots.
+ * Soft pastel circle, two proper round eyes, and a big triangle speaking
+ * mouth pinned to the right edge so the mascot reads as talking.
  */
 export function TarAvatar({
   size = 24,
@@ -22,18 +23,16 @@ export function TarAvatar({
   expression = 'happy',
   style,
 }: TarAvatarProps) {
-  const squircleRadius = Math.round(size * 0.28);
-  const eyeSize = Math.max(3, Math.round(size * 0.26));
+  const circleRadius = size / 2;
+  const eyeSize = Math.max(3, Math.round(size * 0.24));
   const eyeRadius = eyeSize / 2;
-  const eyeGap = Math.max(2, Math.round(size * 0.14));
+  // one eye on the right, so the mascot reads as facing right
+  const eyeRight = Math.round(size * 0.22);
+  const eyeTop = Math.round(size * 0.2);
 
-  // Happy curved eye strokes (^ ^)
-  const eyeArcStroke = Math.max(1.6, Math.round(size * 0.08));
-
-  // Subtle smile for 'happy' / 'bee'
-  const smileW = Math.max(4, Math.round(size * 0.22));
-  const smileH = Math.max(2, Math.round(size * 0.1));
-  const smileStroke = Math.max(1.2, Math.round(size * 0.065));
+  // Big triangle mouth, mirrored to point left, flush with the right edge
+  const mouthW = Math.max(6, Math.round(size * 0.34));
+  const mouthH = Math.max(8, Math.round(size * 0.42));
 
   // Antennae nubs for 'bee'
   const antW = Math.max(1.5, Math.round(size * 0.08));
@@ -46,7 +45,7 @@ export function TarAvatar({
         {
           width: size,
           height: size,
-          borderRadius: squircleRadius,
+          borderRadius: circleRadius,
           backgroundColor: bgColor,
         },
         style,
@@ -82,86 +81,39 @@ export function TarAvatar({
         </View>
       ) : null}
 
-      {/* Two Eyes */}
-      <View style={[styles.eyesRow, { gap: eyeGap }]}>
-        {expression === 'happy' ? (
-          <>
-            {/* Left Happy Eye (^ ^) */}
-            <View
-              style={[
-                styles.happyEye,
-                {
-                  width: eyeSize,
-                  height: eyeSize * 0.7,
-                  borderTopWidth: eyeArcStroke,
-                  borderTopColor: eyeColor,
-                  borderTopLeftRadius: eyeSize * 0.55,
-                  borderTopRightRadius: eyeSize * 0.55,
-                },
-              ]}
-            />
-            {/* Right Happy Eye (^ ^) */}
-            <View
-              style={[
-                styles.happyEye,
-                {
-                  width: eyeSize,
-                  height: eyeSize * 0.7,
-                  borderTopWidth: eyeArcStroke,
-                  borderTopColor: eyeColor,
-                  borderTopLeftRadius: eyeSize * 0.55,
-                  borderTopRightRadius: eyeSize * 0.55,
-                },
-              ]}
-            />
-          </>
-        ) : (
-          <>
-            {/* Left Round Eye Dot */}
-            <View
-              style={[
-                styles.dotEye,
-                {
-                  width: eyeSize,
-                  height: eyeSize,
-                  borderRadius: eyeRadius,
-                  backgroundColor: eyeColor,
-                },
-              ]}
-            />
-            {/* Right Round Eye Dot */}
-            <View
-              style={[
-                styles.dotEye,
-                {
-                  width: eyeSize,
-                  height: eyeSize,
-                  borderRadius: eyeRadius,
-                  backgroundColor: eyeColor,
-                },
-              ]}
-            />
-          </>
-        )}
-      </View>
+      {/* One round eye, held to the right side */}
+      <View
+        style={[
+          styles.eye,
+          {
+            width: eyeSize,
+            height: eyeSize,
+            borderRadius: eyeRadius,
+            backgroundColor: eyeColor,
+            right: eyeRight,
+            top: eyeTop,
+          },
+        ]}
+      />
 
-      {/* Optional Gentle Smile for 'bee' mode */}
-      {expression === 'bee' ? (
-        <View
-          style={[
-            styles.smile,
-            {
-              width: smileW,
-              height: smileH,
-              borderBottomWidth: smileStroke,
-              borderBottomColor: eyeColor,
-              borderBottomLeftRadius: smileW * 0.5,
-              borderBottomRightRadius: smileW * 0.5,
-              marginTop: Math.max(1, Math.round(size * 0.04)),
-            },
-          ]}
-        />
-      ) : null}
+      {/* Speaking mouth: big triangle pointing left, right edge flush */}
+      <View
+        style={[
+          styles.mouth,
+          {
+            width: 0,
+            height: 0,
+            borderTopWidth: mouthH / 2,
+            borderTopColor: 'transparent',
+            borderBottomWidth: mouthH / 2,
+            borderBottomColor: 'transparent',
+            borderRightWidth: mouthW,
+            borderRightColor: eyeColor,
+            right: 0,
+            bottom: Math.round(size * 0.14),
+          },
+        ]}
+      />
     </View>
   );
 }
@@ -181,17 +133,11 @@ const styles = StyleSheet.create({
     width: '44%',
   },
   antenna: {},
-  eyesRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+  eye: {
+    position: 'absolute',
   },
-  dotEye: {},
-  happyEye: {
-    backgroundColor: 'transparent',
-  },
-  smile: {
-    backgroundColor: 'transparent',
+  mouth: {
+    position: 'absolute',
   },
 });
 
