@@ -146,7 +146,7 @@ export function ActionSheet({
     const value = values[field.key] ?? '';
     const error = shownErrors[field.key];
     const active = focused === field.key;
-    const stacked = field.kind === 'select' || field.kind === 'photo' || field.kind === 'textarea';
+    const stacked = field.kind === 'select' || field.kind === 'options' || field.kind === 'photo' || field.kind === 'textarea';
     // Jev writes quietly: the eyebrow turns blue; tapping it asks again.
     const filled = Boolean(aiFilled[field.key]);
     const labelText = (
@@ -159,7 +159,7 @@ export function ActionSheet({
     ) : labelText;
 
     let control: React.ReactNode;
-    if (field.kind === 'select' && field.options?.length) {
+    if ((field.kind === 'select' || field.kind === 'options') && field.options?.length) {
       control = (
         <View style={styles.chips}>
           {field.options.map((option) => {

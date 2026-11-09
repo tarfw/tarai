@@ -9,7 +9,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { useWorkspace } from '@/state/Workspace';
 import { NavBar } from '@/components/NavBar';
 import { SearchField } from '@/components/SearchField';
-import { actionCatalogs, hire, importImage, toolRows } from '@/lib/tar';
+import { actionCatalogs, importImage, toolRows } from '@/lib/tar';
 import { ActionSheet, type FieldConfig } from '@/components/ActionSheet';
 import { enqueue } from '@/lib/queue';
 import * as ImagePicker from 'expo-image-picker';
@@ -25,6 +25,12 @@ const TOOL_TITLES: Record<string, string> = {
 
 // The section's one +: its create action and the form's title.
 const ADD_ACTIONS: Record<string, { action: string; title: string }> = {
+  order: { action: 'task.create', title: 'New order' },
+  delivery: { action: 'task.create', title: 'New delivery' },
+  trip: { action: 'task.create', title: 'New trip' },
+  job: { action: 'task.create', title: 'New job' },
+  register: { action: 'expense.record', title: 'New expense' },
+  member: { action: 'member.invite', title: 'Invite member' },
   catalog: { action: 'catalog.item.save', title: 'New item' },
   expense: { action: 'expense.record', title: 'New expense' },
   contact: { action: 'contact.create', title: 'New contact' },
@@ -98,15 +104,13 @@ export default function ToolListScreen() {
   };
 
   const invite = async () => {
-    if (!current || !growEmail.trim() || !growWords.trim()) return;
+    if (!current || !growEmail.trim()) return;
     setGrowing(true);
     try {
-      const verdict = await hire(current.slug, growWords);
-      const role = 'member';
-      const workRole = verdict.role === 'general' ? 'general' : verdict.role;
-      const access = verdict.tools.includes('*') ? undefined : verdict.tools;
+      const words = growWords.toLowerCase();
+      const role = words.includes('driver') || words.includes('deliver') ? 'driver' : 'staff';
       const { inviteMember } = await import('@/lib/members');
-      await inviteMember(current.slug, { email: growEmail.trim(), role, workRole, brief: growWords, ...(access ? { access } : {}) });
+      await inviteMember(current.slug, { name: growEmail.trim(), role });
       setGrowEmail(''); setGrowWords('');
       void load();
     } finally { setGrowing(false); }
@@ -216,6 +220,7 @@ function summaryOf(row: Row): string {
   const data = row.data ?? {};
   if (typeof data.total === 'number') return `Rs. ${(data.total / 100).toFixed(0)}`;
   if (typeof data.amount === 'number') return `Rs. ${(data.amount / 100).toFixed(0)}`;
+  if (typeof data.qty === 'number' && typeof data.price === 'number') return `×${data.qty} · Rs. ${(data.price / 100).toFixed(0)}`;
   if (typeof data.onhand === 'number') return `${data.onhand}`;
   if (typeof data.price === 'number') return `Rs. ${(data.price / 100).toFixed(0)}`;
   return '';

@@ -11,8 +11,7 @@ import { useWorkspace } from '@/state/Workspace';
 import { Card } from '@/components/Card';
 import { TarAvatar } from '@/components/TarAvatar';
 import { confirmRequest, enqueue, pendingCount, resolveConfirm, subscribe } from '@/lib/queue';
-import { advanceSkill, dropSkill, slice, startSkill, type CardView, type InboxRow, type RunView, type SkillView } from '@/lib/tar';
-import { saveSlice } from '@/lib/slicecache';
+import { advanceSkill, dropSkill, startSkill, type CardView, type InboxRow, type RunView, type SkillView } from '@/lib/tar';
 import { registerPush } from '@/lib/push';
 import { getCurrentUser } from '@/lib/auth';
 import { Onboarding } from '@/components/Onboarding';
@@ -65,21 +64,14 @@ export default function Canvas() {
     return subscribe(() => void check());
   }, []);
 
-  // the 20s version check: if-none-match on the last move id; 304 costs nothing
+  // Refresh when app returns to foreground (live updates arrive via Rivet WebSocket events in WorkspaceProvider)
   useEffect(() => {
     if (!current) return;
-    let active = true;
-    const poll = async () => {
-      if (!active) return;
-      try {
-        const fresh = await slice(current.slug, data?.version ?? null);
-        if (fresh && active) { await saveSlice(current.slug, fresh); await refreshSlice(); }
-      } catch { /* the poll is the floor */ }
-    };
-    const interval = setInterval(() => void poll(), 20_000);
-    const sub = AppState.addEventListener('change', (state) => { if (state === 'active') void poll(); });
-    return () => { active = false; clearInterval(interval); sub.remove(); };
-  }, [current, data?.version, refreshSlice]);
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void refreshSlice();
+    });
+    return () => sub.remove();
+  }, [current, refreshSlice]);
 
   // a run parked for a person: one confirm resumes it; money still asks
   const [run, setRun] = useState<{ run: RunView; title: string } | null>(null);

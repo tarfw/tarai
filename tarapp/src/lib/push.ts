@@ -1,7 +1,6 @@
 // The closed-phone bell: register this device once per session. FCM on
 // Android through Expo's push service; the backend sends on urgent rows only.
 
-import { Platform } from 'react-native';
 import { requireOptionalNativeModule } from 'expo';
 import * as SecureStore from 'expo-secure-store';
 

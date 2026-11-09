@@ -126,10 +126,15 @@ export const workspace = actor({
   },
 
   actions: {
-    // ── workspace birth ─────────────────────────────────────────────
+    // ── workspace birth (idempotent + starter seed for new store) ───
     createWorkspace: async (c, p: { name: string; type: string; ownerName: string }) => {
+      const existing: any = await c.db.execute("SELECT name, type FROM meta WHERE id = 1");
+      if (existing[0]) {
+        const owner: any = await c.db.execute("SELECT id FROM members WHERE role = 'owner' ORDER BY created_at LIMIT 1");
+        if (owner[0]) return { ownerId: owner[0].id, name: existing[0].name, type: existing[0].type };
+      }
       const now = Date.now();
-      await c.db.execute("INSERT INTO meta (id, name, type, created_at) VALUES (1, ?, ?, ?)",
+      await c.db.execute("INSERT OR IGNORE INTO meta (id, name, type, created_at) VALUES (1, ?, ?, ?)",
         p.name, p.type, now);
       const ownerId = crypto.randomUUID();
       await c.db.execute(
@@ -405,6 +410,18 @@ export const workspace = actor({
           c.broadcast("automations_changed", {});
           return { result: {} };
         }
+        case "channel.log": {
+          const id = crypto.randomUUID();
+          const phone = String(input.phone ?? "").trim();
+          const text = String(input.text ?? "").trim();
+          const dir = input.direction === "in" ? "in" : "out";
+          await c.db.execute(
+            `INSERT INTO work (id, kind, category, channel, status, amount, ref, created_at, updated_at)
+             VALUES (?, 'task', ?, 'whatsapp', 'done', 0, ?, ?, ?)`,
+            id, `${dir}:${phone}`, text, Date.now(), Date.now());
+          c.broadcast("work_changed", { kind: "channel_log", work: { id, phone, text, dir } });
+          return { result: { id } };
+        }
         default:
           throw new UserError("That move is not available yet.");
       }
@@ -476,6 +493,19 @@ export const workspace = actor({
             data: { amount: e.amount, bucket: e.bucket, reversal_of: e.reversal_of ?? "", party_id: e.party_id ?? "" },
             version: 1, updatedAt: e.created_at,
           }));
+          break;
+        }
+        case "channel": {
+          const log: any = await c.db.execute(
+            "SELECT * FROM work WHERE channel = 'whatsapp' ORDER BY created_at DESC LIMIT 50");
+          rows = log.map((w: any) => {
+            const [direction = "out", phone = ""] = String(w.category ?? "out:").split(":");
+            return {
+              id: w.id, type: "channel", title: w.ref ?? "WhatsApp", state: direction,
+              data: { channel: "whatsapp", phone, text: w.ref ?? "", direction, at: w.created_at },
+              version: 1, updatedAt: w.updated_at,
+            };
+          });
           break;
         }
         case "site": {
@@ -865,48 +895,66 @@ async function fireStockBelow(c: any) {
   }
 }
 
-// Client-facing registry type (constructed once; runtime start happens below).
-const __registryType = setup({ use: { workspace } });
-export type registry = typeof __registryType;
+// Official Rivet 3.0 startup: registry.start() + node:http server in cloud.
+import { createServer } from "node:http";
 
-// On the runner: connect to the runner's engine (it sets RIVET_ENDPOINT).
-// Spawning our own engine (RIVET_RUN_ENGINE=1 default) + endpoint = config error.
 const isCloud = !!process.env.RIVET_ENDPOINT;
+
+const r = setup({
+  use: { workspace },
+  ...(isCloud
+    ? { startEngine: false, startServices: false, runtime: "native" as const }
+    : { engineHost: "0.0.0.0", enginePort: 6420 }),
+});
+
+export type registry = typeof r;
+
+r.start();
+
 if (isCloud) {
-  const r = setup({ use: { workspace }, endpoint: process.env.RIVET_ENDPOINT, startEngine: false });
-  await r.listen({
-    port: Number(process.env.PORT ?? 8080),
-    application: { fetch: async (request: Request) => {
-      const url = new URL(request.url);
-      // Phone onboarding: exchange for a namespace-scoped gateway token.
-      // Phase 1 is open; invite codes gate this at the Access+safety build-out.
-      if (request.method === "POST" && url.pathname === "/mint") {
-        const body = await request.json().catch(() => ({}) as any);
-        const res = await fetch(`${process.env.RIVET_ENDPOINT}/auth/tokens`, {
-          method: "POST",
-          headers: {
-            authorization: `Bearer ${process.env.RIVET_TOKEN}`,
-            "content-type": "application/json",
-          },
-          body: JSON.stringify({
-            subject: String(body.subject ?? "tar-app").slice(0, 64),
-            namespace: "default",
-            grants: [
-              { resource: "actor_gateway", target: "any",
-                operations: ["read", "update", "create", "list"] },
-              { resource: "actor", target: "any",
-                operations: ["read", "update", "create", "delete", "list"] },
-            ],
-          }),
-        });
-        return new Response(await res.text(), {
-          status: res.status, headers: { "content-type": "application/json" },
-        });
-      }
-      return new Response("TAR actor node", { status: 404 });
-    } },
-  });
-} else {
-  const r = setup({ use: { workspace } });
-  r.start();
+  // Public HTTP server (cluster forwards https://<cluster>.onrivet.dev to PORT)
+  createServer(async (req, res) => {
+    const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
+    if (req.method === "GET" && url.pathname === "/health") {
+      const health = await r.routes.health();
+      res.writeHead(health.status, Object.fromEntries(health.headers));
+      res.end(await health.text());
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/mint") {
+      const chunks: Buffer[] = [];
+      for await (const chunk of req) chunks.push(Buffer.from(chunk));
+      let body: any = {};
+      try { body = JSON.parse(Buffer.concat(chunks).toString("utf8")); } catch {}
+      const resp = await fetch(`${process.env.RIVET_ENDPOINT}/auth/tokens`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${process.env.RIVET_TOKEN}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          subject: String(body.subject ?? "tar-app").slice(0, 64),
+          namespace: "default",
+          grants: [
+            { resource: "actor_gateway", target: "any",
+              operations: ["read", "update", "create", "list"] },
+            { resource: "actor", target: "any",
+              operations: ["read", "update", "create", "delete", "list"] },
+          ],
+        }),
+      });
+      res.writeHead(resp.status, { "content-type": "application/json", "cache-control": "no-store" });
+      res.end(await resp.text());
+      return;
+    }
+    res.writeHead(404, { "content-type": "text/plain" });
+    res.end("TAR actor node");
+  }).listen(Number(process.env.PORT ?? 8080));
+
+  // Metrics server on localhost, per official Rivet 3.0 Actor Nodes guide
+  createServer(async (req, res) => {
+    const metrics = await r.routes.prometheusMetrics();
+    res.writeHead(metrics.status, Object.fromEntries(metrics.headers));
+    res.end(await metrics.text());
+  }).listen(Number(process.env.RIVETKIT_METRICS_PORT ?? 9464), "127.0.0.1");
 }

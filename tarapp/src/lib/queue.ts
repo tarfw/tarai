@@ -65,7 +65,7 @@ export async function enqueue(item: Omit<QueueItem, 'state' | 'addedAt'>): Promi
   items = [...items, { ...item, state: item.confirmed === true ? 'pending' : 'pending', addedAt: Date.now() }];
   await persist();
   emit();
-  void flush();
+  await flush();
 }
 
 /** The member pressed Confirm on a parked item: it resumes at the front. */
@@ -81,7 +81,7 @@ export async function resolveConfirm(key: string, confirmed: boolean): Promise<v
   }
   await persist();
   emit();
-  void flush();
+  await flush();
 }
 
 /** Replay in order. The first offline item parks the queue behind it. */

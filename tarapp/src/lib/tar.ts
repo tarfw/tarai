@@ -36,12 +36,12 @@ let cachedClient: { token: string; client: any } | null = null;
 export async function sessionToken(): Promise<string> { return ensureSession(); }
 
 async function ensureSession(): Promise<string> {
+  // Local / direct Rivet engine needs only the "default" token (no /mint hop).
+  if (APP_URL === API_URL) return 'default';
   const raw = await SecureStore.getItemAsync(SESSION_KEY);
   if (raw) {
     try {
       const session = JSON.parse(raw) as Session;
-      // Sessions minted before the Rivet transport carry no engine marker; the
-      // old HS256 token can never authenticate against the engine.
       if (session.engine === 'rivet' && session.expiresAt > Date.now() + 60_000) return session.token;
     } catch { /* re-mint */ }
   }
@@ -76,7 +76,6 @@ async function client(): Promise<any> {
   if (cachedClient?.token === token) return cachedClient.client;
   // createClient() takes ONE config object; a second argument is ignored and
   // the request goes unauthenticated ("Authentication token is invalid").
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const created = (createClient as any)({ endpoint: API_URL, token, namespace: "default" });
   cachedClient = { token, client: created };
   return created;
@@ -103,15 +102,29 @@ export async function registerWorkspace(entry: WsReg): Promise<void> {
   }
 }
 
-async function handle(slug: string) {
+export async function handle(slug: string) {
   const c = await client();
   return c.workspace.getOrCreate([slug]);
 }
 
-async function memberOf(slug: string): Promise<string> {
-  const entry = (await registryList()).find((w) => w.slug === slug);
-  if (!entry) throw new TarError(404, 'Workspace not on this phone.');
-  return entry.memberId;
+async function ensureMemberOf(slug: string, w: any): Promise<string> {
+  const list = await registryList();
+  const entry = list.find((item) => item.slug === slug);
+  // createWorkspace is idempotent on the actor and always returns the canonical ownerId for this SQLite DB
+  const born: any = await w.createWorkspace({
+    name: entry?.name || 'My Shop',
+    type: entry?.type || 'store',
+    ownerName: 'Owner',
+  });
+  if (entry) {
+    if (entry.memberId !== born.ownerId) {
+      entry.memberId = born.ownerId;
+      await registrySave(list);
+    }
+    return born.ownerId;
+  }
+  await registerWorkspace({ slug, name: born.name || 'My Shop', type: born.type || 'store', role: 'owner', memberId: born.ownerId });
+  return born.ownerId;
 }
 
 // --- reads ---
@@ -161,7 +174,8 @@ export async function me(): Promise<{ user: { id: string; email: string; name: s
 }
 
 export async function slice(ws: string, _etag?: string | null): Promise<Slice> {
-  const [w, memberId] = await Promise.all([handle(ws), memberOf(ws)]);
+  const w = await handle(ws);
+  const memberId = await ensureMemberOf(ws, w);
   const raw = await w.slice({ byId: memberId });
   return {
     version: raw.version,
@@ -178,12 +192,14 @@ export async function slice(ws: string, _etag?: string | null): Promise<Slice> {
 }
 
 export async function toolRows(ws: string, toolId: string, q = '', offset = 0) {
-  const [w, memberId] = await Promise.all([handle(ws), memberOf(ws)]);
+  const w = await handle(ws);
+  const memberId = await ensureMemberOf(ws, w);
   return w.toolRows({ byId: memberId, toolId, q, offset });
 }
 
 export async function record(ws: string, id: string) {
-  const [w, memberId] = await Promise.all([handle(ws), memberOf(ws)]);
+  const w = await handle(ws);
+  const memberId = await ensureMemberOf(ws, w);
   return w.record({ byId: memberId, id });
 }
 
@@ -279,7 +295,8 @@ export type RunStatus = 'ready' | 'waiting' | 'done' | 'failed';
 export interface RunView { id: string; skill: string; title: string; step: number; status: RunStatus; key: string }
 
 export async function startSkill(ws: string, skillId: string): Promise<RunView> {
-  const [w, memberId] = await Promise.all([handle(ws), memberOf(ws)]);
+  const w = await handle(ws);
+  await ensureMemberOf(ws, w);
   const output = await w.runAutomation(skillId);
   return { id: skillId, skill: skillId, title: String(output ?? 'Done'), step: 1, status: 'done', key: skillId };
 }
@@ -290,8 +307,9 @@ export async function advanceSkill(ws: string, runId: string, _confirmed = false
 
 /** A custom card is hidden for good; the row stays. */
 export async function dropSkill(ws: string, id: string) {
-  const [w, memberId] = await Promise.all([handle(ws), memberOf(ws)]);
-  return w.intent({ byId: memberId, action: 'automation.remove', input: { id }, key: `drop-${id}` });
+  const w = await handle(ws);
+  const memberId = await ensureMemberOf(ws, w);
+  return w.removeAutomation({ byId: memberId, id });
 }
 
 export interface PlanTurn { who: 'you' | 'tar'; text: string }
@@ -302,7 +320,8 @@ export type CardPlan =
 
 /** Deterministic Ask today: the actor answers; Jev plans cards in a later phase. */
 export async function planCard(ws: string, words: string, _history: PlanTurn[] = []): Promise<CardPlan> {
-  const [w, memberId] = await Promise.all([handle(ws), memberOf(ws)]);
+  const w = await handle(ws);
+  const memberId = await ensureMemberOf(ws, w);
   const answer = await w.ask({ byId: memberId, q: words });
   return { kind: 'known', tools: [], titles: [], message: String(answer) };
 }
@@ -323,7 +342,8 @@ export interface IntentOutcome {
 }
 
 export async function intent(ws: string, action: string, input: Record<string, unknown>, key: string, confirmed = false): Promise<IntentOutcome> {
-  const [w, memberId] = await Promise.all([handle(ws), memberOf(ws)]);
+  const w = await handle(ws);
+  const memberId = await ensureMemberOf(ws, w);
   const result = await w.intent({ byId: memberId, action, input, key, confirmed });
   return { result: (result?.result ?? {}) as Record<string, unknown> };
 }
@@ -351,6 +371,7 @@ export async function hire(_ws: string, _words: string): Promise<{ role: string;
 }
 
 export async function actionCatalogs(ws: string) {
-  const [w, memberId] = await Promise.all([handle(ws), memberOf(ws)]);
+  const w = await handle(ws);
+  const memberId = await ensureMemberOf(ws, w);
   return w.actionCatalogs({ byId: memberId });
 }

@@ -3,7 +3,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import * as SecureStore from 'expo-secure-store';
-import { me, signOutSession, TarError, type Slice, type TarWorkspace } from '@/lib/tar';
+import { handle, me, slice, signOutSession, TarError, type Slice, type TarWorkspace } from '@/lib/tar';
 import { cachedSlice, saveSlice } from '@/lib/slicecache';
 import { cachedWorkspaces, saveWorkspaces } from '@/lib/wscache';
 
@@ -54,10 +54,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const refreshSlice = useCallback(async () => {
     if (!currentSlug) return;
     try {
-      const fresh = await (async () => {
-        const direct = await import('@/lib/tar').then((tar) => tar.slice(currentSlug, undefined));
-        return direct;
-      })();
+      const fresh = await slice(currentSlug, undefined);
       if (fresh) {
         setSliceData(fresh);
         setStale(false);
@@ -92,12 +89,30 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!currentSlug) return;
+    let active = true;
+    let conn: any = null;
     void (async () => {
       const cached = await cachedSlice(currentSlug);
-      setSliceData(cached ? cached.slice : null);
-      setStale(Boolean(cached));
+      if (active) {
+        setSliceData(cached ? cached.slice : null);
+        setStale(Boolean(cached));
+      }
       await refreshSlice();
+      // Official Rivet 3.0 realtime connection: subscribe to actor SQLite events
+      try {
+        const w = await handle(currentSlug);
+        if (!active) return;
+        conn = w.connect();
+        const onEvent = () => { if (active) void refreshSlice(); };
+        for (const ev of ['work_changed', 'stock_changed', 'ledger_changed', 'member_joined', 'automations_changed', 'automation_fired']) {
+          conn.on(ev, onEvent);
+        }
+      } catch { /* offline fallback */ }
     })();
+    return () => {
+      active = false;
+      try { conn?.dispose?.(); } catch {}
+    };
   }, [currentSlug, refreshSlice]);
 
   const select = useCallback((slug: string) => {
