@@ -1,12 +1,22 @@
-// Live contract test: mirrors tarapp src/lib/tar.ts against the Rivet 3.0 actor.
+// Live contract test (Rivet Cloud): mirrors tarapp src/lib/tar.ts against the Rivet 3.0 actor.
+// Mints a token from /mint, then runs the app's exact call sequence.
 import { createClient } from "rivetkit/client";
 import type { registry as RegistryType } from "./index.js";
 
-const ENDPOINT = process.env.RIVET_URL || "https://6420-agqybwmrkvwxyn6yj4c6gc7fna.instabox.tech";
+const APP_URL = process.env.RIVET_URL || "https://tars93k.onrivet.dev";
+const API_URL = process.env.RIVET_API_URL || "https://tars93k-api.onrivet.dev";
+
+const mintRes = await fetch(`${APP_URL}/mint`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ subject: "tar-phone" }),
+});
+const mintBody: any = await mintRes.json();
+if (!mintBody.token) throw new Error(`mint failed: ${mintRes.status} ${JSON.stringify(mintBody)}`);
 
 const client = createClient<RegistryType>({
-  endpoint: ENDPOINT,
-  token: process.env.RIVET_TOKEN || "default",
+  endpoint: API_URL,
+  token: mintBody.token,
   namespace: "default",
 });
 

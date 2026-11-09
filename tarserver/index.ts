@@ -895,25 +895,22 @@ async function fireStockBelow(c: any) {
   }
 }
 
-// Official Rivet 3.0 startup: registry.start() + node:http server in cloud.
+// Official Rivet 3.0 startup (cloud-only): registry.start() + node:http server.
 import { createServer } from "node:http";
-
-const isCloud = !!process.env.RIVET_ENDPOINT;
 
 const r = setup({
   use: { workspace },
-  ...(isCloud
-    ? { startEngine: false, startServices: false, runtime: "native" as const }
-    : { engineHost: "0.0.0.0", enginePort: 6420 }),
+  startEngine: false,
+  startServices: false,
+  runtime: "native" as const,
 });
 
 export type registry = typeof r;
 
 r.start();
 
-if (isCloud) {
-  // Public HTTP server (cluster forwards https://<cluster>.onrivet.dev to PORT)
-  createServer(async (req, res) => {
+// Public HTTP server (cluster forwards https://<cluster>.onrivet.dev to PORT)
+createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
     if (req.method === "GET" && url.pathname === "/health") {
       const health = await r.routes.health();
@@ -957,4 +954,3 @@ if (isCloud) {
     res.writeHead(metrics.status, Object.fromEntries(metrics.headers));
     res.end(await metrics.text());
   }).listen(Number(process.env.RIVETKIT_METRICS_PORT ?? 9464), "127.0.0.1");
-}

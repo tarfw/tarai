@@ -3,9 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch index.ts",
-    "start": "tsx index.ts",
-    "test": "tsx test.ts"
+    "check": "tsc --noEmit --skipLibCheck",
+    "contract": "tsx contract.ts"
   },
   "dependencies": {
     "rivetkit": "^3.0.0"
